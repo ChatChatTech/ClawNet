@@ -10,12 +10,13 @@ import (
 	"syscall"
 
 	"github.com/ChatChatTech/letschat/letschat-cli/internal/config"
+	"github.com/ChatChatTech/letschat/letschat-cli/internal/geo"
 	"github.com/ChatChatTech/letschat/letschat-cli/internal/identity"
 	"github.com/ChatChatTech/letschat/letschat-cli/internal/p2p"
 	"github.com/ChatChatTech/letschat/letschat-cli/internal/store"
 )
 
-const Version = "0.3.0"
+const Version = "0.4.0"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
@@ -23,6 +24,7 @@ type Daemon struct {
 	Config  *config.Config
 	Profile *config.Profile
 	Store   *store.Store
+	Geo     *geo.Locator
 	DataDir string
 	ctx     context.Context
 }
@@ -75,11 +77,21 @@ func Start(foreground bool) error {
 	}
 	defer db.Close()
 
+	// Initialize geo locator
+	geoLoc, err := geo.NewLocator(dataDir)
+	if err != nil {
+		fmt.Printf("warning: geo locator unavailable: %v\n", err)
+	} else {
+		defer geoLoc.Close()
+		fmt.Printf("Geo database: %s\n", geoLoc.DBType())
+	}
+
 	d := &Daemon{
 		Node:    node,
 		Config:  cfg,
 		Profile: profile,
 		Store:   db,
+		Geo:     geoLoc,
 		DataDir: dataDir,
 		ctx:     ctx,
 	}

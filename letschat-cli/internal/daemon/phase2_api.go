@@ -15,7 +15,6 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/credits/balance", d.handleCreditsBalance)
 	mux.HandleFunc("GET /api/credits/transactions", d.handleCreditsTransactions)
 	mux.HandleFunc("POST /api/credits/transfer", d.handleCreditsTransfer)
-	mux.HandleFunc("POST /api/credits/grant", d.handleCreditsGrant)
 
 	// Task Bazaar
 	mux.HandleFunc("POST /api/tasks", d.handleCreateTask)
@@ -39,6 +38,9 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	// Reputation
 	mux.HandleFunc("GET /api/reputation", d.handleListReputation)
 	mux.HandleFunc("GET /api/reputation/{peer_id}", d.handleGetReputation)
+
+	// Credit Audit
+	mux.HandleFunc("GET /api/credits/audit", d.handleCreditAudit)
 }
 
 // ── Credits handlers ──
@@ -96,31 +98,6 @@ func (d *Daemon) handleCreditsTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]string{"status": "transferred", "txn_id": txnID})
-}
-
-func (d *Daemon) handleCreditsGrant(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Amount float64 `json:"amount"`
-		Reason string  `json:"reason"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if body.Amount <= 0 {
-		http.Error(w, `{"error":"positive amount required"}`, http.StatusBadRequest)
-		return
-	}
-	if body.Reason == "" {
-		body.Reason = "grant"
-	}
-	peerID := d.Node.PeerID().String()
-	txnID := uuid.New().String()
-	if err := d.Store.AddCredits(txnID, peerID, body.Amount, body.Reason); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, map[string]string{"status": "granted", "txn_id": txnID})
 }
 
 // ── Task handlers ──
@@ -269,6 +246,8 @@ func (d *Daemon) handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		d.Store.UnfreezeCredits(t.AuthorID, t.Reward)
 		txnID := uuid.New().String()
 		d.Store.TransferCredits(txnID, t.AuthorID, t.AssignedTo, t.Reward, "task_reward", taskID)
+		// Broadcast credit audit for peer supervision
+		d.publishCreditAudit(d.ctx, txnID, taskID, t.AuthorID, t.AssignedTo, t.Reward, "task_reward")
 	}
 
 	// Recalc reputation for assignee
@@ -450,4 +429,15 @@ func (d *Daemon) handleGetReputation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, rec)
+}
+
+func (d *Daemon) handleCreditAudit(w http.ResponseWriter, r *http.Request) {
+	limit := queryInt(r, "limit", 50)
+	offset := queryInt(r, "offset", 0)
+	records, err := d.Store.ListCreditAudit(limit, offset)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, records)
 }

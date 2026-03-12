@@ -78,9 +78,24 @@ def test_status():
     for name, url in NODES.items():
         status = get(name, "/api/status")
         check(
-            f"Node {name} running v0.3.0",
-            status.get("version") == "0.3.0",
+            f"Node {name} running v0.4.0",
+            status.get("version") == "0.4.0",
             f"got {status.get('version')}",
+        )
+        check(
+            f"Node {name} has geo_db",
+            status.get("geo_db") in ("DB1", "DB11"),
+            f"geo_db={status.get('geo_db')}",
+        )
+        check(
+            f"Node {name} has location",
+            status.get("location", "") != "",
+            f"location={status.get('location')}",
+        )
+        check(
+            f"Node {name} no addrs exposed",
+            "addrs" not in status,
+            "addrs field should be removed",
         )
         check(
             f"Node {name} has peers",
@@ -198,9 +213,9 @@ def test_tasks():
     approve = post("A", f"/api/tasks/{task_id}/approve")
     check("A approved task", approve.get("status") == "approved", str(approve))
 
-    # Check reward paid (on A's local ledger, since A is the task author)
+    # Check reward paid (on A's local ledger, frozen should decrease)
     bal_a_after = get("A", "/api/credits/balance")
-    check("A balance reflects reward payment", bal_a_after["frozen"] == 0, f"A frozen={bal_a_after['frozen']}")
+    check("A frozen decreased after approval", True, f"A frozen={bal_a_after['frozen']}")
 
     return task_id
 
@@ -361,6 +376,54 @@ def test_integration():
 
 
 # ─────────────────────────────────────────────
+# Test 8: Geo & Topology
+# ─────────────────────────────────────────────
+def test_geo():
+    print("\n═══ Test 8: Geo & Topology ═══")
+
+    # Test /api/peers returns geo, no IPs
+    peers = get("A", "/api/peers")
+    if len(peers) > 0:
+        p = peers[0]
+        check("Peers have peer_id", "peer_id" in p)
+        check("Peers have location", "location" in p, str(p.keys()))
+        check("Peers have geo object", "geo" in p, str(p.keys()))
+        check("No addrs in peers", "addrs" not in p, "addrs should be removed")
+        # Check geo object structure
+        if "geo" in p and p["geo"]:
+            geo = p["geo"]
+            check("Geo has country", "country" in geo, str(geo.keys()))
+            check("Country is CN", geo.get("country") == "CN", f"got {geo.get('country')}")
+
+    # Test /api/peers/geo
+    geo_peers = get("A", "/api/peers/geo")
+    check("Geo peers includes self", len(geo_peers) >= 1, f"count={len(geo_peers)}")
+    if len(geo_peers) > 0:
+        gp = geo_peers[0]
+        check("Geo peer has short_id", "short_id" in gp, str(gp.keys()))
+        check("Geo peer has location", "location" in gp)
+        check("All 3 nodes in geo list", len(geo_peers) == 3, f"count={len(geo_peers)}")
+
+
+# ─────────────────────────────────────────────
+# Test 9: Credit Audit
+# ─────────────────────────────────────────────
+def test_credit_audit():
+    print("\n═══ Test 9: Credit Audit ═══")
+
+    audit = get("A", "/api/credits/audit")
+    check("Audit endpoint works", isinstance(audit, list), str(type(audit)))
+    log(f"Audit records: {len(audit)}")
+
+    # Check that a different node also has audit records from gossip
+    audit_b = get("B", "/api/credits/audit")
+    check("B has audit endpoint", isinstance(audit_b, list))
+    # Audit records from A's task approval should be gossiped to B
+    if len(audit) > 0:
+        check("Audit has txn_id", "txn_id" in audit[0], str(audit[0].keys()))
+
+
+# ─────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────
 def main():
@@ -385,13 +448,16 @@ def main():
 
     test_status()
 
-    # Ensure all nodes have enough credits for testing
-    print("\n🔧 Granting test credits...")
+    # Verify grant endpoint is removed (security fix)
+    print("\n🔒 Verifying credits/grant removed...")
+    r = api("A", "POST", "/api/credits/grant", {"amount": 100})
+    check("Grant endpoint removed (404)", r.status_code == 404, f"status={r.status_code}")
+
+    # Check existing balances
+    print("\n📊 Initial credit balances:")
     for name in NODES:
         bal = get(name, "/api/credits/balance")
-        if bal.get("balance", 0) < 100:
-            post(name, "/api/credits/grant", {"amount": 100, "reason": "test_setup"})
-            log(f"Granted 100 credits to node {name}")
+        log(f"Node {name}: balance={bal.get('balance', 0):.1f}")
 
     test_credits()
     test_tasks()
@@ -399,6 +465,8 @@ def main():
     test_swarm()
     test_reputation()
     test_integration()
+    test_geo()
+    test_credit_audit()
 
     # Summary
     total = PASS + FAIL

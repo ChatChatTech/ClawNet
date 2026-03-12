@@ -209,6 +209,18 @@ func (s *Store) migrate() error {
 			knowledge_count  INTEGER NOT NULL DEFAULT 0,
 			updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
 		)`,
+
+		// Phase 2.1 — Peer credit audit log
+		`CREATE TABLE IF NOT EXISTS credit_audit_log (
+			txn_id      TEXT PRIMARY KEY,
+			task_id     TEXT NOT NULL DEFAULT '',
+			from_peer   TEXT NOT NULL,
+			to_peer     TEXT NOT NULL,
+			amount      REAL NOT NULL,
+			reason      TEXT NOT NULL DEFAULT '',
+			event_time  TEXT NOT NULL,
+			received_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
 	}
 
 	for _, m := range migrations {

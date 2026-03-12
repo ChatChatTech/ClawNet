@@ -191,3 +191,50 @@ func (s *Store) AddCredits(txnID, peerID string, amount float64, reason string) 
 
 	return tx.Commit()
 }
+
+// LogCreditAudit stores a credit audit record received from peers for supervision.
+func (s *Store) LogCreditAudit(txnID, taskID, from, to string, amount float64, reason, eventTime string) error {
+	_, err := s.DB.Exec(
+		`INSERT OR IGNORE INTO credit_audit_log (txn_id, task_id, from_peer, to_peer, amount, reason, event_time)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		txnID, taskID, from, to, amount, reason, eventTime,
+	)
+	return err
+}
+
+// CreditAuditRecord represents a peer-broadcast credit audit entry.
+type CreditAuditRecord struct {
+	TxnID      string  `json:"txn_id"`
+	TaskID     string  `json:"task_id"`
+	FromPeer   string  `json:"from_peer"`
+	ToPeer     string  `json:"to_peer"`
+	Amount     float64 `json:"amount"`
+	Reason     string  `json:"reason"`
+	EventTime  string  `json:"event_time"`
+	ReceivedAt string  `json:"received_at"`
+}
+
+// ListCreditAudit returns recent credit audit records.
+func (s *Store) ListCreditAudit(limit, offset int) ([]*CreditAuditRecord, error) {
+	rows, err := s.DB.Query(
+		`SELECT txn_id, task_id, from_peer, to_peer, amount, reason, event_time, received_at
+		 FROM credit_audit_log ORDER BY received_at DESC LIMIT ? OFFSET ?`, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []*CreditAuditRecord
+	for rows.Next() {
+		r := &CreditAuditRecord{}
+		if err := rows.Scan(&r.TxnID, &r.TaskID, &r.FromPeer, &r.ToPeer, &r.Amount, &r.Reason, &r.EventTime, &r.ReceivedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, r)
+	}
+	if result == nil {
+		result = []*CreditAuditRecord{}
+	}
+	return result, nil
+}

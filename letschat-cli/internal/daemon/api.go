@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/ChatChatTech/letschat/letschat-cli/internal/config"
+	"github.com/ChatChatTech/letschat/letschat-cli/internal/geo"
 	"github.com/ChatChatTech/letschat/letschat-cli/internal/store"
 )
 
@@ -20,6 +21,7 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 	// Phase 0 endpoints
 	mux.HandleFunc("GET /api/status", d.handleStatus)
 	mux.HandleFunc("GET /api/peers", d.handlePeers)
+	mux.HandleFunc("GET /api/peers/geo", d.handlePeersGeo)
 	mux.HandleFunc("GET /api/profile", d.handleGetProfile)
 	mux.HandleFunc("PUT /api/profile", d.handleUpdateProfile)
 
@@ -70,33 +72,121 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 
 func (d *Daemon) handleStatus(w http.ResponseWriter, r *http.Request) {
 	unread, _ := d.Store.UnreadDMCount()
+
+	// Resolve own geo location (pick first public addr)
+	var selfGeo *geo.GeoInfo
+	if d.Geo != nil {
+		for _, a := range d.Node.Addrs() {
+			ip := geo.ExtractIP(a.String())
+			if ip != "" && geo.IsPublicIP(ip) {
+				selfGeo = d.Geo.Lookup(ip)
+				break
+			}
+		}
+	}
+
 	status := map[string]any{
-		"peer_id":      d.Node.PeerID().String(),
-		"version":      Version,
-		"peers":        len(d.Node.ConnectedPeers()),
-		"topics":       d.topicNames(),
-		"addrs":        d.addrStrings(),
-		"data_dir":     d.DataDir,
-		"unread_dm":    unread,
+		"peer_id":   d.Node.PeerID().String(),
+		"version":   Version,
+		"peers":     len(d.Node.ConnectedPeers()),
+		"topics":    d.topicNames(),
+		"data_dir":  d.DataDir,
+		"unread_dm": unread,
+		"geo_db":    d.geoDBType(),
+	}
+	if selfGeo != nil {
+		status["location"] = selfGeo.Label()
 	}
 	writeJSON(w, status)
 }
 
 func (d *Daemon) handlePeers(w http.ResponseWriter, r *http.Request) {
 	peers := d.Node.ConnectedPeers()
-	result := make([]map[string]string, 0, len(peers))
+	result := make([]map[string]any, 0, len(peers))
 	for _, p := range peers {
 		addrs := d.Node.Host.Peerstore().Addrs(p)
-		addrStrs := make([]string, 0, len(addrs))
-		for _, a := range addrs {
-			addrStrs = append(addrStrs, a.String())
-		}
-		result = append(result, map[string]string{
+		entry := map[string]any{
 			"peer_id": p.String(),
-			"addrs":   fmt.Sprintf("%v", addrStrs),
-		})
+		}
+		// Resolve geo from first public addr; never expose raw IPs
+		if d.Geo != nil {
+			for _, a := range addrs {
+				ip := geo.ExtractIP(a.String())
+				if ip != "" && geo.IsPublicIP(ip) {
+					if gi := d.Geo.Lookup(ip); gi != nil {
+						entry["location"] = gi.Label()
+						entry["geo"] = gi
+					}
+					break
+				}
+			}
+		}
+		result = append(result, entry)
 	}
 	writeJSON(w, result)
+}
+
+func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
+	peers := d.Node.ConnectedPeers()
+	type peerGeo struct {
+		PeerID    string       `json:"peer_id"`
+		ShortID   string       `json:"short_id"`
+		Location  string       `json:"location"`
+		Geo       *geo.GeoInfo `json:"geo,omitempty"`
+	}
+	result := make([]peerGeo, 0, len(peers)+1)
+
+	// Add self first
+	selfID := d.Node.PeerID().String()
+	selfEntry := peerGeo{PeerID: selfID, ShortID: shortID(selfID), Location: "Unknown"}
+	if d.Geo != nil {
+		for _, a := range d.Node.Addrs() {
+			ip := geo.ExtractIP(a.String())
+			if ip != "" && geo.IsPublicIP(ip) {
+				if gi := d.Geo.Lookup(ip); gi != nil {
+					selfEntry.Location = gi.Label()
+					selfEntry.Geo = gi
+				}
+				break
+			}
+		}
+	}
+	result = append(result, selfEntry)
+
+	// Add peers
+	for _, p := range peers {
+		addrs := d.Node.Host.Peerstore().Addrs(p)
+		pid := p.String()
+		entry := peerGeo{PeerID: pid, ShortID: shortID(pid), Location: "Unknown"}
+		if d.Geo != nil {
+			for _, a := range addrs {
+				ip := geo.ExtractIP(a.String())
+				if ip != "" && geo.IsPublicIP(ip) {
+					if gi := d.Geo.Lookup(ip); gi != nil {
+						entry.Location = gi.Label()
+						entry.Geo = gi
+					}
+					break
+				}
+			}
+		}
+		result = append(result, entry)
+	}
+	writeJSON(w, result)
+}
+
+func shortID(id string) string {
+	if len(id) > 16 {
+		return id[:16]
+	}
+	return id
+}
+
+func (d *Daemon) geoDBType() string {
+	if d.Geo != nil {
+		return d.Geo.DBType()
+	}
+	return "none"
 }
 
 func (d *Daemon) handleGetProfile(w http.ResponseWriter, r *http.Request) {
@@ -410,21 +500,51 @@ func (d *Daemon) handleTopologyWS(w http.ResponseWriter, r *http.Request) {
 
 func (d *Daemon) sendTopologyEvent(w http.ResponseWriter, f http.Flusher) {
 	peers := d.Node.ConnectedPeers()
-	nodes := []map[string]any{
-		{"id": d.Node.PeerID().String(), "name": d.Profile.AgentName, "self": true},
+	selfID := d.Node.PeerID().String()
+
+	selfNode := map[string]any{
+		"id": selfID, "name": d.Profile.AgentName, "self": true,
 	}
+	if d.Geo != nil {
+		for _, a := range d.Node.Addrs() {
+			ip := geo.ExtractIP(a.String())
+			if ip != "" && geo.IsPublicIP(ip) {
+				if gi := d.Geo.Lookup(ip); gi != nil {
+					selfNode["location"] = gi.Label()
+					selfNode["geo"] = gi
+				}
+				break
+			}
+		}
+	}
+
+	nodes := []map[string]any{selfNode}
 	links := []map[string]string{}
 
-	selfID := d.Node.PeerID().String()
 	for _, p := range peers {
-		nodes = append(nodes, map[string]any{
-			"id":   p.String(),
-			"name": p.String()[:16],
+		pid := p.String()
+		node := map[string]any{
+			"id":   pid,
+			"name": pid[:16],
 			"self": false,
-		})
+		}
+		if d.Geo != nil {
+			addrs := d.Node.Host.Peerstore().Addrs(p)
+			for _, a := range addrs {
+				ip := geo.ExtractIP(a.String())
+				if ip != "" && geo.IsPublicIP(ip) {
+					if gi := d.Geo.Lookup(ip); gi != nil {
+						node["location"] = gi.Label()
+						node["geo"] = gi
+					}
+					break
+				}
+			}
+		}
+		nodes = append(nodes, node)
 		links = append(links, map[string]string{
 			"source": selfID,
-			"target": p.String(),
+			"target": pid,
 		})
 	}
 
@@ -473,15 +593,6 @@ func (d *Daemon) topicNames() []string {
 		names = append(names, name)
 	}
 	return names
-}
-
-func (d *Daemon) addrStrings() []string {
-	addrs := d.Node.Addrs()
-	strs := make([]string, 0, len(addrs))
-	for _, a := range addrs {
-		strs = append(strs, a.String())
-	}
-	return strs
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
