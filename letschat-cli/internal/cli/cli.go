@@ -7,9 +7,11 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ChatChatTech/letschat/letschat-cli/internal/config"
@@ -156,14 +158,14 @@ func cmdTopo() error {
 	}
 	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
 
-	// Fetch initial data to verify daemon is running
+	// Verify daemon is running
 	resp, err := http.Get(base + "/api/peers/geo")
 	if err != nil {
 		return fmt.Errorf("cannot connect to daemon: %w", err)
 	}
 	resp.Body.Close()
 
-	// Enter raw terminal mode (like htop)
+	// Enter raw terminal mode
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
 		return fmt.Errorf("not a terminal, cannot enter full-screen mode")
@@ -174,54 +176,63 @@ func cmdTopo() error {
 	}
 	defer term.Restore(fd, oldState)
 
-	// Hide cursor
-	fmt.Print("\033[?25l")
-	defer fmt.Print("\033[?25h\033[2J\033[H") // show cursor, clear screen on exit
+	fmt.Print("\033[?25l")                      // hide cursor
+	defer fmt.Print("\033[?25h\033[2J\033[H")   // show cursor + clear on exit
 
-	// Channel to detect 'q' keypress
+	// Keypress listener
 	quit := make(chan struct{})
 	go func() {
 		buf := make([]byte, 1)
 		for {
 			os.Stdin.Read(buf)
-			if buf[0] == 'q' || buf[0] == 'Q' || buf[0] == 3 { // q or Ctrl-C
+			if buf[0] == 'q' || buf[0] == 'Q' || buf[0] == 3 {
 				close(quit)
 				return
 			}
 		}
 	}()
 
+	// SIGWINCH handler for terminal resize
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGWINCH)
+	defer signal.Stop(sigCh)
+
 	angle := 0.0
 	ticker := time.NewTicker(150 * time.Millisecond)
 	defer ticker.Stop()
+
+	// Force full clear on first frame
+	needClear := true
 
 	for {
 		select {
 		case <-quit:
 			return nil
+		case <-sigCh:
+			needClear = true // terminal resized, clear artifacts
 		case <-ticker.C:
-			// Fetch geo peers
 			peers := fetchGeoPeers(base)
-			// Get terminal size
 			w, h, err := term.GetSize(fd)
 			if err != nil {
 				w, h = 80, 24
 			}
-			// Render frame
+			if needClear {
+				fmt.Print("\033[2J") // clear entire screen
+				needClear = false
+			}
 			frame := renderGlobeFrame(peers, w, h, angle)
-			// Output: move to top-left, print frame
-			fmt.Print("\033[H")
+			fmt.Print("\033[H") // move to top-left
 			fmt.Print(frame)
-			angle += 0.06 // ~2° per frame, full rotation in ~5 seconds at 150ms
+			angle += 0.05
 		}
 	}
 }
 
 // peerGeoData holds geo data for a peer from the API.
 type peerGeoData struct {
-	PeerID   string  `json:"peer_id"`
-	ShortID  string  `json:"short_id"`
-	Location string  `json:"location"`
+	PeerID   string   `json:"peer_id"`
+	ShortID  string   `json:"short_id"`
+	Location string   `json:"location"`
 	Geo      *geoInfo `json:"geo,omitempty"`
 }
 
@@ -245,184 +256,406 @@ func fetchGeoPeers(base string) []peerGeoData {
 	return data
 }
 
-// renderGlobeFrame renders an ASCII globe with peer markers.
+// ────────────────────────────────────────────────────────────
+// Layout presets (like nload/htop: pick the best fit)
+// ────────────────────────────────────────────────────────────
+
+type layoutPreset struct {
+	name    string
+	minW    int // minimum terminal width
+	minH    int // minimum terminal height
+	globeW  int // globe render width in chars
+	globeH  int // globe render height in chars
+	panelW  int // side panel width
+}
+
+var presets = []layoutPreset{
+	{"xlarge", 160, 48, 80, 36, 30},
+	{"large",  120, 36, 60, 26, 24},
+	{"medium",  80, 24, 36, 16, 20},
+	{"small",   60, 16, 24, 10, 16},
+	{"tiny",    40, 10, 16,  7, 10},
+}
+
+func pickPreset(termW, termH int) layoutPreset {
+	for _, p := range presets {
+		if termW >= p.minW && termH >= p.minH {
+			return p
+		}
+	}
+	return presets[len(presets)-1] // tiny fallback
+}
+
+// lookupWorldMap samples the 180x90 equirectangular bitmap.
+// Returns: 0=ocean, 1=land, 2=coastline
+func lookupWorldMap(latDeg, lonDeg float64) byte {
+	// Clamp
+	if latDeg > 89 {
+		latDeg = 89
+	}
+	if latDeg < -89 {
+		latDeg = -89
+	}
+	for lonDeg > 180 {
+		lonDeg -= 360
+	}
+	for lonDeg < -180 {
+		lonDeg += 360
+	}
+	row := int((90.0 - latDeg) / 2.0)
+	col := int((lonDeg + 180.0) / 2.0)
+	if row < 0 {
+		row = 0
+	}
+	if row >= worldMapH {
+		row = worldMapH - 1
+	}
+	if col < 0 {
+		col = 0
+	}
+	if col >= worldMapW {
+		col = worldMapW - 1
+	}
+	return worldMap[row][col]
+}
+
+// renderGlobeFrame renders one frame of the spinning globe with side panels.
 func renderGlobeFrame(peers []peerGeoData, termW, termH int, rotation float64) string {
-	// Globe dimensions - leave room for info panel
-	globeW := termW - 2
-	if globeW > 80 {
-		globeW = 80
+	preset := pickPreset(termW, termH)
+	gW := preset.globeW
+	gH := preset.globeH
+	pW := preset.panelW
+
+	// Actual layout widths — center the globe
+	totalNeeded := gW + pW*2
+	if totalNeeded > termW {
+		// Shrink panels to fit
+		pW = (termW - gW) / 2
+		if pW < 2 {
+			pW = 2
+			gW = termW - pW*2
+			if gW < 10 {
+				gW = 10
+			}
+		}
 	}
-	globeH := termH - 6
-	if globeH < 10 {
-		globeH = 10
+	leftPW := (termW - gW) / 2
+	rightPW := termW - gW - leftPW
+	if leftPW < 2 {
+		leftPW = 2
 	}
-	if globeH > 36 {
-		globeH = 36
+	if rightPW < 2 {
+		rightPW = 2
 	}
 
-	// Radius
-	rX := float64(globeW) / 2.0 * 0.9
-	rY := float64(globeH) / 2.0 * 0.9
-	cX := float64(globeW) / 2.0
-	cY := float64(globeH) / 2.0
+	// Cap globe height to available content rows
+	contentH := termH - 2 // status + help line
+	if gH > contentH {
+		gH = contentH
+	}
+	if gH < 5 {
+		gH = 5
+	}
 
-	// Build the screen buffer
-	buf := make([][]rune, globeH)
-	for y := range buf {
-		buf[y] = make([]rune, globeW)
-		for x := range buf[y] {
-			buf[y][x] = ' '
+	// ── Render globe ──
+	// Orthographic projection with the embedded world map
+	rX := float64(gW) / 2.0 * 0.95   // radius in cols
+	rY := float64(gH) / 2.0 * 0.95   // radius in rows
+	cX := float64(gW) / 2.0
+	cY := float64(gH) / 2.0
+
+	globe := make([][]rune, gH)
+	for y := range globe {
+		globe[y] = make([]rune, gW)
+		for x := range globe[y] {
+			globe[y][x] = ' '
 		}
 	}
 
-	// Shade characters from dark to light
-	shading := []rune(".:-=+*#%@")
-
-	// Draw the globe with simple latitude/longitude lines
-	for sy := 0; sy < globeH; sy++ {
-		for sx := 0; sx < globeW; sx++ {
-			// Normalize to [-1, 1]
+	for sy := 0; sy < gH; sy++ {
+		for sx := 0; sx < gW; sx++ {
 			nx := (float64(sx) - cX) / rX
 			ny := (float64(sy) - cY) / rY
 			r2 := nx*nx + ny*ny
 			if r2 > 1.0 {
-				continue
+				continue // outside sphere
 			}
-			// Z on sphere
 			nz := math.Sqrt(1.0 - r2)
 
 			// Rotate around Y axis
 			rx := nx*math.Cos(rotation) + nz*math.Sin(rotation)
 			rz := -nx*math.Sin(rotation) + nz*math.Cos(rotation)
 
-			// Convert to lat/lon
-			lat := math.Asin(ny) * 180.0 / math.Pi // -90 to 90 (inverted Y)
+			// Compute lat/lon on sphere
+			lat := math.Asin(-ny) * 180.0 / math.Pi
 			lon := math.Atan2(rx, rz) * 180.0 / math.Pi
 
-			// Simple shading based on Z depth (facing us = brighter)
-			shade := int((rz + 1.0) / 2.0 * float64(len(shading)-1))
-			if shade < 0 {
-				shade = 0
-			}
-			if shade >= len(shading) {
-				shade = len(shading) - 1
-			}
+			terrain := lookupWorldMap(lat, lon)
 
-			ch := shading[shade]
+			// Lighting: simple hemisphere shading
+			light := (rz + 1.0) / 2.0 // 0 = dark edge, 1 = bright center
 
-			// Draw latitude lines every 30° and longitude lines every 30°
-			latMod := math.Mod(math.Abs(lat), 30.0)
-			lonMod := math.Mod(math.Abs(lon), 30.0)
-			if latMod < 2.5 || lonMod < 2.5 {
-				// Grid line - slightly different char
-				ch = '·'
-				if latMod < 1.5 || lonMod < 1.5 {
-					ch = '+'
+			var ch rune
+			switch terrain {
+			case 2: // coastline / border
+				if light > 0.3 {
+					ch = '#'
+				} else {
+					ch = ':'
+				}
+			case 1: // land interior
+				if light > 0.5 {
+					ch = '.'
+				} else {
+					ch = ','
+				}
+			default: // ocean
+				if light > 0.6 {
+					ch = '~'
+				} else if light > 0.2 {
+					ch = '·'
+				} else {
+					ch = ' '
 				}
 			}
 
-			// Equator and prime meridian
-			if math.Abs(lat) < 2.0 {
-				ch = '─'
-			}
-			if math.Abs(lon) < 2.0 {
-				ch = '│'
-			}
-			if math.Abs(lat) < 2.0 && math.Abs(lon) < 2.0 {
-				ch = '┼'
+			// Globe edge outline
+			if r2 > 0.92 {
+				ch = '('
+				if sx > int(cX) {
+					ch = ')'
+				}
 			}
 
-			buf[sy][sx] = ch
+			globe[sy][sx] = ch
 		}
 	}
 
-	// Plot peer markers on the globe
+	// ── Project peers onto globe ──
+	type peerScreen struct {
+		idx     int
+		label   string
+		visible bool
+		gx, gy  int
+	}
+	pInfos := make([]peerScreen, len(peers))
 	for i, p := range peers {
-		if p.Geo == nil {
-			continue
+		label := p.Location
+		if label == "" || label == "Unknown" {
+			label = p.ShortID
 		}
-		lat := p.Geo.Latitude * math.Pi / 180.0
-		lon := p.Geo.Longitude * math.Pi / 180.0
-
-		// 3D coordinates from lat/lon
-		px := math.Cos(lat) * math.Sin(lon)
-		py := math.Sin(lat) // Note: screen Y is inverted
-		pz := math.Cos(lat) * math.Cos(lon)
-
-		// Rotate around Y axis (same as globe rotation)
-		rx := px*math.Cos(rotation) - pz*math.Sin(rotation)
-		rz := px*math.Sin(rotation) + pz*math.Cos(rotation)
-
-		// Only show if on the visible hemisphere
-		if rz < 0.05 {
-			continue
+		maxLabel := leftPW - 5
+		if maxLabel < 4 {
+			maxLabel = 4
 		}
+		if len(label) > maxLabel {
+			label = label[:maxLabel]
+		}
+		pi := peerScreen{idx: i, label: label}
 
-		// Project to screen
-		sx := int(cX + rx*rX)
-		sy := int(cY - py*rY) // invert Y
+		if p.Geo != nil {
+			lat := p.Geo.Latitude * math.Pi / 180.0
+			lon := p.Geo.Longitude * math.Pi / 180.0
+			px := math.Cos(lat) * math.Sin(lon)
+			py := math.Sin(lat)
+			pz := math.Cos(lat) * math.Cos(lon)
+			rx := px*math.Cos(rotation) - pz*math.Sin(rotation)
+			rz := px*math.Sin(rotation) + pz*math.Cos(rotation)
 
-		if sx >= 0 && sx < globeW && sy >= 0 && sy < globeH {
-			marker := '●'
-			if i == 0 {
-				marker = '★' // self
+			if rz > 0.05 {
+				pi.visible = true
+				pi.gx = int(cX + rx*rX)
+				pi.gy = int(cY - py*rY)
+				if pi.gx < 0 {
+					pi.gx = 0
+				}
+				if pi.gx >= gW {
+					pi.gx = gW - 1
+				}
+				if pi.gy < 0 {
+					pi.gy = 0
+				}
+				if pi.gy >= gH {
+					pi.gy = gH - 1
+				}
+				marker := 'o'
+				if i == 0 {
+					marker = '*'
+				}
+				globe[pi.gy][pi.gx] = marker
 			}
-			buf[sy][sx] = marker
+		}
+		pInfos[i] = pi
+	}
+
+	// ── Assign peers to side panels ──
+	type slot struct {
+		row  int
+		peer peerScreen
+	}
+	var leftSlots, rightSlots []slot
+	for i, pi := range pInfos {
+		row := gH / 2
+		if pi.visible {
+			row = pi.gy
+		}
+		if i%2 == 0 {
+			leftSlots = append(leftSlots, slot{row: row, peer: pi})
+		} else {
+			rightSlots = append(rightSlots, slot{row: row, peer: pi})
 		}
 	}
 
-	// Build output string
+	// Spread slots evenly within globe height — no overlapping rows
+	spreadSlots := func(slots []slot, height int) []slot {
+		n := len(slots)
+		if n == 0 {
+			return slots
+		}
+		step := float64(height) / float64(n+1)
+		for i := range slots {
+			slots[i].row = int(step * float64(i+1))
+			if slots[i].row >= height {
+				slots[i].row = height - 1
+			}
+		}
+		return slots
+	}
+	leftSlots = spreadSlots(leftSlots, gH)
+	rightSlots = spreadSlots(rightSlots, gH)
+
+	// Build row lookup maps
+	leftByRow := map[int]slot{}
+	for _, s := range leftSlots {
+		leftByRow[s.row] = s
+	}
+	rightByRow := map[int]slot{}
+	for _, s := range rightSlots {
+		rightByRow[s.row] = s
+	}
+
+	// ── Build output ──
 	var sb strings.Builder
 
-	// Title bar
-	title := " 🌐 LetChat Network Topology "
-	pad := (termW - len(title)) / 2
-	if pad < 0 {
-		pad = 0
-	}
-	sb.WriteString("\033[1;36m") // bold cyan
-	sb.WriteString(strings.Repeat(" ", pad))
-	sb.WriteString(title)
-	sb.WriteString(strings.Repeat(" ", termW-pad-len(title)))
-	sb.WriteString("\033[0m\n")
+	for row := 0; row < gH; row++ {
+		// Left panel
+		if ls, ok := leftByRow[row]; ok {
+			marker := "●"
+			if ls.peer.idx == 0 {
+				marker = "★"
+			}
+			vis := " "
+			if !ls.peer.visible {
+				vis = "?"
+			}
+			text := fmt.Sprintf("%s%s %s", vis, marker, ls.peer.label)
+			if len(text) > leftPW-2 {
+				text = text[:leftPW-2]
+			}
+			pad := leftPW - 2 - len([]rune(text))
+			if pad < 0 {
+				pad = 0
+			}
+			sb.WriteString("\033[33m")
+			sb.WriteString(text)
+			sb.WriteString(strings.Repeat("─", pad))
+			sb.WriteString("→")
+			sb.WriteString("\033[0m")
+			sb.WriteByte(' ')
+		} else {
+			sb.WriteString(strings.Repeat(" ", leftPW))
+		}
 
-	// Globe
-	for _, row := range buf {
-		line := string(row)
-		if len(line) < termW {
-			line += strings.Repeat(" ", termW-len(line))
+		// Globe
+		for _, ch := range globe[row] {
+			switch ch {
+			case '#', ':': // coastline
+				sb.WriteString("\033[1;37m")  // bright white
+				sb.WriteRune(ch)
+				sb.WriteString("\033[0m")
+			case '.', ',': // land
+				sb.WriteString("\033[32m")     // green
+				sb.WriteRune(ch)
+				sb.WriteString("\033[0m")
+			case '*': // self
+				sb.WriteString("\033[1;33m")   // bright yellow
+				sb.WriteRune(ch)
+				sb.WriteString("\033[0m")
+			case 'o': // peer
+				sb.WriteString("\033[1;36m")   // bright cyan
+				sb.WriteRune(ch)
+				sb.WriteString("\033[0m")
+			case '(', ')': // edge
+				sb.WriteString("\033[2;37m")   // dim white
+				sb.WriteRune(ch)
+				sb.WriteString("\033[0m")
+			case '~': // ocean bright
+				sb.WriteString("\033[34m")     // blue
+				sb.WriteRune(ch)
+				sb.WriteString("\033[0m")
+			case '·': // ocean dim
+				sb.WriteString("\033[2;34m")   // dim blue
+				sb.WriteRune(ch)
+				sb.WriteString("\033[0m")
+			default:
+				sb.WriteByte(' ')
+			}
 		}
-		sb.WriteString(line)
-		sb.WriteString("\n")
+
+		// Right panel
+		if rs, ok := rightByRow[row]; ok {
+			marker := "●"
+			if rs.peer.idx == 0 {
+				marker = "★"
+			}
+			vis := " "
+			if !rs.peer.visible {
+				vis = "?"
+			}
+			text := fmt.Sprintf("%s %s%s", rs.peer.label, marker, vis)
+			if len(text) > rightPW-2 {
+				text = text[:rightPW-2]
+			}
+			pad := rightPW - 2 - len([]rune(text))
+			if pad < 0 {
+				pad = 0
+			}
+			sb.WriteByte(' ')
+			sb.WriteString("\033[33m")
+			sb.WriteString("←")
+			sb.WriteString(strings.Repeat("─", pad))
+			sb.WriteString(text)
+			sb.WriteString("\033[0m")
+		} else {
+			sb.WriteString(strings.Repeat(" ", rightPW))
+		}
+
+		sb.WriteByte('\n')
 	}
 
-	// Info panel at the bottom
-	sb.WriteString("\033[1;33m") // bold yellow
-	info := fmt.Sprintf(" Nodes: %d", len(peers))
-	// List peer labels
-	labels := []string{}
-	for i, p := range peers {
-		marker := "●"
-		if i == 0 {
-			marker = "★"
-		}
-		loc := p.Location
-		if loc == "" || loc == "Unknown" {
-			loc = p.ShortID
-		}
-		labels = append(labels, fmt.Sprintf("%s %s", marker, loc))
+	// Pad empty rows to fill content area
+	for row := gH; row < contentH; row++ {
+		sb.WriteString(strings.Repeat(" ", termW))
+		sb.WriteByte('\n')
 	}
-	info += "  │  " + strings.Join(labels, "  ")
-	if len(info) > termW {
-		info = info[:termW]
+
+	// Status bar
+	sb.WriteString("\033[7;36m") // reverse cyan
+	presetTag := preset.name
+	status := fmt.Sprintf(" LetChat Topo │ %d nodes │ %s │ v%s ", len(peers), presetTag, daemon.Version)
+	if len(status) > termW {
+		status = status[:termW]
 	}
-	sb.WriteString(info)
-	sb.WriteString(strings.Repeat(" ", max(0, termW-len(info))))
+	sb.WriteString(status)
+	sb.WriteString(strings.Repeat(" ", max(0, termW-len(status))))
 	sb.WriteString("\033[0m\n")
 
 	// Help line
-	sb.WriteString("\033[2m") // dim
-	help := " Press 'q' to quit"
+	sb.WriteString("\033[2m")
+	help := " q:quit │ ★ you │ ● peer │ #:coast │ .:land │ ~:ocean"
+	if len(help) > termW {
+		help = help[:termW]
+	}
 	sb.WriteString(help)
 	sb.WriteString(strings.Repeat(" ", max(0, termW-len(help))))
 	sb.WriteString("\033[0m")
