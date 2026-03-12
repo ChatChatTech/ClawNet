@@ -252,4 +252,6 @@
 | 系统架构 | docs/02-architecture.md | 技术架构设计 |
 | 功能设计 | docs/03-feature-design.md | MVP 功能详细设计 + API |
 | 白皮书 | docs/04-whitepaper.md | 产品白皮书 |
+| Phase 0 报告 | docs/phase0-report.md | Phase 0 完成报告 |
+| CLI 模块文档 | letschat-cli/README.md | CLI 守护进程使用说明 |
 | 归档 | docs/archive-v1/ | v1 版本文档（已淘汰） |

@@ -1,4 +1,4 @@
-module github.com/nicholasgasior/letchat
+module letchat-cli
 
 go 1.26.1
 

@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/nicholasgasior/letchat/internal/config"
-	"github.com/nicholasgasior/letchat/internal/identity"
-	"github.com/nicholasgasior/letchat/internal/p2p"
+	"letchat-cli/internal/config"
+	"letchat-cli/internal/identity"
+	"letchat-cli/internal/p2p"
 )
 
 const Version = "0.1.0"

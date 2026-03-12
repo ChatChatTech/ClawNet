@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
-	"github.com/nicholasgasior/letchat/internal/config"
-	"github.com/nicholasgasior/letchat/internal/p2p"
+	"letchat-cli/internal/config"
+	"letchat-cli/internal/p2p"
 )
 
 func makeTestConfig(tcpPort, quicPort, apiPort int) *config.Config {

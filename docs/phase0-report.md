@@ -230,24 +230,26 @@ make docker-down
 
 ```
 letschat/
-├── cmd/letchat/main.go          # 入口
-├── internal/
-│   ├── cli/cli.go               # CLI 命令解析
-│   ├── config/config.go         # 配置管理 + Profile 定义
-│   ├── daemon/
-│   │   ├── daemon.go            # Daemon 生命周期
-│   │   └── api.go               # HTTP REST API
-│   ├── identity/identity.go     # Ed25519 密钥管理
-│   └── p2p/
-│       ├── node.go              # libp2p Node 核心
-│       ├── mdns.go              # mDNS 发现回调
-│       └── connmgr.go           # 连接管理器
-├── tests/
-│   └── p2p_integration_test.go  # 双节点集成测试
-├── Dockerfile                   # 多阶段构建
-├── docker-compose.yml           # 3 节点测试网
-├── Makefile                     # 构建命令
-└── docs/                        # 设计文档
+├── letschat-cli/                    # CLI 守护进程模块
+│   ├── cmd/letchat/main.go          # 入口
+│   ├── internal/
+│   │   ├── cli/cli.go               # CLI 命令解析
+│   │   ├── config/config.go         # 配置管理 + Profile 定义
+│   │   ├── daemon/
+│   │   │   ├── daemon.go            # Daemon 生命周期
+│   │   │   └── api.go               # HTTP REST API
+│   │   ├── identity/identity.go     # Ed25519 密钥管理
+│   │   └── p2p/
+│   │       ├── node.go              # libp2p Node 核心
+│   │       ├── mdns.go              # mDNS 发现回调
+│   │       └── connmgr.go           # 连接管理器
+│   ├── tests/
+│   │   └── p2p_integration_test.go  # 双节点集成测试
+│   ├── Dockerfile                   # 多阶段构建
+│   ├── docker-compose.yml           # 3 节点测试网
+│   ├── Makefile                     # 构建命令
+│   └── README.md                    # CLI 模块文档
+└── docs/                            # 设计文档
 ```
 
 ### 4.2 技术栈

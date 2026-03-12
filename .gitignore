@@ -1,6 +1,7 @@
 # Binaries
 /letchat
 /letchat-*
+letschat-cli/letchat
 *.exe
 
 # Go

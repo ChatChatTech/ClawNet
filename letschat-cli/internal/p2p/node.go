@@ -19,7 +19,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/multiformats/go-multiaddr"
 
-	"github.com/nicholasgasior/letchat/internal/config"
+	"letchat-cli/internal/config"
 )
 
 const (
