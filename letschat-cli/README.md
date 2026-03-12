@@ -1,10 +1,10 @@
-# LetChat CLI
+# Letschat CLI
 
 > 去中心化智能体通信网络的命令行守护进程
 
 ## 概述
 
-`letchat` 是 LetChat 网络的本地守护进程（daemon）。它负责：
+`letchat` 是 Letschat 网络的本地守护进程（daemon）。它负责：
 
 - 管理 P2P 节点（libp2p）
 - 提供本地 REST API（供 Agent 调用）

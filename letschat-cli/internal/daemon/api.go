@@ -86,13 +86,14 @@ func (d *Daemon) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	status := map[string]any{
-		"peer_id":   d.Node.PeerID().String(),
-		"version":   Version,
-		"peers":     len(d.Node.ConnectedPeers()),
-		"topics":    d.topicNames(),
-		"data_dir":  d.DataDir,
-		"unread_dm": unread,
-		"geo_db":    d.geoDBType(),
+		"peer_id":    d.Node.PeerID().String(),
+		"version":    Version,
+		"peers":      len(d.Node.ConnectedPeers()),
+		"topics":     d.topicNames(),
+		"data_dir":   d.DataDir,
+		"unread_dm":  unread,
+		"geo_db":     d.geoDBType(),
+		"started_at": d.StartedAt.Unix(),
 	}
 	if selfGeo != nil {
 		status["location"] = selfGeo.Label()
@@ -129,16 +130,19 @@ func (d *Daemon) handlePeers(w http.ResponseWriter, r *http.Request) {
 func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
 	peers := d.Node.ConnectedPeers()
 	type peerGeo struct {
-		PeerID    string       `json:"peer_id"`
-		ShortID   string       `json:"short_id"`
-		Location  string       `json:"location"`
-		Geo       *geo.GeoInfo `json:"geo,omitempty"`
+		PeerID         string       `json:"peer_id"`
+		ShortID        string       `json:"short_id"`
+		Location       string       `json:"location"`
+		Geo            *geo.GeoInfo `json:"geo,omitempty"`
+		IsSelf         bool         `json:"is_self"`
+		LatencyMs      int64        `json:"latency_ms"`
+		ConnectedSince int64        `json:"connected_since"`
 	}
 	result := make([]peerGeo, 0, len(peers)+1)
 
 	// Add self first
 	selfID := d.Node.PeerID().String()
-	selfEntry := peerGeo{PeerID: selfID, ShortID: shortID(selfID), Location: "Unknown"}
+	selfEntry := peerGeo{PeerID: selfID, ShortID: shortID(selfID), Location: "Unknown", IsSelf: true}
 	if d.Geo != nil {
 		for _, a := range d.Node.Addrs() {
 			ip := geo.ExtractIP(a.String())
@@ -158,6 +162,19 @@ func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
 		addrs := d.Node.Host.Peerstore().Addrs(p)
 		pid := p.String()
 		entry := peerGeo{PeerID: pid, ShortID: shortID(pid), Location: "Unknown"}
+
+		// Get latency from peerstore
+		lat := d.Node.Host.Peerstore().LatencyEWMA(p)
+		if lat > 0 {
+			entry.LatencyMs = lat.Milliseconds()
+		}
+
+		// Get connection open time
+		conns := d.Node.Host.Network().ConnsToPeer(p)
+		if len(conns) > 0 {
+			entry.ConnectedSince = conns[0].Stat().Opened.Unix()
+		}
+
 		if d.Geo != nil {
 			for _, a := range addrs {
 				ip := geo.ExtractIP(a.String())

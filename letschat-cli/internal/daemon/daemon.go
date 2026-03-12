@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/ChatChatTech/letschat/letschat-cli/internal/config"
 	"github.com/ChatChatTech/letschat/letschat-cli/internal/geo"
@@ -20,13 +21,14 @@ const Version = "0.4.0"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
-	Node    *p2p.Node
-	Config  *config.Config
-	Profile *config.Profile
-	Store   *store.Store
-	Geo     *geo.Locator
-	DataDir string
-	ctx     context.Context
+	Node      *p2p.Node
+	Config    *config.Config
+	Profile   *config.Profile
+	Store     *store.Store
+	Geo       *geo.Locator
+	DataDir   string
+	StartedAt time.Time
+	ctx       context.Context
 }
 
 // Start initializes and runs the daemon until interrupted.
@@ -48,7 +50,7 @@ func Start(foreground bool) error {
 		return fmt.Errorf("derive peer ID: %w", err)
 	}
 
-	fmt.Printf("LetChat Daemon v%s\n", Version)
+	fmt.Printf("Letschat Daemon v%s\n", Version)
 	fmt.Printf("Peer ID: %s\n", peerID.String())
 	fmt.Printf("Data dir: %s\n", dataDir)
 
@@ -87,13 +89,14 @@ func Start(foreground bool) error {
 	}
 
 	d := &Daemon{
-		Node:    node,
-		Config:  cfg,
-		Profile: profile,
-		Store:   db,
-		Geo:     geoLoc,
-		DataDir: dataDir,
-		ctx:     ctx,
+		Node:      node,
+		Config:    cfg,
+		Profile:   profile,
+		Store:     db,
+		Geo:       geoLoc,
+		DataDir:   dataDir,
+		StartedAt: time.Now(),
+		ctx:       ctx,
 	}
 
 	// Write PID file
@@ -139,7 +142,7 @@ func loadProfile(dataDir string) *config.Profile {
 	data, err := os.ReadFile(profilePath)
 	if err != nil {
 		return &config.Profile{
-			AgentName:  "LetChat Node",
+			AgentName:  "Letschat Node",
 			Visibility: config.DefaultVisibility,
 			Domains:    []string{},
 			Capabilities: []string{},
@@ -148,7 +151,7 @@ func loadProfile(dataDir string) *config.Profile {
 	var p config.Profile
 	if err := json.Unmarshal(data, &p); err != nil {
 		return &config.Profile{
-			AgentName:  "LetChat Node",
+			AgentName:  "Letschat Node",
 			Visibility: config.DefaultVisibility,
 			Domains:    []string{},
 			Capabilities: []string{},
