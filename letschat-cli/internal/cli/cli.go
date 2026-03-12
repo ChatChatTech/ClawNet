@@ -403,11 +403,13 @@ func renderHeader(termW int, stats networkStats) string {
 
 	// === ROW 1: TOP BORDER + TITLE ===
 	titleText := " Letschat Agent Network "
-	statsText := fmt.Sprintf(" Nodes:%d  Credits:%.0f  Topics:%d  v%s ",
+	statsText := fmt.Sprintf("Nodes:%d  Credits:%.0f  Topics:%d  v%s",
 		stats.Peers+1, stats.Balance, len(stats.Topics), daemon.Version)
-	titleLen := len([]rune(titleText))
-	statsLen := len(statsText)
-	fillTotal := innerW - titleLen - statsLen
+	// Layout: ┌──[title]──────────┐  with stats embedded in title area
+	// Combine into one display string
+	headerDisplay := titleText + "  " + statsText + " "
+	headerLen := len([]rune(headerDisplay))
+	fillTotal := innerW - headerLen
 	if fillTotal < 2 {
 		fillTotal = 2
 	}
@@ -417,12 +419,10 @@ func renderHeader(termW int, stats networkStats) string {
 	sb.WriteString("\033[36m┌")
 	sb.WriteString(strings.Repeat("─", dashL))
 	sb.WriteString("\033[1;37m")
-	sb.WriteString(titleText)
+	sb.WriteString(headerDisplay)
 	sb.WriteString("\033[0;36m")
-	sb.WriteString(strings.Repeat("─", dashR-statsLen))
-	sb.WriteString("\033[0;37m")
-	sb.WriteString(statsText)
-	sb.WriteString("\033[36m┐\033[0m")
+	sb.WriteString(strings.Repeat("─", dashR))
+	sb.WriteString("┐\033[0m")
 	sb.WriteString("\033[K\r\n")
 
 	return sb.String()
@@ -444,7 +444,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 	if termH < 20 {
 		bottomH = 4
 	}
-	globeH := termH - 1 - 1 - bottomH - 1 - 1 // header, sep, bottom, help, frame
+	globeH := termH - 1 - 1 - bottomH - 1 - 1 - 1 // header, sep_above, bottom, sep_below, help, frame
 	if globeH < 5 {
 		globeH = 5
 	}
@@ -627,7 +627,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 		for _, ch := range globe[row] {
 			switch ch {
 			case '★':
-				sb.WriteString("\033[1;33m★\033[0m")
+				sb.WriteString("\033[1;31m★\033[0m")
 			case '@':
 				sb.WriteString("\033[1;31m@\033[0m")
 			case '#':
@@ -648,13 +648,8 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 		sb.WriteString("\033[36m│\033[0m\033[K\r\n")
 	}
 
-	// ── Separator ──
-	sb.WriteString("\033[36m├")
-	sb.WriteString(strings.Repeat("─", innerW))
-	sb.WriteString("┤\033[0m\033[K\r\n")
-
-	// ── Bottom panel: left=self info, right=peer cards ──
-	// Self info panel width: ~40% of innerW, min 30
+	// ── Separator above bottom panel (with ┬ for vertical divider) ──
+	// ── Bottom panel layout ──
 	selfW := innerW * 2 / 5
 	if selfW < 28 {
 		selfW = 28
@@ -667,6 +662,13 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 		peerW = 20
 		selfW = innerW - peerW - 1
 	}
+
+	// Emit separator above bottom panel: ├──...──┬──...──┤
+	sb.WriteString("\033[36m├")
+	sb.WriteString(strings.Repeat("─", selfW))
+	sb.WriteString("┬")
+	sb.WriteString(strings.Repeat("─", peerW))
+	sb.WriteString("┤\033[0m\033[K\r\n")
 
 	// Build self info lines
 	selfLines := make([]string, bottomH)
@@ -800,9 +802,9 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 				upStr = formatDuration(now - p.connectedSince)
 			}
 
-			allCards[ci].lines[0] = "┌" + strings.Repeat("─", insW) + "┐"
+			allCards[ci].lines[0] = "╭" + strings.Repeat("─", insW) + "╮"
 
-			idLine := " " + truncStr(p.shortID, insW-1)
+			idLine := " @" + truncStr(p.shortID, insW-2)
 			pad := insW - len([]rune(idLine))
 			if pad < 0 {
 				pad = 0
@@ -822,7 +824,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 			if pad < 0 {
 				pad = 0
 			}
-			allCards[ci].lines[3] = "└" + statLine + strings.Repeat("─", pad) + "┘"
+			allCards[ci].lines[3] = "╰" + statLine + strings.Repeat("─", pad) + "╯"
 		}
 
 		// Lay out cards into peerLines
@@ -867,6 +869,13 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 		sb.WriteString("\033[0m")
 		sb.WriteString("\033[36m│\033[0m\033[K\r\n")
 	}
+
+	// ── Separator below bottom panel: ├──...──┴──...──┤ ──
+	sb.WriteString("\033[36m├")
+	sb.WriteString(strings.Repeat("─", selfW))
+	sb.WriteString("┴")
+	sb.WriteString(strings.Repeat("─", peerW))
+	sb.WriteString("┤\033[0m\033[K\r\n")
 
 	// ── Help line ──
 	help := " q:Quit  ★:You  @:Peer"
