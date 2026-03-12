@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"strings"
 
-	"letchat-cli/internal/config"
-	"letchat-cli/internal/daemon"
-	"letchat-cli/internal/identity"
+	"github.com/ChatChatTech/letschat/letschat-cli/internal/config"
+	"github.com/ChatChatTech/letschat/letschat-cli/internal/daemon"
+	"github.com/ChatChatTech/letschat/letschat-cli/internal/identity"
 )
 
 func Execute() error {

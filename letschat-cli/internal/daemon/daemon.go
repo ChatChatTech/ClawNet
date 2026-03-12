@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"letchat-cli/internal/config"
-	"letchat-cli/internal/identity"
-	"letchat-cli/internal/p2p"
+	"github.com/ChatChatTech/letschat/letschat-cli/internal/config"
+	"github.com/ChatChatTech/letschat/letschat-cli/internal/identity"
+	"github.com/ChatChatTech/letschat/letschat-cli/internal/p2p"
 )
 
 const Version = "0.1.0"

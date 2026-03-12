@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"letchat-cli/internal/cli"
+	"github.com/ChatChatTech/letschat/letschat-cli/internal/cli"
 )
 
 func main() {

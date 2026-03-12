@@ -1,4 +1,4 @@
-module letchat-cli
+module github.com/ChatChatTech/letschat/letschat-cli
 
 go 1.26.1
 

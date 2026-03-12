@@ -7,7 +7,7 @@ import (
 	"net"
 	"net/http"
 
-	"letchat-cli/internal/config"
+	"github.com/ChatChatTech/letschat/letschat-cli/internal/config"
 )
 
 // StartAPI starts the HTTP API server for the daemon.
