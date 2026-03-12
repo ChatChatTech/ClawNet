@@ -27,3 +27,4 @@ letchat-cli/seedbot
 letchat-cli/letchat
 letchat-cli/seedbot
 venv/
+*.zip
