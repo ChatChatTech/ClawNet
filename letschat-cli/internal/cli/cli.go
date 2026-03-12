@@ -513,7 +513,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 		}
 	}
 
-	// ── Project all peers onto globe ──
+	// ── Project all peers onto globe with jitter to avoid overlap ──
 	type peerInfo struct {
 		shortID        string
 		peerID         string
@@ -528,6 +528,15 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 		connectedSince int64
 	}
 	pInfos := make([]peerInfo, len(peers))
+
+	// First pass: compute raw screen positions for visible peers
+	type markerPos struct {
+		sx, sy int
+		idx    int
+		isSelf bool
+	}
+	var markers []markerPos
+
 	for i, p := range peers {
 		pi := peerInfo{
 			shortID:        p.ShortID,
@@ -556,11 +565,52 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 				sx := int(cX + rx*rX)
 				sy := int(cY - py*rY)
 				if sx >= 0 && sx < gW && sy >= 0 && sy < gH {
-					globe[sy][sx] = '@'
+					markers = append(markers, markerPos{sx: sx, sy: sy, idx: i, isSelf: p.IsSelf})
 				}
 			}
 		}
 		pInfos[i] = pi
+	}
+
+	// Second pass: jitter overlapping markers so each gets a unique cell
+	// Use a spiral pattern around the original position
+	occupied := make(map[[2]int]bool)
+	spiralDx := []int{0, 1, 0, -1, 1, -1, 1, -1, 2, -2, 0, 0, 2, -2, 2, -2, 1, -1, 1, -1, 3, -3, 0, 0, 2, -2, 3, -3}
+	spiralDy := []int{0, 0, -1, 0, -1, -1, 1, 1, 0, 0, -2, 2, -1, -1, 1, 1, -2, -2, 2, 2, 0, 0, -3, 3, -2, -2, -1, -1}
+
+	for mi := range markers {
+		m := &markers[mi]
+		placed := false
+		for si := 0; si < len(spiralDx); si++ {
+			nx := m.sx + spiralDx[si]
+			ny := m.sy + spiralDy[si]
+			key := [2]int{nx, ny}
+			if nx >= 0 && nx < gW && ny >= 0 && ny < gH && !occupied[key] {
+				// Check it's within the globe circle
+				fnx := (float64(nx) - cX) / rX
+				fny := (float64(ny) - cY) / rY
+				if fnx*fnx+fny*fny <= 1.0 {
+					m.sx = nx
+					m.sy = ny
+					occupied[key] = true
+					placed = true
+					break
+				}
+			}
+		}
+		if !placed {
+			// Last resort: place at original even if overlapping
+			occupied[[2]int{m.sx, m.sy}] = true
+		}
+	}
+
+	// Place markers on globe: ★ for self, @ for peers
+	for _, m := range markers {
+		if m.isSelf {
+			globe[m.sy][m.sx] = '★'
+		} else {
+			globe[m.sy][m.sx] = '@'
+		}
 	}
 
 	// ── Build frame ──
@@ -576,6 +626,8 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 		sb.WriteString(strings.Repeat(" ", globePadL))
 		for _, ch := range globe[row] {
 			switch ch {
+			case '★':
+				sb.WriteString("\033[1;33m★\033[0m")
 			case '@':
 				sb.WriteString("\033[1;31m@\033[0m")
 			case '#':
