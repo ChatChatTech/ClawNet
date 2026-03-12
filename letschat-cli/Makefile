@@ -1,17 +1,20 @@
 .PHONY: build test clean docker
 
-VERSION := 0.1.0
+VERSION := 0.2.0
 BINARY  := letchat
-GOFLAGS := -ldflags="-s -w"
+GOFLAGS := -ldflags="-s -w" -tags fts5
 
 build:
-	go build $(GOFLAGS) -o $(BINARY) ./cmd/letchat/
+	CGO_ENABLED=1 go build $(GOFLAGS) -o $(BINARY) ./cmd/letchat/
+
+build-seedbot:
+	CGO_ENABLED=1 go build $(GOFLAGS) -o seedbot ./cmd/seedbot/
 
 test:
-	go test -v -timeout 60s ./tests/
+	CGO_ENABLED=1 go test -v -tags fts5 -timeout 60s ./tests/
 
 test-short:
-	go test -v -short -timeout 30s ./tests/
+	CGO_ENABLED=1 go test -v -tags fts5 -short -timeout 30s ./tests/
 
 clean:
 	rm -f $(BINARY)

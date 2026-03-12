@@ -12,16 +12,19 @@ import (
 	"github.com/ChatChatTech/letschat/letschat-cli/internal/config"
 	"github.com/ChatChatTech/letschat/letschat-cli/internal/identity"
 	"github.com/ChatChatTech/letschat/letschat-cli/internal/p2p"
+	"github.com/ChatChatTech/letschat/letschat-cli/internal/store"
 )
 
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
 	Node    *p2p.Node
 	Config  *config.Config
 	Profile *config.Profile
+	Store   *store.Store
 	DataDir string
+	ctx     context.Context
 }
 
 // Start initializes and runs the daemon until interrupted.
@@ -65,11 +68,20 @@ func Start(foreground bool) error {
 	profile := loadProfile(dataDir)
 	profile.Version = Version
 
+	// Open local SQLite store
+	db, err := store.Open(dataDir)
+	if err != nil {
+		return fmt.Errorf("open store: %w", err)
+	}
+	defer db.Close()
+
 	d := &Daemon{
 		Node:    node,
 		Config:  cfg,
 		Profile: profile,
+		Store:   db,
 		DataDir: dataDir,
+		ctx:     ctx,
 	}
 
 	// Write PID file
@@ -82,6 +94,15 @@ func Start(foreground bool) error {
 	// Start API server
 	apiServer := d.StartAPI(ctx)
 	defer apiServer.Close()
+
+	// Start GossipSub message handlers for knowledge and topic rooms
+	d.startGossipHandlers(ctx)
+
+	// Register libp2p stream handler for direct messages
+	d.registerDMHandler()
+
+	// Watch for peer connect/disconnect to push topology updates
+	d.watchPeerEvents()
 
 	fmt.Printf("API server: http://localhost:%d\n", cfg.WebUIPort)
 	fmt.Printf("Node is running. Press Ctrl+C to stop.\n")

@@ -273,3 +273,8 @@ func (n *Node) ConnectedPeers() []peer.ID {
 func (n *Node) Addrs() []multiaddr.Multiaddr {
 	return n.Host.Addrs()
 }
+
+// MU returns the node's read-write mutex for external access to Topics/Subs maps.
+func (n *Node) MU() *sync.RWMutex {
+	return &n.mu
+}

@@ -22,3 +22,7 @@ Thumbs.db
 # Data directory (local node data)
 .openclaw/
 go1.26.1.linux-amd64.tar.gz
+letchat-cli/letchat
+letchat-cli/seedbot
+letchat-cli/letchat
+letchat-cli/seedbot
