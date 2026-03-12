@@ -175,18 +175,15 @@ func cmdTopo() error {
 	}
 	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
 
-	// Verify daemon
 	resp, err := http.Get(base + "/api/peers/geo")
 	if err != nil {
 		return fmt.Errorf("cannot connect to daemon: %w", err)
 	}
 	resp.Body.Close()
 
-	// Pick a slogan for this session
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	slogan := topoSlogans[rng.Intn(len(topoSlogans))]
 
-	// Enter raw terminal mode
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
 		return fmt.Errorf("not a terminal, cannot enter full-screen mode")
@@ -222,9 +219,11 @@ func cmdTopo() error {
 	defer ticker.Stop()
 	needClear := true
 
-	// Cache network stats (refresh every 3 seconds)
+	// Pre-render static header (only changes when stats refresh or resize)
 	var netStats networkStats
 	var lastStatsFetch time.Time
+	var headerCache string
+	var lastTermW int
 
 	for {
 		select {
@@ -232,25 +231,32 @@ func cmdTopo() error {
 			return nil
 		case <-sigCh:
 			needClear = true
+			headerCache = "" // force header rebuild
 		case <-ticker.C:
 			peers := fetchGeoPeers(base)
 			w, h, err := term.GetSize(fd)
 			if err != nil {
 				w, h = 80, 24
 			}
-			// Refresh stats every 3 sec
+			statsChanged := false
 			if time.Since(lastStatsFetch) > 3*time.Second {
 				netStats = fetchNetworkStats(base)
 				lastStatsFetch = time.Now()
+				statsChanged = true
 			}
 			if needClear {
 				fmt.Print("\033[2J")
 				needClear = false
 			}
-			frame := renderGlobeFrame(peers, w, h, angle, slogan, netStats)
+			// Rebuild header only when stats change or terminal width changes
+			if statsChanged || headerCache == "" || w != lastTermW {
+				headerCache = renderHeader(w, slogan, netStats)
+				lastTermW = w
+			}
+			frame := renderTopoFrame(peers, w, h, angle, headerCache, netStats)
 			fmt.Print("\033[H")
 			fmt.Print(frame)
-			angle += 0.05
+			angle += 0.015
 		}
 	}
 }
@@ -304,12 +310,10 @@ func fetchGeoPeers(base string) []peerGeoData {
 
 func fetchNetworkStats(base string) networkStats {
 	var stats networkStats
-	// Status
 	if resp, err := http.Get(base + "/api/status"); err == nil {
 		json.NewDecoder(resp.Body).Decode(&stats)
 		resp.Body.Close()
 	}
-	// Credits
 	if resp, err := http.Get(base + "/api/credits/balance"); err == nil {
 		var ci creditInfo
 		json.NewDecoder(resp.Body).Decode(&ci)
@@ -320,35 +324,6 @@ func fetchNetworkStats(base string) networkStats {
 		stats.TotalSpent = ci.TotalSpent
 	}
 	return stats
-}
-
-// ── Layout presets ──
-
-type layoutPreset struct {
-	name    string
-	minW    int
-	minH    int
-	globeW  int
-	globeH  int
-	panelW  int
-	cardH   int // height of each peer card
-}
-
-var presets = []layoutPreset{
-	{"xlarge", 160, 48, 80, 38, 32, 5},
-	{"large",  120, 36, 56, 28, 28, 4},
-	{"medium",  80, 24, 36, 16, 20, 3},
-	{"small",   60, 16, 24, 10, 16, 2},
-	{"tiny",    40, 10, 16,  7, 10, 2},
-}
-
-func pickPreset(termW, termH int) layoutPreset {
-	for _, p := range presets {
-		if termW >= p.minW && termH >= p.minH {
-			return p
-		}
-	}
-	return presets[len(presets)-1]
 }
 
 // lookupWorldMap samples the 180x90 equirectangular bitmap.
@@ -382,50 +357,103 @@ func lookupWorldMap(latDeg, lonDeg float64) byte {
 	return worldMap[row][col]
 }
 
-// ── Helper: write a string truncated / padded to exactly `w` visible chars ──
-func fitStr(s string, w int) string {
-	runes := []rune(s)
-	if len(runes) >= w {
-		return string(runes[:w])
+// padLine pads a visible-text line to exactly termW, adds clear-to-EOL + \r\n.
+func padLine(sb *strings.Builder, visibleLen, termW int) {
+	if visibleLen < termW {
+		sb.WriteString(strings.Repeat(" ", termW-visibleLen))
 	}
-	return s + strings.Repeat(" ", w-len(runes))
+	sb.WriteString("\033[K\r\n")
 }
 
-// ── renderGlobeFrame ──
-func renderGlobeFrame(peers []peerGeoData, termW, termH int, rotation float64, slogan string, stats networkStats) string {
-	preset := pickPreset(termW, termH)
-	gW := preset.globeW
-	gH := preset.globeH
+// renderHeader builds the static top 3 lines (title + subtitle + separator).
+// It is cached and only rebuilt when stats or terminal width changes.
+func renderHeader(termW int, slogan string, stats networkStats) string {
+	innerW := termW - 2
+	if innerW < 10 {
+		innerW = 10
+	}
+	var sb strings.Builder
 
-	// Layout: border(1) + [left panel] + [globe] + [right panel] + border(1)
-	// Top: border(1) + title(1) + border(1) = 3 rows
-	// Bottom: border(1) + help(1) = 2 rows
-	// Content area = termH - 5
+	// === ROW 1: TOP BORDER + TITLE ===
+	titleText := " LetChat Agent Network "
+	brandText := " " + slogan + " "
+	titleLen := len([]rune(titleText))
+	brandLen := len([]rune(brandText))
+	fillTotal := innerW - titleLen - brandLen
+	if fillTotal < 2 {
+		fillTotal = 2
+	}
+	dashL := fillTotal / 2
+	dashR := fillTotal - dashL
 
-	contentH := termH - 5
-	if gH > contentH {
-		gH = contentH
-	}
-	if gH < 5 {
-		gH = 5
+	sb.WriteString("\033[1;36m┌")
+	sb.WriteString(strings.Repeat("─", dashL))
+	sb.WriteString("\033[1;33m")
+	sb.WriteString(titleText)
+	sb.WriteString("\033[0;36m")
+	sb.WriteString(brandText)
+	sb.WriteString("\033[1;36m")
+	sb.WriteString(strings.Repeat("─", dashR))
+	sb.WriteString("┐\033[0m")
+	sb.WriteString("\033[K\r\n")
+
+	// === ROW 2: SUBTITLE + STATS ===
+	powered := " Powered by Chatchat Technology Limited"
+	statsText := fmt.Sprintf("Nodes:%d  Credits:%.0f  Topics:%d  v%s ",
+		stats.Peers+1, stats.Balance, len(stats.Topics), daemon.Version)
+	poweredLen := len([]rune(powered))
+	statsLen := len(statsText)
+	midGap := innerW - poweredLen - statsLen
+	if midGap < 1 {
+		midGap = 1
 	}
 
-	innerW := termW - 2 // minus left+right border columns
-	leftPW := (innerW - gW) / 2
-	rightPW := innerW - gW - leftPW
-	if leftPW < 2 {
-		leftPW = 2
-	}
-	if rightPW < 2 {
-		rightPW = 2
-	}
-	// Rebalance globe to use actual available space
-	gW = innerW - leftPW - rightPW
-	if gW < 10 {
-		gW = 10
+	sb.WriteString("\033[1;36m│\033[0;35m")
+	sb.WriteString(powered)
+	sb.WriteString(strings.Repeat(" ", midGap))
+	sb.WriteString("\033[1;33m")
+	sb.WriteString(statsText)
+	sb.WriteString("\033[1;36m│\033[0m")
+	sb.WriteString("\033[K\r\n")
+
+	// === ROW 3: SEPARATOR ===
+	sb.WriteString("\033[1;36m├")
+	sb.WriteString(strings.Repeat("─", innerW))
+	sb.WriteString("┤\033[0m")
+	sb.WriteString("\033[K\r\n")
+
+	return sb.String()
+}
+
+// renderTopoFrame builds one complete frame: uses cached header + dynamic globe + node cards at bottom.
+func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, header string, stats networkStats) string {
+	innerW := termW - 2
+	if innerW < 10 {
+		innerW = 10
 	}
 
-	cardH := preset.cardH
+	// Layout: 3 header rows + globeH rows + 1 separator + cardRows + 1 separator + 1 help + 1 bottom border
+	// Card panel: each card ~4 rows high, laid out horizontally
+	nPeers := len(peers)
+	if nPeers == 0 {
+		nPeers = 1
+	}
+	cardH := 4
+	if termH < 30 {
+		cardH = 3
+	}
+	if termH < 20 {
+		cardH = 2
+	}
+	// Bottom section: 1(sep) + cardH + 1(sep) + 1(help) + 1(bottom border) = cardH + 4
+	bottomH := cardH + 4
+	globeH := termH - 3 - bottomH // 3 header rows
+	if globeH < 5 {
+		globeH = 5
+	}
+
+	gW := innerW
+	gH := globeH
 
 	// ── Render globe ──
 	rX := float64(gW) / 2.0 * 0.95
@@ -490,23 +518,18 @@ func renderGlobeFrame(peers []peerGeoData, termW, termH int, rotation float64, s
 		}
 	}
 
-	// ── Build peer info + project onto globe ──
-	type peerScreen struct {
-		idx      int
+	// ── Project peers onto globe ──
+	type peerInfo struct {
 		shortID  string
 		location string
 		country  string
 		lat, lon float64
-		hasGeo   bool
-		visible  bool
-		screenX  int // column on globe buffer (0-based)
-		screenY  int // row on globe buffer (0-based)
 		isSelf   bool
+		visible  bool
 	}
-	pInfos := make([]peerScreen, len(peers))
+	pInfos := make([]peerInfo, len(peers))
 	for i, p := range peers {
-		pi := peerScreen{
-			idx:      i,
+		pi := peerInfo{
 			shortID:  p.ShortID,
 			location: p.Location,
 			isSelf:   i == 0,
@@ -515,7 +538,6 @@ func renderGlobeFrame(peers []peerGeoData, termW, termH int, rotation float64, s
 			pi.country = p.Geo.Country
 			pi.lat = p.Geo.Latitude
 			pi.lon = p.Geo.Longitude
-			pi.hasGeo = true
 
 			latR := p.Geo.Latitude * math.Pi / 180.0
 			lonR := p.Geo.Longitude * math.Pi / 180.0
@@ -526,256 +548,30 @@ func renderGlobeFrame(peers []peerGeoData, termW, termH int, rotation float64, s
 			rz := px*math.Sin(rotation) + pz*math.Cos(rotation)
 			if rz > 0.05 {
 				pi.visible = true
-				pi.screenX = int(cX + rx*rX)
-				pi.screenY = int(cY - py*rY)
-				if pi.screenX < 0 {
-					pi.screenX = 0
+				sx := int(cX + rx*rX)
+				sy := int(cY - py*rY)
+				if sx >= 0 && sx < gW && sy >= 0 && sy < gH {
+					globe[sy][sx] = '@'
 				}
-				if pi.screenX >= gW {
-					pi.screenX = gW - 1
-				}
-				if pi.screenY < 0 {
-					pi.screenY = 0
-				}
-				if pi.screenY >= gH {
-					pi.screenY = gH - 1
-				}
-				globe[pi.screenY][pi.screenX] = '@'
 			}
 		}
 		pInfos[i] = pi
 	}
 
-	// ── Assign peers to left/right card slots ──
-	// Each card takes `cardH` rows. Cards are evenly spread in contentH.
-	type cardSlot struct {
-		startRow int // first row of this card in globe-coord space
-		peer     peerScreen
-	}
-	var leftCards, rightCards []cardSlot
-	for i, pi := range pInfos {
-		if i%2 == 0 {
-			leftCards = append(leftCards, cardSlot{peer: pi})
-		} else {
-			rightCards = append(rightCards, cardSlot{peer: pi})
-		}
-	}
-	// Distribute cards evenly within gH rows
-	distributeCards := func(cards []cardSlot, height, ch int) []cardSlot {
-		n := len(cards)
-		if n == 0 {
-			return cards
-		}
-		totalCardH := n * ch
-		if totalCardH > height {
-			ch = height / n
-			if ch < 1 {
-				ch = 1
-			}
-		}
-		gap := 0
-		if n > 1 {
-			gap = (height - totalCardH) / (n + 1)
-			if gap < 0 {
-				gap = 0
-			}
-		} else {
-			gap = (height - ch) / 2
-		}
-		y := gap
-		for i := range cards {
-			cards[i].startRow = y
-			y += ch + gap
-			if y > height-ch {
-				y = height - ch
-			}
-		}
-		return cards
-	}
-	leftCards = distributeCards(leftCards, gH, cardH)
-	rightCards = distributeCards(rightCards, gH, cardH)
-
-	// ── Build screen buffer ──
+	// ── Build frame ──
 	var sb strings.Builder
+	sb.Grow(termW * termH * 4)
 
-	// === TOP BORDER + TITLE ===
-	// ┌──── LetChat Agent Network ─── Powered by Chatchat Technology Limited ────┐
-	titleText := " LetChat Agent Network "
-	brandText := fmt.Sprintf(" %s ", slogan)
-	topInner := innerW
-	titleLen := len([]rune(titleText))
-	brandLen := len([]rune(brandText))
-	dashLeft := (topInner - titleLen - brandLen) / 2
-	if dashLeft < 1 {
-		dashLeft = 1
-	}
-	dashRight := topInner - titleLen - brandLen - dashLeft
-	if dashRight < 1 {
-		dashRight = 1
-	}
+	// Header (cached, already has \033[K\r\n on each line)
+	sb.WriteString(header)
 
-	sb.WriteString("\033[1;36m┌")
-	sb.WriteString(strings.Repeat("─", dashLeft))
-	sb.WriteString("\033[1;33m")
-	sb.WriteString(titleText)
-	sb.WriteString("\033[2;37m")
-	sb.WriteString(strings.Repeat("─", max(1, dashRight-brandLen)))
-	sb.WriteString("\033[0;36m")
-	sb.WriteString(brandText)
-	sb.WriteString("\033[1;36m")
-	remaining := innerW - dashLeft - titleLen - max(1, dashRight-brandLen) - brandLen
-	if remaining > 0 {
-		sb.WriteString(strings.Repeat("─", remaining))
-	}
-	sb.WriteString("┐\033[0m\r\n")
-
-	// === SUBTITLE (Powered by ...) + stats on right ===
-	powered := " Powered by Chatchat Technology Limited"
-	statsText := fmt.Sprintf("Nodes:%d  Credits:%.0f  Topics:%d  v%s ",
-		stats.Peers+1, stats.Balance, len(stats.Topics), daemon.Version)
-	subtitleInner := innerW
-	statsLen := len(statsText)
-	poweredLen := len(powered)
-	midGap := subtitleInner - poweredLen - statsLen
-	if midGap < 1 {
-		midGap = 1
-	}
-	sb.WriteString("\033[1;36m│\033[0;35m")
-	sb.WriteString(fitStr(powered, poweredLen))
-	sb.WriteString(strings.Repeat(" ", midGap))
-	sb.WriteString("\033[1;33m")
-	sb.WriteString(fitStr(statsText, statsLen))
-	sb.WriteString("\033[1;36m│\033[0m\r\n")
-
-	// === SEPARATOR ===
-	sb.WriteString("\033[1;36m├")
-	sb.WriteString(strings.Repeat("─", innerW))
-	sb.WriteString("┤\033[0m\r\n")
-
-	// === CONTENT ROWS: [border][left panel][globe][right panel][border] ===
-	// Pre-build left/right card row lookups
-	type cardLine struct {
-		text    string // rendered text for this line of the card
-		lineIdx int    // which line within the card (0=top border, 1=id, 2=info, etc.)
-		peer    peerScreen
-	}
-	leftLines := map[int]cardLine{}
-	rightLines := map[int]cardLine{}
-
-	buildCardLines := func(cards []cardSlot, pw, ch int, isLeft bool) map[int]cardLine {
-		result := map[int]cardLine{}
-		for _, card := range cards {
-			p := card.peer
-			for li := 0; li < ch; li++ {
-				row := card.startRow + li
-				if row >= gH {
-					break
-				}
-				var text string
-				selfMark := ""
-				if p.isSelf {
-					selfMark = "★"
-				} else {
-					selfMark = "●"
-				}
-				switch {
-				case li == 0 && ch >= 3:
-					// Top line: marker + short ID
-					text = fmt.Sprintf(" %s %s", selfMark, p.shortID)
-				case li == 1 && ch >= 3:
-					// Info line: location / country
-					loc := p.location
-					if p.country != "" && p.country != loc {
-						loc = p.country
-					}
-					if loc == "" {
-						loc = "Unknown"
-					}
-					if p.hasGeo && (p.lat != 0 || p.lon != 0) {
-						text = fmt.Sprintf("   %s %.1f,%.1f", loc, p.lat, p.lon)
-					} else {
-						text = fmt.Sprintf("   %s", loc)
-					}
-				case li == 0 && ch < 3:
-					// Compact: everything on one line
-					loc := p.location
-					if loc == "" {
-						loc = p.shortID
-					}
-					text = fmt.Sprintf(" %s %s", selfMark, loc)
-				default:
-					// Extra lines for larger cards
-					if li == 2 && ch >= 4 {
-						if p.isSelf {
-							text = fmt.Sprintf("   Cr:%.0f Fr:%.0f", stats.Balance, stats.Frozen)
-						} else {
-							text = "   ──────"
-						}
-					} else if li == 3 && ch >= 5 {
-						text = fmt.Sprintf("   PeerID:%s..", p.shortID[:8])
-					} else {
-						text = ""
-					}
-				}
-
-				maxW := pw - 3 // leave room for connector
-				if len([]rune(text)) > maxW {
-					text = string([]rune(text)[:maxW])
-				}
-				result[row] = cardLine{text: text, lineIdx: li, peer: p}
-			}
-		}
-		return result
-	}
-	leftLines = buildCardLines(leftCards, leftPW, cardH, true)
-	rightLines = buildCardLines(rightCards, rightPW, cardH, false)
-
+	// Globe rows
 	for row := 0; row < gH; row++ {
-		sb.WriteString("\033[1;36m│\033[0m") // left border
-
-		// ── Left panel ──
-		if cl, ok := leftLines[row]; ok {
-			text := cl.text
-			p := cl.peer
-
-			// Determine connector target row on globe
-			connChar := " "
-			if p.visible {
-				// Dynamic connector: point toward the @ on the globe
-				if p.screenY == row {
-					connChar = "→"
-				} else if p.screenY > row {
-					connChar = "↘"
-				} else {
-					connChar = "↗"
-				}
-			} else if cl.lineIdx == 0 {
-				connChar = "·"
-			}
-
-			padLen := leftPW - len([]rune(text)) - 2
-			if padLen < 0 {
-				padLen = 0
-			}
-			color := "\033[33m" // yellow
-			if p.isSelf {
-				color = "\033[1;33m" // bright yellow
-			}
-			sb.WriteString(color)
-			sb.WriteString(text)
-			sb.WriteString(strings.Repeat(" ", padLen))
-			sb.WriteString(connChar)
-			sb.WriteString("\033[0m")
-			sb.WriteByte(' ')
-		} else {
-			sb.WriteString(strings.Repeat(" ", leftPW))
-		}
-
-		// ── Globe ──
+		sb.WriteString("\033[1;36m│\033[0m")
 		for _, ch := range globe[row] {
 			switch ch {
 			case '@':
-				sb.WriteString("\033[1;31m@\033[0m") // bright red
+				sb.WriteString("\033[1;31m@\033[0m")
 			case '#', ':':
 				sb.WriteString("\033[1;37m")
 				sb.WriteRune(ch)
@@ -800,66 +596,151 @@ func renderGlobeFrame(peers []peerGeoData, termW, termH int, rotation float64, s
 				sb.WriteByte(' ')
 			}
 		}
-
-		// ── Right panel ──
-		if cl, ok := rightLines[row]; ok {
-			text := cl.text
-			p := cl.peer
-
-			connChar := " "
-			if p.visible {
-				if p.screenY == row {
-					connChar = "←"
-				} else if p.screenY > row {
-					connChar = "↙"
-				} else {
-					connChar = "↖"
-				}
-			} else if cl.lineIdx == 0 {
-				connChar = "·"
-			}
-
-			color := "\033[33m"
-			if p.isSelf {
-				color = "\033[1;33m"
-			}
-			sb.WriteByte(' ')
-			sb.WriteString(color)
-			sb.WriteString(connChar)
-			// Pad text to fill right panel
-			padLen := rightPW - len([]rune(text)) - 2
-			if padLen < 0 {
-				padLen = 0
-			}
-			sb.WriteString(text)
-			sb.WriteString(strings.Repeat(" ", padLen))
-			sb.WriteString("\033[0m")
-		} else {
-			sb.WriteString(strings.Repeat(" ", rightPW))
-		}
-
-		sb.WriteString("\033[1;36m│\033[0m") // right border
-		sb.WriteString("\033[K\r\n")
+		sb.WriteString("\033[1;36m│\033[0m\033[K\r\n")
 	}
 
-	// Pad remaining content rows
-	for row := gH; row < contentH; row++ {
-		sb.WriteString("\033[1;36m│\033[0m")
-		sb.WriteString(strings.Repeat(" ", innerW))
-		sb.WriteString("\033[1;36m│\033[0m")
-		sb.WriteString("\033[K\r\n")
-	}
-
-	// === BOTTOM BORDER ===
+	// ── Separator above cards ──
 	sb.WriteString("\033[1;36m├")
 	sb.WriteString(strings.Repeat("─", innerW))
-	sb.WriteString("┤\033[0m\r\n")
+	sb.WriteString("┤\033[0m\033[K\r\n")
 
-	// === HELP LINE ===
+	// ── Node cards row ──
+	// Calculate card width per peer
+	cardW := innerW / max(nPeers, 1)
+	if cardW > 30 {
+		cardW = 30
+	}
+	if cardW < 12 {
+		cardW = 12
+	}
+	// Total cards row width
+	totalCardsW := cardW * nPeers
+	// Left padding to center cards
+	cardPadL := (innerW - totalCardsW) / 2
+	if cardPadL < 0 {
+		cardPadL = 0
+	}
+	cardPadR := innerW - cardPadL - totalCardsW
+	if cardPadR < 0 {
+		cardPadR = 0
+	}
+
+	// Build card content for each peer (each card has cardH lines)
+	type cardContent struct {
+		lines []string // each line is exactly cardW visible chars
+	}
+	cards := make([]cardContent, nPeers)
+	for i := range pInfos {
+		p := pInfos[i]
+		cc := cardContent{lines: make([]string, cardH)}
+		insideW := cardW - 2 // minus left+right border
+
+		marker := "●"
+		borderH := "─"
+		borderTL := "┌"
+		borderTR := "┐"
+		borderBL := "└"
+		borderBR := "┘"
+		borderV := "│"
+		if p.isSelf {
+			marker = "★"
+			borderH = "═"
+			borderTL = "╔"
+			borderTR = "╗"
+			borderBL = "╚"
+			borderBR = "╝"
+			borderV = "║"
+		}
+
+		// Line 0: top border
+		cc.lines[0] = borderTL + strings.Repeat(borderH, insideW) + borderTR
+
+		if cardH >= 3 {
+			// Line 1: marker + short ID
+			idText := fmt.Sprintf(" %s %s", marker, p.shortID)
+			if len([]rune(idText)) > insideW {
+				idText = string([]rune(idText)[:insideW])
+			}
+			pad := insideW - len([]rune(idText))
+			if pad < 0 {
+				pad = 0
+			}
+			cc.lines[1] = borderV + idText + strings.Repeat(" ", pad) + borderV
+
+			if cardH >= 4 {
+				// Line 2: location info
+				loc := p.location
+				if loc == "" || loc == "Unknown" {
+					loc = p.country
+				}
+				if loc == "" {
+					loc = "?"
+				}
+				locText := " " + loc
+				if p.lat != 0 || p.lon != 0 {
+					locText = fmt.Sprintf(" %s %.1f,%.1f", loc, p.lat, p.lon)
+				}
+				if len([]rune(locText)) > insideW {
+					locText = string([]rune(locText)[:insideW])
+				}
+				pad = insideW - len([]rune(locText))
+				if pad < 0 {
+					pad = 0
+				}
+				cc.lines[2] = borderV + locText + strings.Repeat(" ", pad) + borderV
+
+				// Line 3: bottom border
+				cc.lines[3] = borderBL + strings.Repeat(borderH, insideW) + borderBR
+			} else {
+				// Line 2 (if cardH==3): bottom border
+				cc.lines[2] = borderBL + strings.Repeat(borderH, insideW) + borderBR
+			}
+		} else {
+			// cardH==2: compact
+			idText := fmt.Sprintf(" %s %s", marker, p.shortID)
+			if len([]rune(idText)) > insideW {
+				idText = string([]rune(idText)[:insideW])
+			}
+			pad := insideW - len([]rune(idText))
+			if pad < 0 {
+				pad = 0
+			}
+			cc.lines[1] = borderBL + idText + strings.Repeat(" ", pad) + borderBR
+		}
+		cards[i] = cc
+	}
+
+	// Emit card rows
+	for li := 0; li < cardH; li++ {
+		sb.WriteString("\033[1;36m│\033[0m")
+		sb.WriteString(strings.Repeat(" ", cardPadL))
+		for ci, cc := range cards {
+			color := "\033[33m"
+			if pInfos[ci].isSelf {
+				color = "\033[1;33m"
+			}
+			sb.WriteString(color)
+			if li < len(cc.lines) {
+				sb.WriteString(cc.lines[li])
+			} else {
+				sb.WriteString(strings.Repeat(" ", cardW))
+			}
+			sb.WriteString("\033[0m")
+		}
+		sb.WriteString(strings.Repeat(" ", cardPadR))
+		sb.WriteString("\033[1;36m│\033[0m\033[K\r\n")
+	}
+
+	// ── Separator below cards ──
+	sb.WriteString("\033[1;36m├")
+	sb.WriteString(strings.Repeat("─", innerW))
+	sb.WriteString("┤\033[0m\033[K\r\n")
+
+	// ── Help line ──
 	help := " q:Quit │ ★:You │ @:Peer │ #:Coast │ .:Land │ ~:Ocean"
 	earnedSpent := fmt.Sprintf("Earned:%.0f Spent:%.0f ", stats.TotalEarned, stats.TotalSpent)
 	helpLen := len([]rune(help))
-	earnLen := len([]rune(earnedSpent))
+	earnLen := len(earnedSpent)
 	helpGap := innerW - helpLen - earnLen
 	if helpGap < 1 {
 		helpGap = 1
@@ -869,12 +750,12 @@ func renderGlobeFrame(peers []peerGeoData, termW, termH int, rotation float64, s
 	sb.WriteString(strings.Repeat(" ", helpGap))
 	sb.WriteString("\033[0;33m")
 	sb.WriteString(earnedSpent)
-	sb.WriteString("\033[1;36m│\033[0m\r\n")
+	sb.WriteString("\033[1;36m│\033[0m\033[K\r\n")
 
-	// === BOTTOM FRAME ===
+	// ── Bottom frame ──
 	sb.WriteString("\033[1;36m└")
 	sb.WriteString(strings.Repeat("─", innerW))
-	sb.WriteString("┘\033[0m")
+	sb.WriteString("┘\033[0m\033[K")
 
 	return sb.String()
 }

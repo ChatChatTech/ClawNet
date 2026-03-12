@@ -96,6 +96,13 @@ func (l *Locator) Lookup(ipStr string) *GeoInfo {
 		gi.City = cleanField(results.City)
 		gi.Timezone = cleanField(results.Timezone)
 	}
+	// Fallback: if DB1 returns 0,0 coordinates, use country centroid
+	if gi.Latitude == 0 && gi.Longitude == 0 && gi.Country != "" {
+		if lat, lon, ok := CountryCentroid(gi.Country); ok {
+			gi.Latitude = lat
+			gi.Longitude = lon
+		}
+	}
 	return gi
 }
 
