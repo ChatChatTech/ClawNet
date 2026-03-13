@@ -23,6 +23,7 @@ Thumbs.db
 .openclaw/
 go1.26.1.linux-amd64.tar.gz
 letschat-cli/clawnet
+letschat-cli/clawnet-smol
 letschat-cli/letchat
 letschat-cli/seedbot
 venv/

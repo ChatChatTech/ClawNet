@@ -3,7 +3,6 @@ package geo
 import (
 	"archive/zip"
 	"bytes"
-	_ "embed"
 	"fmt"
 	"io"
 	"net"
@@ -13,9 +12,6 @@ import (
 
 	"github.com/ip2location/ip2location-go/v9"
 )
-
-//go:embed data/IP2LOCATION-LITE-DB11.BIN.zip
-var embeddedDBZip []byte
 
 // GeoInfo holds geo information for an IP address.
 type GeoInfo struct {
@@ -33,15 +29,14 @@ type Locator struct {
 	dbType string
 }
 
-// NewLocator creates a Locator using the embedded DB11 database.
-func NewLocator(dataDir string) (*Locator, error) {
+// newLocator is the shared constructor used by DB-specific init files.
+func newLocator(dataDir string, dbZip []byte, dbFileName, dbType string) (*Locator, error) {
 	tmpDir := filepath.Join(dataDir, "data")
 	os.MkdirAll(tmpDir, 0700)
-	dbPath := filepath.Join(tmpDir, "IP2LOCATION-LITE-DB11.BIN")
+	dbPath := filepath.Join(tmpDir, dbFileName)
 
-	// Extract embedded zip on first run
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		if err := extractDB11(dbPath); err != nil {
+		if err := extractBIN(dbPath, dbZip); err != nil {
 			return nil, fmt.Errorf("extract embedded db: %w", err)
 		}
 	}
@@ -50,11 +45,11 @@ func NewLocator(dataDir string) (*Locator, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open ip2location: %w", err)
 	}
-	return &Locator{db: db, dbType: "DB11"}, nil
+	return &Locator{db: db, dbType: dbType}, nil
 }
 
-func extractDB11(destPath string) error {
-	r, err := zip.NewReader(bytes.NewReader(embeddedDBZip), int64(len(embeddedDBZip)))
+func extractBIN(destPath string, zipData []byte) error {
+	r, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
 	if err != nil {
 		return err
 	}
