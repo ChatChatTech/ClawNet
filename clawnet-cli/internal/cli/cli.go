@@ -208,7 +208,7 @@ func printUsage() error {
 	fmt.Println(tidal+"  topo     "+rst + "Show rotating globe topology (full-screen)")
 	fmt.Println(tidal+"  version  "+rst + "Show version")
 	fmt.Println()
-	fmt.Println(dim + "  API runs on http://localhost:3847 when daemon is active." + rst)
+	fmt.Println(dim + "  API runs on http://localhost:3998 when daemon is active." + rst)
 	return nil
 }
 
