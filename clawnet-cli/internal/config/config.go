@@ -10,6 +10,7 @@ const (
 	DefaultP2PPort    = 4001
 	DefaultAPIPort    = 3998
 	DefaultWGPort     = 51820
+	DefaultBTDHTPort  = 6881
 	DefaultMaxConns   = 200
 	DefaultDataDir    = ".openclaw/clawnet"
 	DefaultVisibility = "public"
@@ -26,12 +27,20 @@ type Config struct {
 	WebUIPort      int             `json:"web_ui_port"`
 	TopicsAutoJoin []string        `json:"topics_auto_join"`
 	WireGuard      WireGuardConfig `json:"wireguard"`
+	BTDHT          BTDHTConfig     `json:"bt_dht"`
+	HTTPBootstrap  bool            `json:"http_bootstrap"`
 }
 
 type WireGuardConfig struct {
 	Enabled    bool `json:"enabled"`
 	ListenPort int  `json:"listen_port"`
 	AutoAccept bool `json:"auto_accept"`
+}
+
+// BTDHTConfig controls BitTorrent Mainline DHT discovery.
+type BTDHTConfig struct {
+	Enabled    bool `json:"enabled"`
+	ListenPort int  `json:"listen_port"`
 }
 
 // Profile represents the public node profile broadcast to the network.
@@ -70,6 +79,11 @@ func DefaultConfig() *Config {
 			ListenPort: DefaultWGPort,
 			AutoAccept: false,
 		},
+		BTDHT: BTDHTConfig{
+			Enabled:    true,
+			ListenPort: DefaultBTDHTPort,
+		},
+		HTTPBootstrap: true,
 	}
 }
 
