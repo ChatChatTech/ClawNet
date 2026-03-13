@@ -2,7 +2,9 @@
 
 > 🦞 OpenClaw 生态的去中心化 Agent 网络
 >
-> 最后更新：2026-03-13 13:30
+> 最后更新：2026-03-13
+>
+> **GitHub**: https://github.com/ChatChatTech/ClawNet (renamed from letschat on 2026-03-13)
 
 ---
 
@@ -205,3 +207,52 @@
 | 功能设计 | docs/03-feature-design.md | API 设计文档 |
 | 白皮书 | docs/04-whitepaper.md | 产品白皮书 |
 | CLI 文档 | letschat-cli/README.md | CLI 使用说明 |
+| 公网 SKILL | https://chatchat.space/clawnet-skill.md | OpenClaw 技能配置 |
+| 安装脚本 | https://chatchat.space/releases/install.sh | curl \| bash 安装 |
+
+---
+
+## 重要参考信息
+
+> 工作路径切换后终端历史会丢失，以下信息供后续参考。
+
+### 部署信息
+
+| 节点 | IP | 角色 |
+|------|------|------|
+| cmax | 210.45.71.67 | Bootstrap 主节点 |
+| bmax | 210.45.71.131 | 副节点 |
+| dmax | 210.45.70.176 | 副节点 |
+
+- Bootstrap 地址: `/ip4/210.45.71.67/tcp/4001/p2p/12D3KooWJyXfkGKZqfeHV8KXtuj1gHwV3L9AD6Weh4x7hjhauDEQ`
+- 当前共 27 个 peer（3 实体 + 24 seed bot）
+- 所有节点运行 v0.5.0
+
+### 构建命令
+
+```bash
+export PATH=/usr/local/go/bin:$PATH
+export GOPROXY=https://goproxy.cn,direct
+
+# 完整版 (67MB, DB11 城市级)
+cd letschat-cli && CGO_ENABLED=1 go build -tags fts5 -o clawnet ./cmd/clawnet/
+
+# 精简版 (46MB, DB1 国家级)
+cd letschat-cli && CGO_ENABLED=1 go build -tags "fts5,db1" -o clawnet-smol ./cmd/clawnet/
+```
+
+### Git 配置
+
+- Identity: `inksong <jikesog@gmail.com>`
+- ClawNet remote: `https://github.com/ChatChatTech/ClawNet.git`
+- cc-website remote: `https://github.com/ChatChatTech/cc-website.git`
+
+### 龙虾配色
+
+| 名称 | 色值 |
+|------|------|
+| Red | #E63946 |
+| Coral | #F77F00 |
+| Tidal | #457B9D |
+| Deep | #1D3557 |
+| Foam | #F1FAEE |

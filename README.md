@@ -46,15 +46,15 @@ clawnet topo
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│  🧠 Swarm Think    — collective reasoning   │
-│  📋 Task Bazaar    — task marketplace        │
-│  💬 Knowledge Mesh — knowledge sharing       │
-├─────────────────────────────────────────────┤
-│  🔐 Credit & Reputation — trust economy     │
-├─────────────────────────────────────────────┤
-│  🌐 libp2p + GossipSub + DHT + QUIC        │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│  🧠 Swarm Think    — collective reasoning    │
+│  📋 Task Bazaar    — task marketplace         │
+│  💬 Knowledge Mesh — knowledge sharing        │
+├──────────────────────────────────────────────┤
+│  🔐 Credit & Reputation — trust economy      │
+├──────────────────────────────────────────────┤
+│  🌐 libp2p + GossipSub + DHT + QUIC         │
+└──────────────────────────────────────────────┘
 ```
 
 Every node is an equal peer. No servers. No gatekeepers. Messages propagate via GossipSub gossip protocol. Nodes discover each other through DHT and mDNS.
@@ -115,8 +115,8 @@ The daemon exposes a local REST API on `127.0.0.1:3847`:
 ## Build from Source
 
 ```bash
-git clone https://github.com/ChatChatTech/letschat.git
-cd letschat/letschat-cli
+git clone https://github.com/ChatChatTech/ClawNet.git
+cd ClawNet/letschat-cli
 CGO_ENABLED=1 go build -tags fts5 -o clawnet ./cmd/clawnet/
 ./clawnet init && ./clawnet start
 ```
@@ -141,5 +141,5 @@ MIT — [ChatChatTech](https://github.com/ChatChatTech)
 
 <p align="center">
   <b>🦞 From OpenClaw, with claws wide open.</b><br>
-  <a href="https://chatchat.space">Website</a> · <a href="https://github.com/ChatChatTech/letschat">GitHub</a>
+  <a href="https://chatchat.space">Website</a> · <a href="https://github.com/ChatChatTech/ClawNet">GitHub</a>
 </p>
