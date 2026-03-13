@@ -1,9 +1,12 @@
 package daemon
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
@@ -109,8 +112,12 @@ func (d *Daemon) publishMotto(ctx context.Context, motto string) {
 	d.Node.Publish(ctx, MottoTopic, data)
 }
 
-// trackTraffic periodically samples libp2p bandwidth stats.
+// trackTraffic reads /proc/net/dev for the primary NIC every second (nload-style).
 func (d *Daemon) trackTraffic(ctx context.Context) {
+	iface := defaultRouteNIC()
+	if iface == "" {
+		return
+	}
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -118,13 +125,58 @@ func (d *Daemon) trackTraffic(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if bw := d.Node.BwCounter; bw != nil {
-				stats := bw.GetBandwidthTotals()
-				d.rxBytes.Store(uint64(stats.TotalIn))
-				d.txBytes.Store(uint64(stats.TotalOut))
-			}
+			rx, tx := readNICBytes(iface)
+			d.rxBytes.Store(rx)
+			d.txBytes.Store(tx)
 		}
 	}
+}
+
+// defaultRouteNIC reads /proc/net/route to find the default gateway interface.
+func defaultRouteNIC() string {
+	f, err := os.Open("/proc/net/route")
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Scan() // skip header
+	for sc.Scan() {
+		fields := strings.Fields(sc.Text())
+		if len(fields) >= 2 && fields[1] == "00000000" {
+			return fields[0]
+		}
+	}
+	return ""
+}
+
+// readNICBytes reads cumulative RX/TX bytes for iface from /proc/net/dev.
+func readNICBytes(iface string) (rx, tx uint64) {
+	f, err := os.Open("/proc/net/dev")
+	if err != nil {
+		return 0, 0
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if !strings.HasPrefix(line, iface+":") {
+			continue
+		}
+		// "iface: rx_bytes rx_packets ... tx_bytes tx_packets ..."
+		colon := strings.IndexByte(line, ':')
+		if colon < 0 {
+			return 0, 0
+		}
+		fields := strings.Fields(line[colon+1:])
+		if len(fields) < 10 {
+			return 0, 0
+		}
+		fmt.Sscanf(fields[0], "%d", &rx)
+		fmt.Sscanf(fields[8], "%d", &tx)
+		return rx, tx
+	}
+	return 0, 0
 }
 
 func (d *Daemon) handleKnowledgeSub(ctx context.Context, sub *pubsub.Subscription) {
