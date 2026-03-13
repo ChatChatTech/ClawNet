@@ -654,6 +654,9 @@ func formatDuration(seconds int64) string {
 }
 
 func truncStr(s string, maxW int) string {
+	if maxW <= 0 {
+		return ""
+	}
 	r := []rune(s)
 	if len(r) <= maxW {
 		return s
@@ -1368,37 +1371,50 @@ func renderClawNetStats(pInfos []peerInfo, stats networkStats, w int, now int64,
 		}
 	}
 	gap := 4
+	showBanner := w >= bannerW+gap+20 // hide banner if too narrow
 
-	maxRows := len(clawnetBanner)
-	if len(statsLines) > maxRows {
-		maxRows = len(statsLines)
+	maxRows := len(statsLines)
+	if showBanner && len(clawnetBanner) > maxRows {
+		maxRows = len(clawnetBanner)
 	}
 
 	lines = append(lines, "")
 	for i := 0; i < maxRows; i++ {
-		var left string
-		if i < len(clawnetBanner) {
-			left = clawnetBanner[i]
-		}
-		// Pad left to bannerW
-		leftR := []rune(left)
-		padN := bannerW - len(leftR)
-		if padN < 0 {
-			padN = 0
-		}
-		leftPadded := cBanner + string(leftR) + cReset + strings.Repeat(" ", padN)
-		gapStr := strings.Repeat(" ", gap)
+		if showBanner {
+			var left string
+			if i < len(clawnetBanner) {
+				left = clawnetBanner[i]
+			}
+			leftR := []rune(left)
+			padN := bannerW - len(leftR)
+			if padN < 0 {
+				padN = 0
+			}
+			leftPadded := cBanner + string(leftR) + cReset + strings.Repeat(" ", padN)
+			gapStr := strings.Repeat(" ", gap)
 
-		var right string
-		if i < len(statsLines) {
-			s := statsLines[i]
-			if s.k != "" {
-				right = cSelf + s.k + cReset + ": " + s.v
-			} else {
-				right = s.v
+			var right string
+			if i < len(statsLines) {
+				s := statsLines[i]
+				if s.k != "" {
+					right = cSelf + s.k + cReset + ": " + s.v
+				} else {
+					right = s.v
+				}
+			}
+			lines = append(lines, " "+leftPadded+gapStr+right)
+		} else {
+			if i < len(statsLines) {
+				s := statsLines[i]
+				if s.k != "" {
+					lines = append(lines, "  "+cSelf+s.k+cReset+": "+s.v)
+				} else if s.v != "" {
+					lines = append(lines, "  "+s.v)
+				} else {
+					lines = append(lines, "")
+				}
 			}
 		}
-		lines = append(lines, " "+leftPadded+gapStr+right)
 	}
 
 	// Density legend
