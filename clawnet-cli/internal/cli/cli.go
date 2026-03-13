@@ -33,8 +33,19 @@ const (
 	cSelfInfo  = "\033[38;2;241;250;238m"  // Sea Foam #F1FAEE — self panel
 	cPeerInfo  = "\033[38;2;247;127;0m"    // Coral Orange #F77F00 — peer cards
 	cHelp      = "\033[2;37m"              // dim white — help line
-	cReset     = "\033[0m"
+        cBanner    = "\033[1;38;2;230;57;70m"  // Bold Lobster Red — ASCII banner
+        cReset     = "\033[0m"
 )
+
+var clawnetBanner = []string{
+        "    ____    ___                          __  __          __",
+        "   /\\  _`\\ /\\_ \\                        /\\ \\/\\ \\        /\\ \\__",
+        "   \\ \\ \\/\\_\\//\\ \\      __     __  __  __\\ \\ `\\\\ \\     __\\ \\ ,_\\",
+        "    \\ \\ \\/_/_\\ \\ \\   /'__`\\  /\\ \\/\\ \\/\\ \\\\ \\ , ` \\  /'__`\\ \\ \\/",
+        "     \\ \\ \\L\\ \\\\_\\ \\_/\\ \\L\\.\\_\\ \\ \\_/ \\_/ \\\\ \\ \\`\\ \\/\\  __/\\ \\ \\_",
+        "      \\ \\____//\\____\\ \\__/.\\_\\\\ \\___x___/' \\ \\_\\ \\_\\ \\____\\\\ \\__\\",
+        "       \\/___/ \\/____/\\/__/\\/_/ \\/__//__/    \\/_/\\/_/\\/____/ \\/__/",
+}
 
 func Execute() error {
 	if len(os.Args) < 2 {
@@ -475,7 +486,6 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 	}
 	// Center the globe horizontally
 	globePadL := (innerW - gW) / 2
-	globePadR := innerW - gW - globePadL
 
 	rX := float64(gW) / 2.0 * 0.95
 	rY := float64(gH) / 2.0 * 0.95
@@ -633,31 +643,63 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 	// Header (cached)
 	sb.WriteString(header)
 
-	// Globe rows
-	for row := 0; row < gH; row++ {
-		sb.WriteString(cBorder + "│" + cReset)
-		sb.WriteString(strings.Repeat(" ", globePadL))
-		for _, ch := range globe[row] {
-			switch ch {
-			case '★':
-				sb.WriteString(cSelf + "★" + cReset)
-			case '@':
-				sb.WriteString(cPeer + "@" + cReset)
-			case '#':
-				sb.WriteString(cCoast + "#" + cReset)
-			case '.':
-				sb.WriteString(cLand + "." + cReset)
-			case '(', ')':
-				sb.WriteString(cEdge)
-				sb.WriteRune(ch)
-				sb.WriteString(cReset)
-			case '·':
-				sb.WriteString(cOcean + "·" + cReset)
-			default:
-				sb.WriteByte(' ')
-			}
-		}
-		sb.WriteString(strings.Repeat(" ", globePadR))
+	// ── Banner overlay: compute positions in innerW coordinates ──
+        type bnPos struct{ row, col int }
+        bnOverlay := make(map[bnPos]rune)
+        bnW := 0
+        for _, l := range clawnetBanner {
+                if len([]rune(l)) > bnW {
+                        bnW = len([]rune(l))
+                }
+        }
+        bnStartRow := gH - len(clawnetBanner) - 1
+        bnStartCol := innerW - bnW - 1
+        if bnStartCol < 0 {
+                bnStartCol = 0
+        }
+        for i, line := range clawnetBanner {
+                for j, ch := range []rune(line) {
+                        if ch != ' ' {
+                                bnOverlay[bnPos{bnStartRow + i, bnStartCol + j}] = ch
+                        }
+                }
+        }
+
+        // Globe rows with banner overlay
+        for row := 0; row < gH; row++ {
+                sb.WriteString(cBorder + "│" + cReset)
+                for col := 0; col < innerW; col++ {
+                        if ch, ok := bnOverlay[bnPos{row, col}]; ok {
+                                sb.WriteString(cBanner)
+                                sb.WriteRune(ch)
+                                sb.WriteString(cReset)
+                                continue
+                        }
+                        globeCol := col - globePadL
+                        if globeCol >= 0 && globeCol < gW {
+                                ch := globe[row][globeCol]
+                                switch ch {
+                                case '★':
+                                        sb.WriteString(cSelf + "★" + cReset)
+                                case '@':
+                                        sb.WriteString(cPeer + "@" + cReset)
+                                case '#':
+                                        sb.WriteString(cCoast + "#" + cReset)
+                                case '.':
+                                        sb.WriteString(cLand + "." + cReset)
+                                case '(', ')':
+                                        sb.WriteString(cEdge)
+                                        sb.WriteRune(ch)
+                                        sb.WriteString(cReset)
+                                case '·':
+                                        sb.WriteString(cOcean + "·" + cReset)
+                                default:
+                                        sb.WriteByte(' ')
+                                }
+                        } else {
+                                sb.WriteByte(' ')
+                        }
+                }
 		sb.WriteString(cBorder + "│" + cReset + "\033[K\r\n")
 	}
 

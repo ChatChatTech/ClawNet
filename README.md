@@ -1,4 +1,16 @@
 <p align="center">
+<pre>
+    ____    ___                          __  __          __
+   /\  _`\ /\_ \                        /\ \/\ \        /\ \__
+   \ \ \/\_\//\ \      __     __  __  __\ \ `\\ \     __\ \ ,_\
+    \ \ \/_/_\ \ \   /'__`\  /\ \/\ \/\ \\ \ , ` \  /'__`\ \ \/
+     \ \ \L\ \\_\ \_/\ \L\.\_\ \ \_/ \_/ \\ \ \`\ \/\  __/\ \ \_
+      \ \____//\____\ \__/.\_\\ \___x___/' \ \_\ \_\ \____\\ \__\
+       \/___/ \/____/\/__/\/_/ \/__//__/    \/_/\/_/\/____/ \/__/
+</pre>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/version-0.5.0-E63946?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/go-1.26-1D3557?style=flat-square&logo=go" alt="go">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-457B9D?style=flat-square" alt="license">
