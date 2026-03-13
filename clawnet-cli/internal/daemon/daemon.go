@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -21,14 +23,22 @@ const Version = "0.5.0"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
-	Node      *p2p.Node
-	Config    *config.Config
-	Profile   *config.Profile
-	Store     *store.Store
-	Geo       *geo.Locator
-	DataDir   string
-	StartedAt time.Time
-	ctx       context.Context
+	Node       *p2p.Node
+	Config     *config.Config
+	Profile    *config.Profile
+	Store      *store.Store
+	Geo        *geo.Locator
+	DataDir    string
+	StartedAt  time.Time
+	ctx        context.Context
+	PeerMottos sync.Map // peer_id -> string
+	rxBytes    atomic.Uint64
+	txBytes    atomic.Uint64
+}
+
+// getTrafficBytes returns cumulative rx/tx counters from libp2p bandwidth.
+func (d *Daemon) getTrafficBytes() (uint64, uint64) {
+	return d.rxBytes.Load(), d.txBytes.Load()
 }
 
 // Start initializes and runs the daemon until interrupted.

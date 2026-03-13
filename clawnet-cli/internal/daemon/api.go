@@ -24,6 +24,8 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 	mux.HandleFunc("GET /api/peers/geo", d.handlePeersGeo)
 	mux.HandleFunc("GET /api/profile", d.handleGetProfile)
 	mux.HandleFunc("PUT /api/profile", d.handleUpdateProfile)
+	mux.HandleFunc("PUT /api/motto", d.handleSetMotto)
+	mux.HandleFunc("GET /api/traffic", d.handleTraffic)
 
 	// Phase 1 — Knowledge Mesh
 	mux.HandleFunc("POST /api/knowledge", d.handlePostKnowledge)
@@ -137,12 +139,16 @@ func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
 		IsSelf         bool         `json:"is_self"`
 		LatencyMs      int64        `json:"latency_ms"`
 		ConnectedSince int64        `json:"connected_since"`
+		Motto          string       `json:"motto,omitempty"`
 	}
 	result := make([]peerGeo, 0, len(peers)+1)
 
 	// Add self first
 	selfID := d.Node.PeerID().String()
 	selfEntry := peerGeo{PeerID: selfID, ShortID: shortID(selfID), Location: "Unknown", IsSelf: true}
+	if d.Profile != nil {
+		selfEntry.Motto = d.Profile.Motto
+	}
 	if d.Geo != nil {
 		for _, a := range d.Node.Addrs() {
 			ip := geo.ExtractIP(a.String())
@@ -187,9 +193,35 @@ func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		if m, ok := d.PeerMottos.Load(pid); ok {
+			entry.Motto = m.(string)
+		}
 		result = append(result, entry)
 	}
 	writeJSON(w, result)
+}
+
+// handleSetMotto sets the node's motto/proclamation and gossips it.
+func (d *Daemon) handleSetMotto(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Motto string `json:"motto"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if d.Profile != nil {
+		d.Profile.Motto = body.Motto
+	}
+	// Gossip the motto to the network
+	d.publishMotto(d.ctx, body.Motto)
+	writeJSON(w, map[string]string{"status": "ok", "motto": body.Motto})
+}
+
+// handleTraffic returns cumulative network traffic bytes.
+func (d *Daemon) handleTraffic(w http.ResponseWriter, r *http.Request) {
+	rx, tx := d.getTrafficBytes()
+	writeJSON(w, map[string]uint64{"rx_bytes": rx, "tx_bytes": tx})
 }
 
 func shortID(id string) string {

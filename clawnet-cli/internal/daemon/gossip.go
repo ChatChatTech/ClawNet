@@ -14,6 +14,7 @@ import (
 const (
 	KnowledgeTopic = "/clawnet/knowledge"
 	TopicPrefix    = "/clawnet/topic/"
+	MottoTopic     = "/clawnet/motto"
 )
 
 // GossipKnowledgeMsg is the wire format for knowledge messages on GossipSub.
@@ -37,6 +38,14 @@ type GossipTopicMsg struct {
 	Message *store.TopicMessage `json:"message,omitempty"`
 }
 
+// GossipMottoMsg is the wire format for motto/proclamation announcements.
+type GossipMottoMsg struct {
+	Type      string `json:"type"`       // "motto"
+	PeerID    string `json:"peer_id"`
+	AgentName string `json:"agent_name"`
+	Motto     string `json:"motto"`
+}
+
 // startGossipHandlers subscribes to knowledge and topic GossipSub topics and processes incoming messages.
 func (d *Daemon) startGossipHandlers(ctx context.Context) {
 	// Join and listen on /clawnet/knowledge
@@ -46,6 +55,76 @@ func (d *Daemon) startGossipHandlers(ctx context.Context) {
 		return
 	}
 	go d.handleKnowledgeSub(ctx, sub)
+
+	// Join and listen on /clawnet/motto
+	mottoSub, err := d.Node.JoinTopic(MottoTopic)
+	if err != nil {
+		fmt.Printf("warning: could not join motto topic: %v\n", err)
+	} else {
+		go d.handleMottoSub(ctx, mottoSub)
+	}
+
+	// Publish own motto on start if set
+	if d.Profile != nil && d.Profile.Motto != "" {
+		go func() {
+			time.Sleep(3 * time.Second) // wait for peer connections
+			d.publishMotto(ctx, d.Profile.Motto)
+		}()
+	}
+
+	// Start traffic byte counter
+	go d.trackTraffic(ctx)
+}
+
+func (d *Daemon) handleMottoSub(ctx context.Context, sub *pubsub.Subscription) {
+	for {
+		msg, err := sub.Next(ctx)
+		if err != nil {
+			return
+		}
+		if msg.ReceivedFrom == d.Node.PeerID() {
+			continue
+		}
+		var gm GossipMottoMsg
+		if err := json.Unmarshal(msg.Data, &gm); err != nil {
+			continue
+		}
+		if gm.Type == "motto" && gm.PeerID != "" {
+			d.PeerMottos.Store(gm.PeerID, gm.Motto)
+		}
+	}
+}
+
+func (d *Daemon) publishMotto(ctx context.Context, motto string) {
+	gm := GossipMottoMsg{
+		Type:      "motto",
+		PeerID:    d.Node.PeerID().String(),
+		AgentName: d.Profile.AgentName,
+		Motto:     motto,
+	}
+	data, err := json.Marshal(gm)
+	if err != nil {
+		return
+	}
+	d.Node.Publish(ctx, MottoTopic, data)
+}
+
+// trackTraffic periodically samples libp2p bandwidth stats.
+func (d *Daemon) trackTraffic(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if bw := d.Node.BwCounter; bw != nil {
+				stats := bw.GetBandwidthTotals()
+				d.rxBytes.Store(uint64(stats.TotalIn))
+				d.txBytes.Store(uint64(stats.TotalOut))
+			}
+		}
+	}
 }
 
 func (d *Daemon) handleKnowledgeSub(ctx context.Context, sub *pubsub.Subscription) {

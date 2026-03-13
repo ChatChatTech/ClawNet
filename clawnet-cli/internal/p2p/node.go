@@ -11,6 +11,7 @@ import (
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/metrics"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
@@ -37,6 +38,7 @@ type Node struct {
 	Topics     map[string]*pubsub.Topic
 	Subs       map[string]*pubsub.Subscription
 	Config     *config.Config
+	BwCounter  *metrics.BandwidthCounter
 	cancelFunc context.CancelFunc
 
 	mu sync.RWMutex
@@ -56,6 +58,8 @@ func NewNode(ctx context.Context, priv crypto.PrivKey, cfg *config.Config) (*Nod
 		listenAddrs = append(listenAddrs, ma)
 	}
 
+	bwc := metrics.NewBandwidthCounter()
+
 	opts := []libp2p.Option{
 		libp2p.Identity(priv),
 		libp2p.ListenAddrs(listenAddrs...),
@@ -63,6 +67,7 @@ func NewNode(ctx context.Context, priv crypto.PrivKey, cfg *config.Config) (*Nod
 		libp2p.Transport(tcp.NewTCPTransport),
 		libp2p.Transport(libp2pquic.NewTransport),
 		libp2p.ConnectionManager(NewConnManager(cfg.MaxConnections)),
+		libp2p.BandwidthReporter(bwc),
 		libp2p.NATPortMap(),
 		libp2p.EnableNATService(),
 		libp2p.EnableHolePunching(),
@@ -84,6 +89,7 @@ func NewNode(ctx context.Context, priv crypto.PrivKey, cfg *config.Config) (*Nod
 	node := &Node{
 		Host:       h,
 		Config:     cfg,
+		BwCounter:  bwc,
 		Topics:     make(map[string]*pubsub.Topic),
 		Subs:       make(map[string]*pubsub.Subscription),
 		cancelFunc: cancel,
