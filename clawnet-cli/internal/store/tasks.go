@@ -168,3 +168,13 @@ func (s *Store) RejectTask(taskID string) error {
 	)
 	return err
 }
+
+// CancelTask cancels an open or assigned task (only the author should call this).
+func (s *Store) CancelTask(taskID string) error {
+	_, err := s.DB.Exec(
+		`UPDATE tasks SET status = 'cancelled', updated_at = datetime('now')
+		 WHERE id = ? AND status IN ('open', 'assigned')`,
+		taskID,
+	)
+	return err
+}

@@ -221,10 +221,62 @@ func (s *Store) migrate() error {
 			event_time  TEXT NOT NULL,
 			received_at TEXT NOT NULL DEFAULT (datetime('now'))
 		)`,
+
+		// Phase 2.2 — Swarm Think enhancements: stance labels + time limits
+		`ALTER TABLE swarms ADD COLUMN domains TEXT NOT NULL DEFAULT '[]'`,
+		`ALTER TABLE swarms ADD COLUMN max_participants INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE swarms ADD COLUMN duration_min INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE swarms ADD COLUMN deadline TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE swarm_contributions ADD COLUMN perspective TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE swarm_contributions ADD COLUMN confidence REAL NOT NULL DEFAULT 0`,
+
+		// Phase 3 — Prediction Market (Oracle Arena)
+		`CREATE TABLE IF NOT EXISTS predictions (
+			id                TEXT PRIMARY KEY,
+			creator_id        TEXT NOT NULL,
+			creator_name      TEXT NOT NULL DEFAULT '',
+			question          TEXT NOT NULL,
+			options           TEXT NOT NULL DEFAULT '[]',
+			category          TEXT NOT NULL DEFAULT 'custom',
+			resolution_date   TEXT NOT NULL,
+			resolution_source TEXT NOT NULL DEFAULT '',
+			status            TEXT NOT NULL DEFAULT 'open'
+			                  CHECK(status IN ('open', 'resolved', 'cancelled')),
+			result            TEXT NOT NULL DEFAULT '',
+			total_stake       REAL NOT NULL DEFAULT 0,
+			created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS prediction_bets (
+			id            TEXT PRIMARY KEY,
+			prediction_id TEXT NOT NULL,
+			bettor_id     TEXT NOT NULL,
+			bettor_name   TEXT NOT NULL DEFAULT '',
+			option        TEXT NOT NULL,
+			stake         REAL NOT NULL DEFAULT 0,
+			reasoning     TEXT NOT NULL DEFAULT '',
+			created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (prediction_id) REFERENCES predictions(id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_pred_bets ON prediction_bets(prediction_id, bettor_id)`,
+		`CREATE TABLE IF NOT EXISTS prediction_resolutions (
+			id            TEXT PRIMARY KEY,
+			prediction_id TEXT NOT NULL,
+			resolver_id   TEXT NOT NULL,
+			result        TEXT NOT NULL,
+			evidence_url  TEXT NOT NULL DEFAULT '',
+			created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (prediction_id) REFERENCES predictions(id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_pred_res ON prediction_resolutions(prediction_id, result)`,
 	}
 
 	for _, m := range migrations {
 		if _, err := s.DB.Exec(m); err != nil {
+			// ALTER TABLE ADD COLUMN fails if column already exists — that's OK
+			if len(m) > 12 && m[:12] == "ALTER TABLE " {
+				continue
+			}
 			return fmt.Errorf("exec %q: %w", m[:60], err)
 		}
 	}
