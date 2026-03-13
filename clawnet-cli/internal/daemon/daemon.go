@@ -34,6 +34,7 @@ type Daemon struct {
 	PeerMottos sync.Map // peer_id -> string
 	rxBytes    atomic.Uint64
 	txBytes    atomic.Uint64
+	nicName    string
 }
 
 // getTrafficBytes returns cumulative rx/tx counters from libp2p bandwidth.

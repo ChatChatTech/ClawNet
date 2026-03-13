@@ -67,11 +67,23 @@ func (d *Daemon) startGossipHandlers(ctx context.Context) {
 		go d.handleMottoSub(ctx, mottoSub)
 	}
 
-	// Publish own motto on start if set
+	// Publish own motto periodically so new peers receive it
 	if d.Profile != nil && d.Profile.Motto != "" {
 		go func() {
 			time.Sleep(3 * time.Second) // wait for peer connections
 			d.publishMotto(ctx, d.Profile.Motto)
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if d.Profile.Motto != "" {
+						d.publishMotto(ctx, d.Profile.Motto)
+					}
+				}
+			}
 		}()
 	}
 
@@ -118,6 +130,7 @@ func (d *Daemon) trackTraffic(ctx context.Context) {
 	if iface == "" {
 		return
 	}
+	d.nicName = iface
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	for {

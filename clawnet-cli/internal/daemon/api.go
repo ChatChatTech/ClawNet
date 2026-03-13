@@ -218,10 +218,26 @@ func (d *Daemon) handleSetMotto(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"status": "ok", "motto": body.Motto})
 }
 
-// handleTraffic returns cumulative network traffic bytes.
+// handleTraffic returns cumulative network traffic bytes (NIC + P2P).
 func (d *Daemon) handleTraffic(w http.ResponseWriter, r *http.Request) {
-	rx, tx := d.getTrafficBytes()
-	writeJSON(w, map[string]uint64{"rx_bytes": rx, "tx_bytes": tx})
+	nicRx, nicTx := d.getTrafficBytes()
+	var p2pRx, p2pTx uint64
+	if bw := d.Node.BwCounter; bw != nil {
+		stats := bw.GetBandwidthTotals()
+		if stats.TotalIn > 0 {
+			p2pRx = uint64(stats.TotalIn)
+		}
+		if stats.TotalOut > 0 {
+			p2pTx = uint64(stats.TotalOut)
+		}
+	}
+	writeJSON(w, map[string]any{
+		"nic_name": d.nicName,
+		"nic_rx":   nicRx,
+		"nic_tx":   nicTx,
+		"p2p_rx":   p2pRx,
+		"p2p_tx":   p2pTx,
+	})
 }
 
 func shortID(id string) string {

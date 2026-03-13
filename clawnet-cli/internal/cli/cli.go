@@ -290,11 +290,16 @@ type topoState struct {
 
 // trafficHistory stores samples for the sparkline graph
 type trafficHistory struct {
-	rxSamples []float64
-	txSamples []float64
-	lastRx    uint64
-	lastTx    uint64
-	lastTime  time.Time
+	nicName    string
+	nicRx      []float64
+	nicTx      []float64
+	lastNicRx  uint64
+	lastNicTx  uint64
+	p2pRx      []float64
+	p2pTx      []float64
+	lastP2pRx  uint64
+	lastP2pTx  uint64
+	lastTime   time.Time
 }
 
 func cmdTopo() error {
@@ -509,8 +514,11 @@ type creditInfo struct {
 
 // trafficStats from daemon /api/traffic
 type trafficStats struct {
-	RxBytes uint64 `json:"rx_bytes"`
-	TxBytes uint64 `json:"tx_bytes"`
+	NicName string `json:"nic_name"`
+	NicRx   uint64 `json:"nic_rx"`
+	NicTx   uint64 `json:"nic_tx"`
+	P2pRx   uint64 `json:"p2p_rx"`
+	P2pTx   uint64 `json:"p2p_tx"`
 }
 
 func fetchGeoPeers(base string) []peerGeoData {
@@ -576,18 +584,21 @@ func updateTraffic(t *trafficHistory, base string) {
 	if err := json.NewDecoder(resp.Body).Decode(&ts); err != nil {
 		return
 	}
+	t.nicName = ts.NicName
 	now := time.Now()
 	if !t.lastTime.IsZero() {
 		dt := now.Sub(t.lastTime).Seconds()
 		if dt > 0 {
-			rxRate := float64(ts.RxBytes-t.lastRx) / dt
-			txRate := float64(ts.TxBytes-t.lastTx) / dt
-			t.rxSamples = appendSample(t.rxSamples, rxRate, 60)
-			t.txSamples = appendSample(t.txSamples, txRate, 60)
+			t.nicRx = appendSample(t.nicRx, float64(ts.NicRx-t.lastNicRx)/dt, 60)
+			t.nicTx = appendSample(t.nicTx, float64(ts.NicTx-t.lastNicTx)/dt, 60)
+			t.p2pRx = appendSample(t.p2pRx, float64(ts.P2pRx-t.lastP2pRx)/dt, 60)
+			t.p2pTx = appendSample(t.p2pTx, float64(ts.P2pTx-t.lastP2pTx)/dt, 60)
 		}
 	}
-	t.lastRx = ts.RxBytes
-	t.lastTx = ts.TxBytes
+	t.lastNicRx = ts.NicRx
+	t.lastNicTx = ts.NicTx
+	t.lastP2pRx = ts.P2pRx
+	t.lastP2pTx = ts.P2pTx
 	t.lastTime = now
 }
 
@@ -777,7 +788,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 	}
 
 	gH := globeRows
-	gW := gH * 2
+	gW := gH*5/2 // stretch globe horizontally
 	if gW > innerW {
 		gW = innerW
 		gH = gW / 2
@@ -1079,7 +1090,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 
 	// ── Help line — ASCII-only symbols to avoid CJK width problems ──
 	panelNames := []string{"Self", "Peers", "Globe"}
-	help := fmt.Sprintf(" <>/Tab:Switch [%s]  Enter:Detail  q:Quit  *:You(%d)  @:Peer(%d)",
+	help := fmt.Sprintf(" <>/Tab:Switch [%s]  Enter:Detail  q:Quit  @:You(%d)  *:Peer(%d)",
 		panelNames[state.activePanel], 1, stats.Peers)
 	emitRow(&sb, cHelp+help+cReset, innerW)
 
@@ -1150,7 +1161,7 @@ func renderDetailView(peers []peerGeoData, termW, termH int, header string, stat
 // renderSelfDetail shows extended self node information
 func renderSelfDetail(pInfos []peerInfo, stats networkStats, w int, now int64) []string {
 	var lines []string
-	lines = append(lines, cTitle+" * My Node -- Detailed View"+cReset)
+	lines = append(lines, cTitle+" @ My Node -- Detailed View"+cReset)
 	lines = append(lines, "")
 
 	var self *peerInfo
@@ -1421,36 +1432,44 @@ func renderClawNetStats(pInfos []peerInfo, stats networkStats, w int, now int64,
 	lines = append(lines, "")
 	lines = append(lines, " "+cTitle+"Density Legend"+cReset)
 	lines = append(lines,
-		"   "+densityColor(1)+"@"+cReset+" 1 node  "+
-			densityColor(2)+"@"+cReset+" 2-3 nodes  "+
-			densityColor(5)+"@"+cReset+" 4-6 nodes  "+
-			densityColor(8)+"@"+cReset+" 7+ nodes")
+		"   "+densityColor(1)+"*"+cReset+" 1 node  "+
+			densityColor(2)+"*"+cReset+" 2-3 nodes  "+
+			densityColor(5)+"*"+cReset+" 4-6 nodes  "+
+			densityColor(8)+"*"+cReset+" 7+ nodes")
 
 	// Network traffic sparkline
+	sparkW := w - 22
+	if sparkW > 60 {
+		sparkW = 60
+	}
+	if sparkW < 10 {
+		sparkW = 10
+	}
+
+	nicLabel := traffic.nicName
+	if nicLabel == "" {
+		nicLabel = "NIC"
+	}
 	lines = append(lines, "")
-	lines = append(lines, " "+cTitle+"Network Traffic"+cReset)
-	if len(traffic.rxSamples) > 0 || len(traffic.txSamples) > 0 {
-		sparkW := w - 20
-		if sparkW > 60 {
-			sparkW = 60
-		}
-		if sparkW < 10 {
-			sparkW = 10
-		}
-		rxLine := renderSparkline(traffic.rxSamples, sparkW)
-		txLine := renderSparkline(traffic.txSamples, sparkW)
-		rxLast := ""
-		txLast := ""
-		if len(traffic.rxSamples) > 0 {
-			rxLast = formatBytes(traffic.rxSamples[len(traffic.rxSamples)-1]) + "/s"
-		}
-		if len(traffic.txSamples) > 0 {
-			txLast = formatBytes(traffic.txSamples[len(traffic.txSamples)-1]) + "/s"
-		}
-		lines = append(lines, fmt.Sprintf("   RX %s %s", rxLine, rxLast))
-		lines = append(lines, fmt.Sprintf("   TX %s %s", txLine, txLast))
+	lines = append(lines, " "+cTitle+nicLabel+" Traffic"+cReset)
+	if len(traffic.nicRx) > 0 || len(traffic.nicTx) > 0 {
+		rxLast := fmtRate(traffic.nicRx)
+		txLast := fmtRate(traffic.nicTx)
+		lines = append(lines, fmt.Sprintf("   RX %s %s", renderSparkline(traffic.nicRx, sparkW), rxLast))
+		lines = append(lines, fmt.Sprintf("   TX %s %s", renderSparkline(traffic.nicTx, sparkW), txLast))
 	} else {
-		lines = append(lines, cDim+"   (awaiting traffic data...)"+cReset)
+		lines = append(lines, cDim+"   (awaiting data...)"+cReset)
+	}
+
+	lines = append(lines, "")
+	lines = append(lines, " "+cTitle+"ClawNet: P2P Traffic"+cReset)
+	if len(traffic.p2pRx) > 0 || len(traffic.p2pTx) > 0 {
+		rxLast := fmtRate(traffic.p2pRx)
+		txLast := fmtRate(traffic.p2pTx)
+		lines = append(lines, fmt.Sprintf("   RX %s %s", renderSparkline(traffic.p2pRx, sparkW), rxLast))
+		lines = append(lines, fmt.Sprintf("   TX %s %s", renderSparkline(traffic.p2pTx, sparkW), txLast))
+	} else {
+		lines = append(lines, cDim+"   (awaiting data...)"+cReset)
 	}
 
 	return lines
@@ -1504,6 +1523,13 @@ func formatBytes(b float64) string {
 	return fmt.Sprintf("%.1fMB", b/1048576)
 }
 
+func fmtRate(samples []float64) string {
+	if len(samples) == 0 {
+		return "0B/s"
+	}
+	return formatBytes(samples[len(samples)-1]) + "/s"
+}
+
 // ── Helper: build self info lines for bottom panel ──
 
 func buildSelfLines(pInfos []peerInfo, stats networkStats, selfW, bottomH int) []string {
@@ -1523,7 +1549,7 @@ func buildSelfLines(pInfos []peerInfo, stats networkStats, selfW, bottomH int) [
 	if selfPeer != nil {
 		insW := selfW - 2
 		lines := []string{
-			fmt.Sprintf("* %s", truncStr(selfPeer.shortID, insW-2)),
+			fmt.Sprintf("@ %s", truncStr(selfPeer.shortID, insW-2)),
 		}
 		if stats.PeerID != "" {
 			lines = append(lines, fmt.Sprintf("  ID: %s", truncStr(stats.PeerID, insW-6)))
