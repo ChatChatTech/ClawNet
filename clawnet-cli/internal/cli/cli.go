@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -22,30 +23,39 @@ import (
 
 // 🦞 ClawNet Lobster Theme — ANSI color palette
 const (
-	cBorder    = "\033[38;2;230;57;70m"  // Lobster Red #E63946 — borders
-	cTitle     = "\033[1;38;2;241;250;238m" // Sea Foam bold — title text
-	cSelf      = "\033[1;38;2;247;127;0m"  // Coral Orange bold #F77F00 — ★ self
-	cPeer      = "\033[1;38;2;230;57;70m"  // Lobster Red bold #E63946 — @ peers
-	cCoast     = "\033[38;2;69;123;157m"   // Tidal Blue #457B9D — coastline
-	cLand      = "\033[38;2;29;53;87m"     // Deep Ocean #1D3557 — land
-	cOcean     = "\033[2;38;2;29;53;87m"   // Deep Ocean dim — ocean dots
-	cEdge      = "\033[2;38;2;230;57;70m"  // Lobster Red dim — globe edge ()
-	cSelfInfo  = "\033[38;2;241;250;238m"  // Sea Foam #F1FAEE — self panel
-	cPeerInfo  = "\033[38;2;247;127;0m"    // Coral Orange #F77F00 — peer cards
-	cHelp      = "\033[2;37m"              // dim white — help line
-        cBanner    = "\033[1;38;2;230;57;70m"  // Bold Lobster Red — ASCII banner
-        cReset     = "\033[0m"
+	cBorder   = "\033[38;2;230;57;70m"     // Lobster Red #E63946 — borders
+	cTitle    = "\033[1;38;2;241;250;238m"  // Sea Foam bold — title text
+	cSelf     = "\033[1;38;2;247;127;0m"    // Coral Orange bold #F77F00 — ★ self
+	cCoast    = "\033[38;2;69;123;157m"     // Tidal Blue #457B9D — coastline
+	cLand     = "\033[38;2;29;53;87m"       // Deep Ocean #1D3557 — land
+	cOcean    = "\033[2;38;2;29;53;87m"     // Deep Ocean dim — ocean dots
+	cEdge     = "\033[2;38;2;230;57;70m"    // Lobster Red dim — globe edge ()
+	cSelfInfo = "\033[38;2;241;250;238m"    // Sea Foam #F1FAEE — self panel
+	cPeerInfo = "\033[38;2;247;127;0m"      // Coral Orange #F77F00 — peer cards
+	cHelp     = "\033[2;37m"               // dim white — help line
+	cBanner   = "\033[1;38;2;230;57;70m"   // Bold Lobster Red — ASCII banner
+	cHighlight = "\033[7;38;2;230;57;70m"  // Reverse video — highlight frame
+	cDim      = "\033[2m"                  // dim attribute
+	cReset    = "\033[0m"
 )
 
 var clawnetBanner = []string{
-        "    ____    ___                          __  __          __",
-        "   /\\  _`\\ /\\_ \\                        /\\ \\/\\ \\        /\\ \\__",
-        "   \\ \\ \\/\\_\\//\\ \\      __     __  __  __\\ \\ `\\\\ \\     __\\ \\ ,_\\",
-        "    \\ \\ \\/_/_\\ \\ \\   /'__`\\  /\\ \\/\\ \\/\\ \\\\ \\ , ` \\  /'__`\\ \\ \\/",
-        "     \\ \\ \\L\\ \\\\_\\ \\_/\\ \\L\\.\\_\\ \\ \\_/ \\_/ \\\\ \\ \\`\\ \\/\\  __/\\ \\ \\_",
-        "      \\ \\____//\\____\\ \\__/.\\_\\\\ \\___x___/' \\ \\_\\ \\_\\ \\____\\\\ \\__\\",
-        "       \\/___/ \\/____/\\/__/\\/_/ \\/__//__/    \\/_/\\/_/\\/____/ \\/__/",
+	"    ____    ___                          __  __          __",
+	"   /\\  _`\\ /\\_ \\                        /\\ \\/\\ \\        /\\ \\__",
+	"   \\ \\ \\/\\_\\//\\ \\      __     __  __  __\\ \\ `\\\\ \\     __\\ \\ ,_\\",
+	"    \\ \\ \\/_/_\\ \\ \\   /'__`\\  /\\ \\/\\ \\/\\ \\\\ \\ , ` \\  /'__`\\ \\ \\/",
+	"     \\ \\ \\L\\ \\\\_\\ \\_/\\ \\L\\.\\_\\ \\ \\_/ \\_/ \\\\ \\ \\`\\ \\/\\  __/\\ \\ \\_",
+	"      \\ \\____//\\____\\ \\__/.\\_\\\\ \\___x___/' \\ \\_\\ \\_\\ \\____\\\\ \\__\\",
+	"       \\/___/ \\/____/\\/__/\\/_/ \\/__//__/    \\/_/\\/_/\\/____/ \\/__/",
 }
+
+// Navigation panels
+const (
+	panelSelf  = 0
+	panelPeers = 1
+	panelGlobe = 2
+	panelCount = 3
+)
 
 func Execute() error {
 	if len(os.Args) < 2 {
@@ -175,6 +185,14 @@ func cmdPeers() error {
 	return apiGet("/api/peers")
 }
 
+// ── Topo command with keyboard navigation ──
+
+type topoState struct {
+	activePanel  int  // panelSelf, panelPeers, panelGlobe
+	detailMode   bool // true = detail view, false = globe view
+	peerScrollOff int // scroll offset in peer detail list
+}
+
 func cmdTopo() error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -202,14 +220,20 @@ func cmdTopo() error {
 	fmt.Print("\033[?25l")
 	defer fmt.Print("\033[?25l\033[?1049l")
 
-	quit := make(chan struct{})
+	// Input channel: send key codes
+	keyCh := make(chan byte, 64)
+	escCh := make(chan string, 16)
 	go func() {
-		buf := make([]byte, 1)
+		buf := make([]byte, 8)
 		for {
-			os.Stdin.Read(buf)
-			if buf[0] == 'q' || buf[0] == 'Q' || buf[0] == 3 {
-				close(quit)
-				return
+			n, err := os.Stdin.Read(buf)
+			if err != nil || n == 0 {
+				continue
+			}
+			if n == 1 {
+				keyCh <- buf[0]
+			} else if n >= 3 && buf[0] == 27 && buf[1] == '[' {
+				escCh <- string(buf[2:n])
 			}
 		}
 	}()
@@ -228,15 +252,79 @@ func cmdTopo() error {
 	var headerCache string
 	var lastTermW int
 
+	state := &topoState{activePanel: panelGlobe}
+
 	for {
+		// Process all pending input
+		drainInput:
+		for {
+			select {
+			case key := <-keyCh:
+				switch key {
+				case 'q', 'Q':
+					if state.detailMode {
+						state.detailMode = false
+						needClear = true
+					} else {
+						return nil
+					}
+				case 3: // Ctrl-C
+					return nil
+				case '\t': // Tab — cycle panels
+					if !state.detailMode {
+						state.activePanel = (state.activePanel + 1) % panelCount
+					}
+				case 13: // Enter — open detail
+					if !state.detailMode {
+						state.detailMode = true
+						state.peerScrollOff = 0
+						needClear = true
+					}
+				}
+			case esc := <-escCh:
+				switch esc {
+				case "A": // Up
+					if state.detailMode && state.activePanel == panelPeers {
+						if state.peerScrollOff > 0 {
+							state.peerScrollOff--
+						}
+					}
+				case "B": // Down
+					if state.detailMode && state.activePanel == panelPeers {
+						state.peerScrollOff++
+					}
+				case "C": // Right — next panel
+					if !state.detailMode {
+						state.activePanel = (state.activePanel + 1) % panelCount
+					}
+				case "D": // Left — prev panel
+					if !state.detailMode {
+						state.activePanel = (state.activePanel - 1 + panelCount) % panelCount
+					}
+				case "Z": // Shift+Tab — prev panel
+					if !state.detailMode {
+						state.activePanel = (state.activePanel - 1 + panelCount) % panelCount
+					}
+				}
+			default:
+				break drainInput
+			}
+		}
+
 		select {
-		case <-quit:
-			return nil
 		case <-sigCh:
 			needClear = true
 			headerCache = ""
 		case <-ticker.C:
 			peers := fetchGeoPeers(base)
+			// Stable sort by PeerID to prevent flickering
+			sort.Slice(peers, func(i, j int) bool {
+				if peers[i].IsSelf != peers[j].IsSelf {
+					return peers[i].IsSelf // self first
+				}
+				return peers[i].PeerID < peers[j].PeerID
+			})
+
 			w, h, err := term.GetSize(fd)
 			if err != nil {
 				w, h = 80, 24
@@ -255,10 +343,18 @@ func cmdTopo() error {
 				headerCache = renderHeader(w, netStats)
 				lastTermW = w
 			}
-			frame := renderTopoFrame(peers, w, h, angle, headerCache, netStats)
+
+			var frame string
+			if state.detailMode {
+				frame = renderDetailView(peers, w, h, headerCache, netStats, state)
+			} else {
+				frame = renderTopoFrame(peers, w, h, angle, headerCache, netStats, state)
+			}
 			fmt.Print("\033[H")
 			fmt.Print(frame)
-			angle += 0.015
+			if !state.detailMode {
+				angle += 0.015
+			}
 		}
 	}
 }
@@ -417,7 +513,22 @@ func truncStr(s string, maxW int) string {
 	return string(r[:maxW-1]) + "…"
 }
 
-// renderHeader builds the static top 2 lines (title + separator).
+// densityColor returns an ANSI color string for a peer marker based on how many
+// peers share the same grid cell. 1=dim red, 2-3=normal red, 4-6=bright orange, 7+=yellow
+func densityColor(count int) string {
+	switch {
+	case count <= 1:
+		return "\033[38;2;140;30;35m" // dim dark red
+	case count <= 3:
+		return "\033[38;2;230;57;70m" // normal lobster red
+	case count <= 6:
+		return "\033[1;38;2;247;127;0m" // bright orange
+	default:
+		return "\033[1;38;2;255;220;50m" // bright yellow
+	}
+}
+
+// renderHeader builds the static top line (title + separator).
 func renderHeader(termW int, stats networkStats) string {
 	innerW := termW - 2
 	if innerW < 10 {
@@ -425,12 +536,9 @@ func renderHeader(termW int, stats networkStats) string {
 	}
 	var sb strings.Builder
 
-	// === ROW 1: TOP BORDER + TITLE ===
 	titleText := " ClawNet Agent Network "
 	statsText := fmt.Sprintf("Nodes:%d  Credits:%.0f  Topics:%d  v%s",
 		stats.Peers+1, stats.Balance, len(stats.Topics), daemon.Version)
-	// Layout: ┌──[title]──────────┐  with stats embedded in title area
-	// Combine into one display string
 	headerDisplay := titleText + "  " + statsText + " "
 	headerLen := len([]rune(headerDisplay))
 	fillTotal := innerW - headerLen
@@ -452,15 +560,54 @@ func renderHeader(termW int, stats networkStats) string {
 	return sb.String()
 }
 
-// renderTopoFrame builds one complete frame.
-func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, header string, stats networkStats) string {
+// ── Internal peer info type ──
+
+type peerInfo struct {
+	shortID        string
+	peerID         string
+	location       string
+	country        string
+	region         string
+	city           string
+	lat, lon       float64
+	isSelf         bool
+	visible        bool
+	latencyMs      int64
+	connectedSince int64
+}
+
+func buildPeerInfos(peers []peerGeoData) []peerInfo {
+	pInfos := make([]peerInfo, len(peers))
+	for i, p := range peers {
+		pi := peerInfo{
+			shortID:        p.ShortID,
+			peerID:         p.PeerID,
+			location:       p.Location,
+			isSelf:         p.IsSelf,
+			latencyMs:      p.LatencyMs,
+			connectedSince: p.ConnectedSince,
+		}
+		if p.Geo != nil {
+			pi.country = p.Geo.Country
+			pi.region = p.Geo.Region
+			pi.city = p.Geo.City
+			pi.lat = p.Geo.Latitude
+			pi.lon = p.Geo.Longitude
+		}
+		pInfos[i] = pi
+	}
+	return pInfos
+}
+
+// ── Main topo (globe) frame ──
+
+func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, header string, stats networkStats, state *topoState) string {
 	innerW := termW - 2
 	if innerW < 10 {
 		innerW = 10
 	}
 
-	// Layout: 1 header + globeH + 1 sep + bottomH + 1 help + 1 bottom border
-	// Bottom: self info on left, peer cards on right
+	// Layout: 1 header + globeH + 1 sep + bottomH + 1 sep + 1 help + 1 bottom
 	bottomH := 8
 	if termH < 30 {
 		bottomH = 6
@@ -468,13 +615,11 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 	if termH < 20 {
 		bottomH = 4
 	}
-	globeH := termH - 1 - 1 - bottomH - 1 - 1 - 1 // header, sep_above, bottom, sep_below, help, frame
+	globeH := termH - 1 - 1 - bottomH - 1 - 1 - 1
 	if globeH < 5 {
 		globeH = 5
 	}
 
-	// Strictly circular globe: terminal chars are ~2:1 (height:width)
-	// For a circle: gW (cols) = gH (rows) * 2
 	gH := globeH
 	gW := gH * 2
 	if gW > innerW {
@@ -484,7 +629,6 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 			gH = 5
 		}
 	}
-	// Center the globe horizontally
 	globePadL := (innerW - gW) / 2
 
 	rX := float64(gW) / 2.0 * 0.95
@@ -517,11 +661,11 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 
 			var ch rune
 			switch terrain {
-			case 2: // coastline
+			case 2:
 				ch = '#'
-			case 1: // land
+			case 1:
 				ch = '.'
-			default: // ocean
+			default:
 				if r2 > 0.92 {
 					if sx > int(cX) {
 						ch = ')'
@@ -536,23 +680,9 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 		}
 	}
 
-	// ── Project all peers onto globe with jitter to avoid overlap ──
-	type peerInfo struct {
-		shortID        string
-		peerID         string
-		location       string
-		country        string
-		region         string
-		city           string
-		lat, lon       float64
-		isSelf         bool
-		visible        bool
-		latencyMs      int64
-		connectedSince int64
-	}
-	pInfos := make([]peerInfo, len(peers))
+	// ── Project peers onto globe ──
+	pInfos := buildPeerInfos(peers)
 
-	// First pass: compute raw screen positions for visible peers
 	type markerPos struct {
 		sx, sy int
 		idx    int
@@ -561,21 +691,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 	var markers []markerPos
 
 	for i, p := range peers {
-		pi := peerInfo{
-			shortID:        p.ShortID,
-			peerID:         p.PeerID,
-			location:       p.Location,
-			isSelf:         p.IsSelf,
-			latencyMs:      p.LatencyMs,
-			connectedSince: p.ConnectedSince,
-		}
 		if p.Geo != nil {
-			pi.country = p.Geo.Country
-			pi.region = p.Geo.Region
-			pi.city = p.Geo.City
-			pi.lat = p.Geo.Latitude
-			pi.lon = p.Geo.Longitude
-
 			latR := p.Geo.Latitude * math.Pi / 180.0
 			lonR := p.Geo.Longitude * math.Pi / 180.0
 			px := math.Cos(latR) * math.Sin(lonR)
@@ -584,7 +700,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 			rx := px*math.Cos(rotation) - pz*math.Sin(rotation)
 			rz := px*math.Sin(rotation) + pz*math.Cos(rotation)
 			if rz > 0.05 {
-				pi.visible = true
+				pInfos[i].visible = true
 				sx := int(cX + rx*rX)
 				sy := int(cY - py*rY)
 				if sx >= 0 && sx < gW && sy >= 0 && sy < gH {
@@ -592,11 +708,20 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 				}
 			}
 		}
-		pInfos[i] = pi
 	}
 
-	// Second pass: jitter overlapping markers so each gets a unique cell
-	// Use a spiral pattern around the original position
+	// ── Density: count peers per raw grid cell BEFORE jitter ──
+	cellCount := make(map[[2]int]int)
+	for _, m := range markers {
+		cellCount[[2]int{m.sx, m.sy}]++
+	}
+	// Store density for each marker
+	markerDensity := make([]int, len(markers))
+	for mi, m := range markers {
+		markerDensity[mi] = cellCount[[2]int{m.sx, m.sy}]
+	}
+
+	// ── Jitter overlapping markers ──
 	occupied := make(map[[2]int]bool)
 	spiralDx := []int{0, 1, 0, -1, 1, -1, 1, -1, 2, -2, 0, 0, 2, -2, 2, -2, 1, -1, 1, -1, 3, -3, 0, 0, 2, -2, 3, -3}
 	spiralDy := []int{0, 0, -1, 0, -1, -1, 1, 1, 0, 0, -2, 2, -1, -1, 1, 1, -2, -2, 2, 2, 0, 0, -3, 3, -2, -2, -1, -1}
@@ -609,7 +734,6 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 			ny := m.sy + spiralDy[si]
 			key := [2]int{nx, ny}
 			if nx >= 0 && nx < gW && ny >= 0 && ny < gH && !occupied[key] {
-				// Check it's within the globe circle
 				fnx := (float64(nx) - cX) / rX
 				fny := (float64(ny) - cY) / rY
 				if fnx*fnx+fny*fny <= 1.0 {
@@ -622,88 +746,87 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 			}
 		}
 		if !placed {
-			// Last resort: place at original even if overlapping
 			occupied[[2]int{m.sx, m.sy}] = true
 		}
 	}
 
-	// Place markers on globe: ★ for self, @ for peers
-	for _, m := range markers {
-		if m.isSelf {
-			globe[m.sy][m.sx] = '★'
-		} else {
-			globe[m.sy][m.sx] = '@'
+	// ── Color map for globe cells: track density-colored markers ──
+	type markerCell struct {
+		isSelf  bool
+		density int
+	}
+	globeMarkers := make(map[[2]int]markerCell)
+	for mi, m := range markers {
+		globeMarkers[[2]int{m.sx, m.sy}] = markerCell{isSelf: m.isSelf, density: markerDensity[mi]}
+	}
+
+	// ── Banner overlay: bottom-LEFT ──
+	type bnPos struct{ row, col int }
+	bnOverlay := make(map[bnPos]rune)
+	bnW := 0
+	for _, l := range clawnetBanner {
+		if len([]rune(l)) > bnW {
+			bnW = len([]rune(l))
+		}
+	}
+	bnStartRow := gH - len(clawnetBanner) - 1
+	bnStartCol := 1 // left aligned with 1 char padding
+	for i, line := range clawnetBanner {
+		for j, ch := range []rune(line) {
+			if ch != ' ' {
+				bnOverlay[bnPos{bnStartRow + i, bnStartCol + j}] = ch
+			}
 		}
 	}
 
 	// ── Build frame ──
 	var sb strings.Builder
 	sb.Grow(termW * termH * 4)
-
-	// Header (cached)
 	sb.WriteString(header)
 
-	// ── Banner overlay: compute positions in innerW coordinates ──
-        type bnPos struct{ row, col int }
-        bnOverlay := make(map[bnPos]rune)
-        bnW := 0
-        for _, l := range clawnetBanner {
-                if len([]rune(l)) > bnW {
-                        bnW = len([]rune(l))
-                }
-        }
-        bnStartRow := gH - len(clawnetBanner) - 1
-        bnStartCol := innerW - bnW - 1
-        if bnStartCol < 0 {
-                bnStartCol = 0
-        }
-        for i, line := range clawnetBanner {
-                for j, ch := range []rune(line) {
-                        if ch != ' ' {
-                                bnOverlay[bnPos{bnStartRow + i, bnStartCol + j}] = ch
-                        }
-                }
-        }
-
-        // Globe rows with banner overlay
-        for row := 0; row < gH; row++ {
-                sb.WriteString(cBorder + "│" + cReset)
-                for col := 0; col < innerW; col++ {
-                        if ch, ok := bnOverlay[bnPos{row, col}]; ok {
-                                sb.WriteString(cBanner)
-                                sb.WriteRune(ch)
-                                sb.WriteString(cReset)
-                                continue
-                        }
-                        globeCol := col - globePadL
-                        if globeCol >= 0 && globeCol < gW {
-                                ch := globe[row][globeCol]
-                                switch ch {
-                                case '★':
-                                        sb.WriteString(cSelf + "★" + cReset)
-                                case '@':
-                                        sb.WriteString(cPeer + "@" + cReset)
-                                case '#':
-                                        sb.WriteString(cCoast + "#" + cReset)
-                                case '.':
-                                        sb.WriteString(cLand + "." + cReset)
-                                case '(', ')':
-                                        sb.WriteString(cEdge)
-                                        sb.WriteRune(ch)
-                                        sb.WriteString(cReset)
-                                case '·':
-                                        sb.WriteString(cOcean + "·" + cReset)
-                                default:
-                                        sb.WriteByte(' ')
-                                }
-                        } else {
-                                sb.WriteByte(' ')
-                        }
-                }
+	// Globe rows with banner overlay + density coloring
+	for row := 0; row < gH; row++ {
+		sb.WriteString(cBorder + "│" + cReset)
+		for col := 0; col < innerW; col++ {
+			// Banner overlay takes priority
+			if ch, ok := bnOverlay[bnPos{row, col}]; ok {
+				sb.WriteString(cBanner)
+				sb.WriteRune(ch)
+				sb.WriteString(cReset)
+				continue
+			}
+			globeCol := col - globePadL
+			if globeCol >= 0 && globeCol < gW {
+				if mc, ok := globeMarkers[[2]int{globeCol, row}]; ok {
+					if mc.isSelf {
+						sb.WriteString(cSelf + "★" + cReset)
+					} else {
+						sb.WriteString(densityColor(mc.density) + "@" + cReset)
+					}
+				} else {
+					ch := globe[row][globeCol]
+					switch ch {
+					case '#':
+						sb.WriteString(cCoast + "#" + cReset)
+					case '.':
+						sb.WriteString(cLand + "." + cReset)
+					case '(', ')':
+						sb.WriteString(cEdge)
+						sb.WriteRune(ch)
+						sb.WriteString(cReset)
+					case '·':
+						sb.WriteString(cOcean + "·" + cReset)
+					default:
+						sb.WriteByte(' ')
+					}
+				}
+			} else {
+				sb.WriteByte(' ')
+			}
+		}
 		sb.WriteString(cBorder + "│" + cReset + "\033[K\r\n")
 	}
 
-	// ── Separator above bottom panel (with ┬ for vertical divider) ──
 	// ── Bottom panel layout ──
 	selfW := innerW * 2 / 5
 	if selfW < 28 {
@@ -712,20 +835,431 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 	if selfW > 50 {
 		selfW = 50
 	}
-	peerW := innerW - selfW - 1 // 1 for vertical separator
+	peerW := innerW - selfW - 1
 	if peerW < 20 {
 		peerW = 20
 		selfW = innerW - peerW - 1
 	}
 
-	// Emit separator above bottom panel: ├──...──┬──...──┤
+	// Highlight chars for separator
+	selfHL := state.activePanel == panelSelf
+	peerHL := state.activePanel == panelPeers
+	globeHL := state.activePanel == panelGlobe
+
+	// ── Separator above bottom panel ──
 	sb.WriteString(cBorder + "├")
-	sb.WriteString(strings.Repeat("─", selfW))
+	if selfHL {
+		sb.WriteString(cHighlight + strings.Repeat("━", selfW) + cReset + cBorder)
+	} else {
+		sb.WriteString(strings.Repeat("─", selfW))
+	}
 	sb.WriteString("┬")
-	sb.WriteString(strings.Repeat("─", peerW))
+	if peerHL {
+		sb.WriteString(cHighlight + strings.Repeat("━", peerW) + cReset + cBorder)
+	} else {
+		sb.WriteString(strings.Repeat("─", peerW))
+	}
 	sb.WriteString("┤" + cReset + "\033[K\r\n")
 
 	// Build self info lines
+	selfLines := buildSelfLines(pInfos, stats, selfW, bottomH)
+
+	// Build peer card content
+	peerLines := buildPeerLines(pInfos, peerW, bottomH)
+
+	// Emit bottom rows
+	for i := 0; i < bottomH; i++ {
+		sb.WriteString(cBorder + "│" + cReset)
+		if selfHL {
+			sb.WriteString(cHighlight)
+		} else {
+			sb.WriteString(cSelfInfo)
+		}
+		sb.WriteString(selfLines[i])
+		sb.WriteString(cReset)
+		sb.WriteString(cBorder + "│" + cReset)
+		if peerHL {
+			sb.WriteString(cHighlight)
+		} else {
+			sb.WriteString(cPeerInfo)
+		}
+		pl := peerLines[i]
+		if len([]rune(pl)) > peerW {
+			pl = string([]rune(pl)[:peerW])
+		}
+		sb.WriteString(pl)
+		sb.WriteString(cReset)
+		sb.WriteString(cBorder + "│" + cReset + "\033[K\r\n")
+	}
+
+	// ── Separator below bottom panel ──
+	sb.WriteString(cBorder + "├")
+	if selfHL {
+		sb.WriteString(cHighlight + strings.Repeat("━", selfW) + cReset + cBorder)
+	} else {
+		sb.WriteString(strings.Repeat("─", selfW))
+	}
+	sb.WriteString("┴")
+	if peerHL {
+		sb.WriteString(cHighlight + strings.Repeat("━", peerW) + cReset + cBorder)
+	} else {
+		sb.WriteString(strings.Repeat("─", peerW))
+	}
+	sb.WriteString("┤" + cReset + "\033[K\r\n")
+
+	// ── Help line ──
+	panelNames := []string{"Self", "Peers", "Globe"}
+	help := fmt.Sprintf(" ←→/Tab:Switch [%s]  Enter:Detail  q:Quit  ★:You(%d)  @:Peer(%d)",
+		panelNames[state.activePanel], 1, stats.Peers)
+	if globeHL {
+		help += "  🌐"
+	}
+	helpLen := len([]rune(help))
+	helpPad := innerW - helpLen
+	if helpPad < 0 {
+		helpPad = 0
+		help = string([]rune(help)[:innerW])
+	}
+	sb.WriteString(cBorder + "│" + cHelp)
+	sb.WriteString(help)
+	sb.WriteString(strings.Repeat(" ", helpPad))
+	sb.WriteString(cBorder + "│" + cReset + "\033[K\r\n")
+
+	// ── Bottom frame ──
+	sb.WriteString(cBorder + "└")
+	sb.WriteString(strings.Repeat("─", innerW))
+	sb.WriteString("┘" + cReset + "\033[K")
+
+	return sb.String()
+}
+
+// ── Detail view (entered by pressing Enter) ──
+
+func renderDetailView(peers []peerGeoData, termW, termH int, header string, stats networkStats, state *topoState) string {
+	innerW := termW - 2
+	if innerW < 10 {
+		innerW = 10
+	}
+	contentH := termH - 4 // header + sep + help + bottom
+
+	var sb strings.Builder
+	sb.Grow(termW * termH * 4)
+	sb.WriteString(header)
+
+	pInfos := buildPeerInfos(peers)
+	now := time.Now().Unix()
+
+	var lines []string
+
+	switch state.activePanel {
+	case panelSelf:
+		lines = renderSelfDetail(pInfos, stats, innerW, now)
+	case panelPeers:
+		lines = renderPeersDetail(pInfos, innerW, now, state)
+	case panelGlobe:
+		lines = renderClawNetStats(pInfos, stats, innerW, now)
+	}
+
+	// Emit content lines
+	for i := 0; i < contentH; i++ {
+		sb.WriteString(cBorder + "│" + cReset)
+		if i < len(lines) {
+			line := lines[i]
+			lineR := []rune(line)
+			if len(lineR) > innerW {
+				lineR = lineR[:innerW]
+			}
+			sb.WriteString(string(lineR))
+			pad := innerW - len(lineR)
+			if pad > 0 {
+				sb.WriteString(strings.Repeat(" ", pad))
+			}
+		} else {
+			sb.WriteString(strings.Repeat(" ", innerW))
+		}
+		sb.WriteString(cBorder + "│" + cReset + "\033[K\r\n")
+	}
+
+	// ── Separator ──
+	sb.WriteString(cBorder + "├")
+	sb.WriteString(strings.Repeat("─", innerW))
+	sb.WriteString("┤" + cReset + "\033[K\r\n")
+
+	// ── Help line ──
+	help := " q:Back"
+	if state.activePanel == panelPeers {
+		help = " ↑↓:Scroll  q:Back"
+	}
+	helpLen := len([]rune(help))
+	helpPad := innerW - helpLen
+	if helpPad < 0 {
+		helpPad = 0
+	}
+	sb.WriteString(cBorder + "│" + cHelp)
+	sb.WriteString(help)
+	sb.WriteString(strings.Repeat(" ", helpPad))
+	sb.WriteString(cBorder + "│" + cReset + "\033[K\r\n")
+
+	// ── Bottom border ──
+	sb.WriteString(cBorder + "└")
+	sb.WriteString(strings.Repeat("─", innerW))
+	sb.WriteString("┘" + cReset + "\033[K")
+
+	return sb.String()
+}
+
+// renderSelfDetail shows extended self node information
+func renderSelfDetail(pInfos []peerInfo, stats networkStats, w int, now int64) []string {
+	var lines []string
+	lines = append(lines, cTitle+" ★ My Node — Detailed View"+cReset)
+	lines = append(lines, "")
+
+	var self *peerInfo
+	for i := range pInfos {
+		if pInfos[i].isSelf {
+			self = &pInfos[i]
+			break
+		}
+	}
+	if self == nil && len(pInfos) > 0 {
+		self = &pInfos[0]
+	}
+
+	if self != nil {
+		lines = append(lines, cSelf+" Peer ID:    "+cReset+self.peerID)
+		lines = append(lines, cSelf+" Short ID:   "+cReset+self.shortID)
+		loc := self.location
+		if loc == "" || loc == "Unknown" {
+			loc = self.country
+		}
+		lines = append(lines, cSelf+" Location:   "+cReset+loc)
+		if self.city != "" {
+			lines = append(lines, cSelf+" City:       "+cReset+self.city)
+		}
+		if self.region != "" {
+			lines = append(lines, cSelf+" Region:     "+cReset+self.region)
+		}
+		if self.country != "" {
+			lines = append(lines, cSelf+" Country:    "+cReset+self.country)
+		}
+		lines = append(lines, cSelf+" Coords:     "+cReset+fmt.Sprintf("%.4f, %.4f", self.lat, self.lon))
+	}
+
+	lines = append(lines, "")
+	lines = append(lines, cTitle+" Network"+cReset)
+	lines = append(lines, cSelfInfo+" Credits:    "+cReset+fmt.Sprintf("%.1f (frozen: %.1f)", stats.Balance, stats.Frozen))
+	lines = append(lines, cSelfInfo+" Peers:      "+cReset+fmt.Sprintf("%d", stats.Peers))
+	lines = append(lines, cSelfInfo+" Topics:     "+cReset+fmt.Sprintf("%d", len(stats.Topics)))
+	if stats.StartedAt > 0 {
+		lines = append(lines, cSelfInfo+" Uptime:     "+cReset+formatDuration(now-stats.StartedAt))
+	}
+	lines = append(lines, cSelfInfo+" Version:    "+cReset+daemon.Version)
+
+	if len(stats.Topics) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, cTitle+" Subscribed Topics"+cReset)
+		for _, t := range stats.Topics {
+			lines = append(lines, cSelfInfo+"  · "+cReset+t)
+		}
+	}
+
+	return lines
+}
+
+// renderPeersDetail shows a scrollable list of all peers
+func renderPeersDetail(pInfos []peerInfo, w int, now int64, state *topoState) []string {
+	var peerEntries []peerInfo
+	for _, pi := range pInfos {
+		if !pi.isSelf {
+			peerEntries = append(peerEntries, pi)
+		}
+	}
+
+	var lines []string
+	lines = append(lines, cTitle+fmt.Sprintf(" Peers — %d connected", len(peerEntries))+cReset)
+	lines = append(lines, "")
+
+	if len(peerEntries) == 0 {
+		lines = append(lines, cDim+"  No peers connected"+cReset)
+		return lines
+	}
+
+	// Build all peer entry lines
+	var allEntries []string
+	for i, p := range peerEntries {
+		loc := p.city
+		if loc == "" {
+			loc = p.region
+		}
+		if loc == "" {
+			loc = p.country
+		}
+		if loc == "" {
+			loc = "?"
+		}
+		latStr := "-"
+		if p.latencyMs > 0 {
+			latStr = fmt.Sprintf("%dms", p.latencyMs)
+		}
+		upStr := "-"
+		if p.connectedSince > 0 {
+			upStr = formatDuration(now - p.connectedSince)
+		}
+
+		allEntries = append(allEntries,
+			fmt.Sprintf(cPeerInfo+"  %d. @%s"+cReset, i+1, p.shortID))
+		allEntries = append(allEntries,
+			fmt.Sprintf("     ID:  %s", truncStr(p.peerID, w-10)))
+		allEntries = append(allEntries,
+			fmt.Sprintf("     Loc: %s  Lat: %s  Up: %s", loc, latStr, upStr))
+		if p.lat != 0 || p.lon != 0 {
+			allEntries = append(allEntries,
+				fmt.Sprintf("     Coord: %.4f, %.4f", p.lat, p.lon))
+		}
+		allEntries = append(allEntries, "")
+	}
+
+	// Apply scroll offset
+	if state.peerScrollOff > len(allEntries)-1 {
+		state.peerScrollOff = len(allEntries) - 1
+	}
+	if state.peerScrollOff < 0 {
+		state.peerScrollOff = 0
+	}
+	visible := allEntries[state.peerScrollOff:]
+	lines = append(lines, visible...)
+
+	return lines
+}
+
+// renderClawNetStats shows a neofetch-style page with ASCII banner + stats
+func renderClawNetStats(pInfos []peerInfo, stats networkStats, w int, now int64) []string {
+	var lines []string
+
+	// Count peers by location
+	cityMap := make(map[string]int)
+	countryMap := make(map[string]int)
+	totalPeers := 0
+	for _, p := range pInfos {
+		if !p.isSelf {
+			totalPeers++
+		}
+		if p.city != "" {
+			cityMap[p.city]++
+		}
+		if p.country != "" {
+			countryMap[p.country]++
+		}
+	}
+
+	// Build stat labels + values (right side of banner)
+	type kv struct{ k, v string }
+	statsLines := []kv{
+		{"", cTitle + "ClawNet" + cReset + " " + cDim + "v" + daemon.Version + cReset},
+		{"", strings.Repeat("─", 30)},
+		{"Nodes", fmt.Sprintf("%d total (%d peers + self)", totalPeers+1, totalPeers)},
+		{"Credits", fmt.Sprintf("%.1f (frozen: %.1f)", stats.Balance, stats.Frozen)},
+		{"Topics", fmt.Sprintf("%d subscribed", len(stats.Topics))},
+	}
+	if stats.StartedAt > 0 {
+		statsLines = append(statsLines, kv{"Uptime", formatDuration(now - stats.StartedAt)})
+	}
+	if stats.PeerID != "" {
+		statsLines = append(statsLines, kv{"Peer ID", truncStr(stats.PeerID, w-75)})
+	}
+	statsLines = append(statsLines, kv{"Protocol", "libp2p + GossipSub + Kademlia DHT"})
+	statsLines = append(statsLines, kv{"Transport", "TCP + QUIC-v1, Noise encryption"})
+	statsLines = append(statsLines, kv{"Storage", "SQLite + FTS5 (BM25)"})
+
+	if len(countryMap) > 0 {
+		statsLines = append(statsLines, kv{"", ""})
+		// Sort countries for deterministic output
+		var countries []string
+		for c := range countryMap {
+			countries = append(countries, c)
+		}
+		sort.Strings(countries)
+		countryStr := ""
+		for i, c := range countries {
+			if i > 0 {
+				countryStr += ", "
+			}
+			countryStr += fmt.Sprintf("%s(%d)", c, countryMap[c])
+		}
+		statsLines = append(statsLines, kv{"Countries", countryStr})
+	}
+	if len(cityMap) > 0 {
+		var cities []string
+		for c := range cityMap {
+			cities = append(cities, c)
+		}
+		sort.Strings(cities)
+		cityStr := ""
+		for i, c := range cities {
+			if i > 0 {
+				cityStr += ", "
+			}
+			cityStr += fmt.Sprintf("%s(%d)", c, cityMap[c])
+		}
+		statsLines = append(statsLines, kv{"Cities", truncStr(cityStr, w-75)})
+	}
+
+	// Render neofetch-style: banner on left, stats on right
+	bannerW := 0
+	for _, l := range clawnetBanner {
+		if len([]rune(l)) > bannerW {
+			bannerW = len([]rune(l))
+		}
+	}
+	gap := 4
+
+	maxRows := len(clawnetBanner)
+	if len(statsLines) > maxRows {
+		maxRows = len(statsLines)
+	}
+
+	lines = append(lines, "")
+	for i := 0; i < maxRows; i++ {
+		var left string
+		if i < len(clawnetBanner) {
+			left = clawnetBanner[i]
+		}
+		// Pad left to bannerW
+		leftR := []rune(left)
+		padN := bannerW - len(leftR)
+		if padN < 0 {
+			padN = 0
+		}
+		leftPadded := cBanner + string(leftR) + cReset + strings.Repeat(" ", padN)
+		gapStr := strings.Repeat(" ", gap)
+
+		var right string
+		if i < len(statsLines) {
+			s := statsLines[i]
+			if s.k != "" {
+				right = cSelf + s.k + cReset + ": " + s.v
+			} else {
+				right = s.v
+			}
+		}
+		lines = append(lines, " "+leftPadded+gapStr+right)
+	}
+
+	// Density legend
+	lines = append(lines, "")
+	lines = append(lines, " "+cTitle+"Density Legend"+cReset)
+	lines = append(lines,
+		"   "+densityColor(1)+"@"+cReset+" 1 node  "+
+			densityColor(2)+"@"+cReset+" 2-3 nodes  "+
+			densityColor(5)+"@"+cReset+" 4-6 nodes  "+
+			densityColor(8)+"@"+cReset+" 7+ nodes")
+
+	return lines
+}
+
+// ── Helper: build self info lines for bottom panel ──
+
+func buildSelfLines(pInfos []peerInfo, stats networkStats, selfW, bottomH int) []string {
 	selfLines := make([]string, bottomH)
 	var selfPeer *peerInfo
 	for i := range pInfos {
@@ -734,14 +1268,13 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 			break
 		}
 	}
-	// Fallback: first entry is self
 	if selfPeer == nil && len(pInfos) > 0 {
 		selfPeer = &pInfos[0]
 	}
 
 	now := time.Now().Unix()
 	if selfPeer != nil {
-		insW := selfW - 2 // padding
+		insW := selfW - 2
 		lines := []string{
 			fmt.Sprintf("★ %s", truncStr(selfPeer.shortID, insW-2)),
 		}
@@ -783,9 +1316,14 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 			selfLines[i] = strings.Repeat(" ", selfW)
 		}
 	}
+	return selfLines
+}
 
-	// Build peer card content (right side)
-	// Cards in a 4-wide x 2-tall grid (or fewer if less space)
+// ── Helper: build peer card lines for bottom panel ──
+
+func buildPeerLines(pInfos []peerInfo, peerW, bottomH int) []string {
+	now := time.Now().Unix()
+
 	cardW := peerW / 4
 	if cardW < 18 {
 		cardW = peerW / 3
@@ -804,7 +1342,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 	if cardRows < 1 {
 		cardRows = 1
 	}
-	// Collect peer entries (non-self)
+
 	var peerEntries []peerInfo
 	for _, pi := range pInfos {
 		if !pi.isSelf {
@@ -812,8 +1350,6 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 		}
 	}
 
-	// Each card is 4 lines: top border, id+loc, latency+uptime, bottom border
-	// If bottomH < 4, compress
 	peerLines := make([]string, bottomH)
 	for i := range peerLines {
 		peerLines[i] = strings.Repeat(" ", peerW)
@@ -882,7 +1418,6 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 			allCards[ci].lines[3] = "╰" + statLine + strings.Repeat("─", pad) + "╯"
 		}
 
-		// Lay out cards into peerLines
 		for row := 0; row < cardRows; row++ {
 			for lineOff := 0; lineOff < 4; lineOff++ {
 				lineIdx := row*4 + lineOff
@@ -907,49 +1442,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 		}
 	}
 
-	// Emit bottom rows
-	for i := 0; i < bottomH; i++ {
-		sb.WriteString(cBorder + "│" + cReset)
-		sb.WriteString(cSelfInfo)
-		sb.WriteString(selfLines[i])
-		sb.WriteString(cReset)
-		sb.WriteString(cBorder + "│" + cReset)
-		sb.WriteString(cPeerInfo)
-		// Make sure peerLines[i] is exactly peerW visible chars
-		pl := peerLines[i]
-		if len([]rune(pl)) > peerW {
-			pl = string([]rune(pl)[:peerW])
-		}
-		sb.WriteString(pl)
-		sb.WriteString(cReset)
-		sb.WriteString(cBorder + "│" + cReset + "\033[K\r\n")
-	}
-
-	// ── Separator below bottom panel: ├──...──┴──...──┤ ──
-	sb.WriteString(cBorder + "├")
-	sb.WriteString(strings.Repeat("─", selfW))
-	sb.WriteString("┴")
-	sb.WriteString(strings.Repeat("─", peerW))
-	sb.WriteString("┤" + cReset + "\033[K\r\n")
-
-	// ── Help line ──
-	help := " q:Quit  ★:You  @:Peer"
-	helpLen := len([]rune(help))
-	helpPad := innerW - helpLen
-	if helpPad < 0 {
-		helpPad = 0
-	}
-	sb.WriteString(cBorder + "│" + cHelp)
-	sb.WriteString(help)
-	sb.WriteString(strings.Repeat(" ", helpPad))
-	sb.WriteString(cBorder + "│" + cReset + "\033[K\r\n")
-
-	// ── Bottom frame ──
-	sb.WriteString(cBorder + "└")
-	sb.WriteString(strings.Repeat("─", innerW))
-	sb.WriteString("┘" + cReset + "\033[K")
-
-	return sb.String()
+	return peerLines
 }
 
 func apiGet(path string) error {
