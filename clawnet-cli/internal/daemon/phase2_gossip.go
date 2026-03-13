@@ -12,10 +12,11 @@ import (
 )
 
 const (
-	TaskTopic      = "/clawnet/tasks"
-	SwarmTopic     = "/clawnet/swarm"
-	CreditAudit    = "/clawnet/credit-audit"
-	DefaultReward  = 10.0 // default credit reward when no explicit reward is set
+	TaskTopic       = "/clawnet/tasks"
+	SwarmTopic      = "/clawnet/swarm"
+	CreditAudit     = "/clawnet/credit-audit"
+	PredictionTopic = "/clawnet/predictions"
+	DefaultReward   = 10.0 // default credit reward when no explicit reward is set
 )
 
 // GossipTaskMsg is the wire format for task messages.
@@ -43,6 +44,14 @@ type CreditAuditMsg struct {
 	Time     string  `json:"time"`
 }
 
+// GossipPredictionMsg is the wire format for prediction market messages.
+type GossipPredictionMsg struct {
+	Type       string                    `json:"type"` // "prediction", "bet", "resolution"
+	Prediction *store.Prediction         `json:"prediction,omitempty"`
+	Bet        *store.PredictionBet      `json:"bet,omitempty"`
+	Resolution *store.PredictionResolution `json:"resolution,omitempty"`
+}
+
 // startPhase2Gossip subscribes to task and swarm GossipSub topics.
 func (d *Daemon) startPhase2Gossip(ctx context.Context) {
 	// Tasks topic
@@ -67,6 +76,88 @@ func (d *Daemon) startPhase2Gossip(ctx context.Context) {
 		fmt.Printf("warning: could not join credit-audit topic: %v\n", err)
 	} else {
 		go d.handleCreditAuditSub(ctx, auditSub)
+	}
+
+	// Prediction market topic
+	predSub, err := d.Node.JoinTopic(PredictionTopic)
+	if err != nil {
+		fmt.Printf("warning: could not join prediction topic: %v\n", err)
+	} else {
+		go d.handlePredictionSub(ctx, predSub)
+	}
+
+	// Swarm auto-close timer: check every 60s for expired swarms
+	go d.swarmExpiryLoop(ctx)
+
+	// Reputation-based credit grants: check every hour, +10/week for rep > 50
+	go d.reputationGrantLoop(ctx)
+}
+
+// swarmExpiryLoop periodically closes expired swarms.
+func (d *Daemon) swarmExpiryLoop(ctx context.Context) {
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			ids, err := d.Store.CloseExpiredSwarms()
+			if err != nil {
+				continue
+			}
+			for _, id := range ids {
+				fmt.Printf("swarm: auto-closed expired swarm %s\n", id[:8])
+				// Recalc reputation for all contributors
+				contribs, _ := d.Store.ListSwarmContributions(id, 1000)
+				seen := map[string]bool{}
+				for _, c := range contribs {
+					if !seen[c.AuthorID] {
+						d.Store.RecalcReputation(c.AuthorID)
+						seen[c.AuthorID] = true
+					}
+				}
+			}
+		}
+	}
+}
+
+// reputationGrantLoop grants +10 credits per week to nodes with reputation > 50.
+// Runs every hour, granting 10/168 ≈ 0.06 credits per check to smooth distribution.
+func (d *Daemon) reputationGrantLoop(ctx context.Context) {
+	// Wait 5 minutes before first check to let the node fully start
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(5 * time.Minute):
+	}
+
+	const grantPerHour = 10.0 / 168.0 // 10 credits per week, checked hourly
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+
+	grant := func() {
+		peerID := d.Node.PeerID().String()
+		rec, err := d.Store.RecalcReputation(peerID)
+		if err != nil || rec == nil {
+			return
+		}
+		if rec.Score > 50 {
+			txnID := uuid.New().String()
+			if err := d.Store.AddCredits(txnID, peerID, grantPerHour, "reputation_bonus"); err == nil {
+				d.publishCreditAudit(d.ctx, txnID, "", "system", peerID, grantPerHour, "reputation_bonus")
+			}
+		}
+	}
+
+	grant() // first run
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			grant()
+		}
 	}
 }
 
@@ -207,6 +298,11 @@ func (d *Daemon) publishSwarm(ctx context.Context, sw *store.Swarm) error {
 	sw.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	sw.UpdatedAt = sw.CreatedAt
 
+	// Compute deadline from duration_minutes
+	if sw.DurationMin > 0 && sw.Deadline == "" {
+		sw.Deadline = time.Now().UTC().Add(time.Duration(sw.DurationMin) * time.Minute).Format(time.RFC3339)
+	}
+
 	if err := d.Store.InsertSwarm(sw); err != nil {
 		return err
 	}
@@ -285,4 +381,87 @@ func (d *Daemon) publishCreditAudit(ctx context.Context, txnID, taskID, from, to
 	}
 	data, _ := json.Marshal(audit)
 	d.Node.Publish(ctx, CreditAudit, data)
+}
+
+// ── Prediction Market gossip ──
+
+func (d *Daemon) handlePredictionSub(ctx context.Context, sub *pubsub.Subscription) {
+	for {
+		msg, err := sub.Next(ctx)
+		if err != nil {
+			return
+		}
+		if msg.ReceivedFrom == d.Node.PeerID() {
+			continue
+		}
+
+		var gm GossipPredictionMsg
+		if err := json.Unmarshal(msg.Data, &gm); err != nil {
+			continue
+		}
+
+		switch gm.Type {
+		case "prediction":
+			if gm.Prediction != nil {
+				d.Store.InsertPrediction(gm.Prediction)
+			}
+		case "bet":
+			if gm.Bet != nil {
+				d.Store.InsertPredictionBet(gm.Bet)
+			}
+		case "resolution":
+			if gm.Resolution != nil {
+				d.Store.InsertPredictionResolution(gm.Resolution)
+			}
+		}
+	}
+}
+
+func (d *Daemon) publishPrediction(ctx context.Context, p *store.Prediction) error {
+	if p.ID == "" {
+		p.ID = uuid.New().String()
+	}
+	p.CreatorID = d.Node.PeerID().String()
+	p.Status = "open"
+	p.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+
+	if err := d.Store.InsertPrediction(p); err != nil {
+		return err
+	}
+
+	msg := GossipPredictionMsg{Type: "prediction", Prediction: p}
+	data, _ := json.Marshal(msg)
+	return d.Node.Publish(ctx, PredictionTopic, data)
+}
+
+func (d *Daemon) publishPredictionBet(ctx context.Context, b *store.PredictionBet) error {
+	if b.ID == "" {
+		b.ID = uuid.New().String()
+	}
+	b.BettorID = d.Node.PeerID().String()
+	b.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+
+	if err := d.Store.InsertPredictionBet(b); err != nil {
+		return err
+	}
+
+	msg := GossipPredictionMsg{Type: "bet", Bet: b}
+	data, _ := json.Marshal(msg)
+	return d.Node.Publish(ctx, PredictionTopic, data)
+}
+
+func (d *Daemon) publishPredictionResolution(ctx context.Context, r *store.PredictionResolution) error {
+	if r.ID == "" {
+		r.ID = uuid.New().String()
+	}
+	r.ResolverID = d.Node.PeerID().String()
+	r.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+
+	if err := d.Store.InsertPredictionResolution(r); err != nil {
+		return err
+	}
+
+	msg := GossipPredictionMsg{Type: "resolution", Resolution: r}
+	data, _ := json.Marshal(msg)
+	return d.Node.Publish(ctx, PredictionTopic, data)
 }

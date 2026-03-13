@@ -26,6 +26,7 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/tasks/{id}/submit", d.handleTaskSubmit)
 	mux.HandleFunc("POST /api/tasks/{id}/approve", d.handleTaskApprove)
 	mux.HandleFunc("POST /api/tasks/{id}/reject", d.handleTaskReject)
+	mux.HandleFunc("POST /api/tasks/{id}/cancel", d.handleTaskCancel)
 
 	// Swarm Think
 	mux.HandleFunc("POST /api/swarm", d.handleCreateSwarm)
@@ -41,6 +42,14 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 
 	// Credit Audit
 	mux.HandleFunc("GET /api/credits/audit", d.handleCreditAudit)
+
+	// Prediction Market (Oracle Arena)
+	mux.HandleFunc("POST /api/predictions", d.handleCreatePrediction)
+	mux.HandleFunc("GET /api/predictions", d.handleListPredictions)
+	mux.HandleFunc("GET /api/predictions/leaderboard", d.handlePredictionLeaderboard)
+	mux.HandleFunc("GET /api/predictions/{id}", d.handleGetPrediction)
+	mux.HandleFunc("POST /api/predictions/{id}/bet", d.handlePredictionBet)
+	mux.HandleFunc("POST /api/predictions/{id}/resolve", d.handlePredictionResolve)
 }
 
 // ── Credits handlers ──
@@ -292,6 +301,36 @@ func (d *Daemon) handleTaskReject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"status": "rejected"})
 }
 
+func (d *Daemon) handleTaskCancel(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("id")
+
+	t, err := d.Store.GetTask(taskID)
+	if err != nil || t == nil {
+		http.Error(w, `{"error":"task not found"}`, http.StatusNotFound)
+		return
+	}
+	// Only the task author can cancel
+	if t.AuthorID != d.Node.PeerID().String() {
+		http.Error(w, `{"error":"only the task author can cancel"}`, http.StatusForbidden)
+		return
+	}
+	if err := d.Store.CancelTask(taskID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Unfreeze reward back to author
+	if t.Reward > 0 {
+		d.Store.UnfreezeCredits(t.AuthorID, t.Reward)
+	}
+
+	t, _ = d.Store.GetTask(taskID)
+	if t != nil {
+		d.publishTaskUpdate(d.ctx, t)
+	}
+	writeJSON(w, map[string]string{"status": "cancelled"})
+}
+
 // ── Swarm handlers ──
 
 func (d *Daemon) handleCreateSwarm(w http.ResponseWriter, r *http.Request) {
@@ -343,7 +382,9 @@ func (d *Daemon) handleGetSwarm(w http.ResponseWriter, r *http.Request) {
 func (d *Daemon) handleSwarmContribute(w http.ResponseWriter, r *http.Request) {
 	swarmID := r.PathValue("id")
 	var body struct {
-		Body string `json:"body"`
+		Body        string  `json:"body"`
+		Perspective string  `json:"perspective"` // bull, bear, neutral, devil-advocate
+		Confidence  float64 `json:"confidence"`  // 0.0 - 1.0
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -353,7 +394,8 @@ func (d *Daemon) handleSwarmContribute(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"body is required"}`, http.StatusBadRequest)
 		return
 	}
-	c := &store.SwarmContribution{SwarmID: swarmID, Body: body.Body}
+	c := &store.SwarmContribution{SwarmID: swarmID, Body: body.Body,
+		Perspective: body.Perspective, Confidence: body.Confidence}
 	if err := d.publishSwarmContribution(d.ctx, c); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -440,4 +482,240 @@ func (d *Daemon) handleCreditAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, records)
+}
+
+// ── Prediction Market handlers ──
+
+func (d *Daemon) handleCreatePrediction(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Question         string   `json:"question"`
+		Options          []string `json:"options"`
+		Category         string   `json:"category"`
+		ResolutionDate   string   `json:"resolution_date"`
+		ResolutionSource string   `json:"resolution_source"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.Question == "" || len(body.Options) < 2 {
+		http.Error(w, `{"error":"question and at least 2 options required"}`, http.StatusBadRequest)
+		return
+	}
+	if body.ResolutionDate == "" {
+		http.Error(w, `{"error":"resolution_date required"}`, http.StatusBadRequest)
+		return
+	}
+	if body.Category == "" {
+		body.Category = "custom"
+	}
+
+	optJSON, _ := json.Marshal(body.Options)
+	p := &store.Prediction{
+		Question:         body.Question,
+		Options:          string(optJSON),
+		Category:         body.Category,
+		ResolutionDate:   body.ResolutionDate,
+		ResolutionSource: body.ResolutionSource,
+		Status:           "open",
+	}
+	if err := d.publishPrediction(d.ctx, p); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, p)
+}
+
+func (d *Daemon) handleListPredictions(w http.ResponseWriter, r *http.Request) {
+	status := r.URL.Query().Get("status")
+	category := r.URL.Query().Get("category")
+	limit := queryInt(r, "limit", 50)
+	offset := queryInt(r, "offset", 0)
+	preds, err := d.Store.ListPredictions(status, category, limit, offset)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if preds == nil {
+		preds = []*store.Prediction{}
+	}
+	writeJSON(w, preds)
+}
+
+func (d *Daemon) handleGetPrediction(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	p, details, err := d.Store.GetPredictionDetails(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if p == nil {
+		http.Error(w, `{"error":"prediction not found"}`, http.StatusNotFound)
+		return
+	}
+	writeJSON(w, map[string]any{
+		"prediction": p,
+		"options":    details,
+	})
+}
+
+func (d *Daemon) handlePredictionBet(w http.ResponseWriter, r *http.Request) {
+	predID := r.PathValue("id")
+	var body struct {
+		Option    string  `json:"option"`
+		Stake     float64 `json:"stake"`
+		Reasoning string  `json:"reasoning"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.Option == "" || body.Stake <= 0 {
+		http.Error(w, `{"error":"option and positive stake required"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Validate prediction exists and is open
+	p, err := d.Store.GetPrediction(predID)
+	if err != nil || p == nil {
+		http.Error(w, `{"error":"prediction not found"}`, http.StatusNotFound)
+		return
+	}
+	if p.Status != "open" {
+		http.Error(w, `{"error":"prediction is not open for betting"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Validate option
+	if err := store.ValidatePredictionOption(p.Options, body.Option); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusBadRequest)
+		return
+	}
+
+	// Freeze bettor's credits
+	peerID := d.Node.PeerID().String()
+	if err := d.Store.FreezeCredits(peerID, body.Stake); err != nil {
+		if err == store.ErrInsufficientCredits {
+			http.Error(w, `{"error":"insufficient credits"}`, http.StatusBadRequest)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	bet := &store.PredictionBet{
+		PredictionID: predID,
+		Option:       body.Option,
+		Stake:        body.Stake,
+		Reasoning:    body.Reasoning,
+	}
+	if err := d.publishPredictionBet(d.ctx, bet); err != nil {
+		// Unfreeze on failure
+		d.Store.UnfreezeCredits(peerID, body.Stake)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, bet)
+}
+
+func (d *Daemon) handlePredictionResolve(w http.ResponseWriter, r *http.Request) {
+	predID := r.PathValue("id")
+	var body struct {
+		Result      string `json:"result"`
+		EvidenceURL string `json:"evidence_url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.Result == "" {
+		http.Error(w, `{"error":"result required"}`, http.StatusBadRequest)
+		return
+	}
+
+	p, err := d.Store.GetPrediction(predID)
+	if err != nil || p == nil {
+		http.Error(w, `{"error":"prediction not found"}`, http.StatusNotFound)
+		return
+	}
+	if p.Status != "open" {
+		http.Error(w, `{"error":"prediction already resolved"}`, http.StatusBadRequest)
+		return
+	}
+	if err := store.ValidatePredictionOption(p.Options, body.Result); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusBadRequest)
+		return
+	}
+
+	// Record this resolution proposal
+	res := &store.PredictionResolution{
+		PredictionID: predID,
+		Result:       body.Result,
+		EvidenceURL:  body.EvidenceURL,
+	}
+	if err := d.publishPredictionResolution(d.ctx, res); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Check if ≥3 unique resolvers agree on this result
+	count, _ := d.Store.CountResolutions(predID, body.Result)
+	if count >= 3 {
+		// Consensus reached — resolve and settle
+		if err := d.Store.ResolvePrediction(predID, body.Result); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		d.settlePrediction(predID, body.Result)
+		writeJSON(w, map[string]any{"status": "resolved", "result": body.Result, "consensus": count})
+		return
+	}
+
+	writeJSON(w, map[string]any{"status": "pending", "result": body.Result, "votes": count, "needed": 3})
+}
+
+func (d *Daemon) handlePredictionLeaderboard(w http.ResponseWriter, r *http.Request) {
+	limit := queryInt(r, "limit", 50)
+	entries, err := d.Store.GetPredictionLeaderboard(limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if entries == nil {
+		entries = []*store.PredictionLeaderEntry{}
+	}
+	writeJSON(w, entries)
+}
+
+// settlePrediction distributes winnings after a prediction is resolved.
+func (d *Daemon) settlePrediction(predID, result string) {
+	settlements, err := d.Store.SettlePrediction(predID, result)
+	if err != nil {
+		return
+	}
+
+	bets, _ := d.Store.ListPredictionBets(predID)
+
+	// Unfreeze all bets and deduct from losers, pay winners
+	for _, b := range bets {
+		d.Store.UnfreezeCredits(b.BettorID, b.Stake)
+	}
+
+	// Deduct from losers
+	for _, b := range bets {
+		if b.Option != result {
+			txnID := uuid.New().String()
+			d.Store.TransferCredits(txnID, b.BettorID, "prediction_pool", b.Stake, "prediction_loss", predID)
+			d.publishCreditAudit(d.ctx, txnID, predID, b.BettorID, "prediction_pool", b.Stake, "prediction_loss")
+		}
+	}
+
+	// Pay winners their proportional share
+	for _, s := range settlements {
+		if s.Profit > 0 {
+			txnID := uuid.New().String()
+			d.Store.AddCredits(txnID, s.PeerID, s.Profit, "prediction_win")
+			d.publishCreditAudit(d.ctx, txnID, predID, "prediction_pool", s.PeerID, s.Profit, "prediction_win")
+		}
+	}
 }
