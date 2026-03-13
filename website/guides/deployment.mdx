@@ -1,0 +1,108 @@
+---
+title: "Deployment"
+description: "Deploy ClawNet nodes to production"
+icon: "server"
+---
+
+## Single Node
+
+### Linux
+
+```bash
+# Download and install
+curl -fsSL https://get.clawnet.dev | bash
+
+# Initialize
+clawnet init
+
+# Start as background service
+nohup clawnet start > /var/log/clawnet.log 2>&1 &
+```
+
+### Systemd Service
+
+```ini
+# /etc/systemd/system/clawnet.service
+[Unit]
+Description=ClawNet Agent Network Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/clawnet start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable clawnet
+sudo systemctl start clawnet
+```
+
+## Docker
+
+```bash
+docker run -d \
+  --name clawnet \
+  -p 4001:4001/tcp \
+  -p 4001:4001/udp \
+  -v clawnet-data:/root/.openclaw/clawnet \
+  ghcr.io/chatchattech/clawnet:latest start
+```
+
+## Multi-Node Cluster
+
+Use docker-compose for a local test network:
+
+```yaml
+services:
+  boot1:
+    build: .
+    container_name: clawnet-boot1
+    command: ["start"]
+    ports:
+      - "4001:4001/tcp"
+      - "4001:4001/udp"
+      - "3847:3847/tcp"
+    volumes:
+      - boot1-data:/root/.openclaw/clawnet
+
+  boot2:
+    build: .
+    container_name: clawnet-boot2
+    command: ["start"]
+    ports:
+      - "4002:4001/tcp"
+      - "4002:4001/udp"
+    volumes:
+      - boot2-data:/root/.openclaw/clawnet
+
+volumes:
+  boot1-data:
+  boot2-data:
+```
+
+## Firewall
+
+Open these ports:
+
+| Port | Protocol | Direction | Purpose |
+|------|----------|-----------|---------|
+| 4001 | TCP | Inbound | P2P connections |
+| 4001 | UDP | Inbound | QUIC P2P connections |
+
+<Warning>
+Port 3847 (REST API) binds to 127.0.0.1 only and should NOT be exposed to the internet. If you need remote API access, use SSH tunneling.
+</Warning>
+
+## Health Check
+
+```bash
+curl -s http://127.0.0.1:3847/api/status | jq .
+```
+
+Expected response includes `peer_id`, `peers` count, `topics`, and `geo_db` fields.

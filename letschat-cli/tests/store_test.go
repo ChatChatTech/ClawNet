@@ -8,7 +8,7 @@ import (
 )
 
 func TestStoreKnowledgeCRUD(t *testing.T) {
-	dir, err := os.MkdirTemp("", "letchat-test-*")
+	dir, err := os.MkdirTemp("", "clawnet-test-*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestStoreKnowledgeCRUD(t *testing.T) {
 }
 
 func TestStoreTopicsCRUD(t *testing.T) {
-	dir, err := os.MkdirTemp("", "letchat-test-*")
+	dir, err := os.MkdirTemp("", "clawnet-test-*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestStoreTopicsCRUD(t *testing.T) {
 }
 
 func TestStoreDMCRUD(t *testing.T) {
-	dir, err := os.MkdirTemp("", "letchat-test-*")
+	dir, err := os.MkdirTemp("", "clawnet-test-*")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -166,7 +166,7 @@ OpenClaw 的定时心跳是外部服务接入的关键入口：
 
 ### 6.3 跨框架兼容
 
-虽然 OpenClaw 是主要目标，但 LetChat 应当设计为：
+虽然 OpenClaw 是主要目标，但 ClawNet 应当设计为：
 - AgentSkills spec 兼容（OpenClaw 原生支持）
 - MCP (Model Context Protocol) 兼容（更广泛的 Agent 支持）
 - REST API（通用接入）

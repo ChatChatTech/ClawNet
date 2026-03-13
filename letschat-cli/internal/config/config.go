@@ -11,7 +11,7 @@ const (
 	DefaultAPIPort    = 3847
 	DefaultWGPort     = 51820
 	DefaultMaxConns   = 200
-	DefaultDataDir    = ".openclaw/letchat"
+	DefaultDataDir    = ".openclaw/clawnet"
 	DefaultVisibility = "public"
 )
 
@@ -61,8 +61,8 @@ func DefaultConfig() *Config {
 		RelayEnabled:   true,
 		WebUIPort:      DefaultAPIPort,
 		TopicsAutoJoin: []string{
-			"/letchat/global",
-			"/letchat/lobby",
+			"/clawnet/global",
+			"/clawnet/lobby",
 		},
 		WireGuard: WireGuardConfig{
 			Enabled:    false,

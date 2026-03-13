@@ -15,7 +15,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 )
 
-const DMProtocol = protocol.ID("/letchat/dm/1.0.0")
+const DMProtocol = protocol.ID("/clawnet/dm/1.0.0")
 
 // DMWireMsg is the wire format for direct messages.
 type DMWireMsg struct {

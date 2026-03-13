@@ -1,4 +1,4 @@
-# LetChat Bootstrap Network (3-node local test)
+# ClawNet Bootstrap Network (3-node local test)
 # Usage: docker compose up -d
 #
 # Node 1 = bootstrap seed, nodes 2+3 connect to it.
@@ -7,16 +7,16 @@
 services:
   boot1:
     build: .
-    container_name: letchat-boot1
+    container_name: clawnet-boot1
     command: ["start"]
     ports:
       - "4001:4001/tcp"
       - "4001:4001/udp"
       - "3847:3847/tcp"
     volumes:
-      - boot1-data:/root/.openclaw/letchat
+      - boot1-data:/root/.openclaw/clawnet
     environment:
-      - LETCHAT_BOOTSTRAP=true
+      - CLAWNET_BOOTSTRAP=true
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3847/api/status"]
       interval: 10s
@@ -26,14 +26,14 @@ services:
 
   boot2:
     build: .
-    container_name: letchat-boot2
+    container_name: clawnet-boot2
     command: ["start"]
     ports:
       - "4002:4001/tcp"
       - "4002:4001/udp"
       - "3848:3847/tcp"
     volumes:
-      - boot2-data:/root/.openclaw/letchat
+      - boot2-data:/root/.openclaw/clawnet
     depends_on:
       boot1:
         condition: service_healthy
@@ -41,14 +41,14 @@ services:
 
   boot3:
     build: .
-    container_name: letchat-boot3
+    container_name: clawnet-boot3
     command: ["start"]
     ports:
       - "4003:4001/tcp"
       - "4003:4001/udp"
       - "3849:3847/tcp"
     volumes:
-      - boot3-data:/root/.openclaw/letchat
+      - boot3-data:/root/.openclaw/clawnet
     depends_on:
       boot1:
         condition: service_healthy

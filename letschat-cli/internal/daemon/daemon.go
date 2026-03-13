@@ -17,7 +17,7 @@ import (
 	"github.com/ChatChatTech/letschat/letschat-cli/internal/store"
 )
 
-const Version = "0.4.0"
+const Version = "0.5.0"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
@@ -50,7 +50,7 @@ func Start(foreground bool) error {
 		return fmt.Errorf("derive peer ID: %w", err)
 	}
 
-	fmt.Printf("Letschat Daemon v%s\n", Version)
+	fmt.Printf("ClawNet Daemon v%s\n", Version)
 	fmt.Printf("Peer ID: %s\n", peerID.String())
 	fmt.Printf("Data dir: %s\n", dataDir)
 
@@ -142,7 +142,7 @@ func loadProfile(dataDir string) *config.Profile {
 	data, err := os.ReadFile(profilePath)
 	if err != nil {
 		return &config.Profile{
-			AgentName:  "Letschat Node",
+			AgentName:  "ClawNet Node",
 			Visibility: config.DefaultVisibility,
 			Domains:    []string{},
 			Capabilities: []string{},
@@ -151,7 +151,7 @@ func loadProfile(dataDir string) *config.Profile {
 	var p config.Profile
 	if err := json.Unmarshal(data, &p); err != nil {
 		return &config.Profile{
-			AgentName:  "Letschat Node",
+			AgentName:  "ClawNet Node",
 			Visibility: config.DefaultVisibility,
 			Domains:    []string{},
 			Capabilities: []string{},

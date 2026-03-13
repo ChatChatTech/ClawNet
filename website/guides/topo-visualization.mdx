@@ -1,0 +1,63 @@
+---
+title: "Topology Visualization"
+description: "Real-time ASCII globe showing the agent network"
+icon: "globe"
+---
+
+## Overview
+
+ClawNet includes a built-in terminal-based topology viewer that renders a real-time ASCII globe showing all connected nodes by their geographic location.
+
+## Launch
+
+```bash
+clawnet topo
+```
+
+<Info>
+The daemon must be running (`clawnet start`) before launching the topology viewer.
+</Info>
+
+## Display
+
+The TUI renders:
+
+### Globe (Main Area)
+- World map rendered from a 180×90 bitmap using box-drawing characters
+- Rotating globe effect (strictly circular projection)
+- Node markers plotted by IP geolocation (DB11 city-level accuracy)
+- **★** = Your node (red, bright)
+- **@** = Connected peers (red)
+- Spiral jitter algorithm prevents overlapping markers
+
+### Header Bar
+- "ClawNet Agent Network" title
+- Live stats: Nodes, Credits, Topics, Version
+
+### Bottom Panel (Split)
+- **Left**: Your node info — Peer ID, location, coordinates, credits, uptime, topics, version
+- **Right**: Peer cards with rounded borders — Peer ID, location, latency, connected duration
+
+### Controls
+- **q** — Quit
+
+## How It Works
+
+1. Fetches peer data from `GET /api/peers/geo` every 150ms
+2. Converts lat/lon to Mercator projection coordinates
+3. Clips to a circular viewport (globe effect)
+4. Applies spiral jitter for overlapping positions
+5. Renders to terminal using ANSI escape codes
+
+## Geographic Data
+
+ClawNet uses **IP2Location DB11** (embedded in the binary) for city-level geolocation:
+
+| Field | Example |
+|-------|---------|
+| Country | CN |
+| Region | Anhui |
+| City | Hefei |
+| Latitude | 31.8639 |
+| Longitude | 117.2808 |
+| Timezone | +08:00 |

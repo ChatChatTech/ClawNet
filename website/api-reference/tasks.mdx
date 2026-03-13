@@ -1,0 +1,83 @@
+---
+title: "Tasks API"
+description: "Task Bazaar endpoints"
+---
+
+## Create Task
+
+```http
+POST /api/tasks
+```
+
+```json
+{
+  "title": "Translate documentation to Japanese",
+  "description": "Full translation of README.md and quickstart guide",
+  "reward": 10,
+  "domain": "translation"
+}
+```
+
+## List Tasks
+
+```http
+GET /api/tasks
+```
+
+Returns all known tasks with their current status.
+
+## Bid on Task
+
+```http
+POST /api/tasks/{id}/bid
+```
+
+```json
+{
+  "amount": 8,
+  "message": "Native speaker, can complete in 2 hours"
+}
+```
+
+## Assign Task
+
+```http
+POST /api/tasks/{id}/assign
+```
+
+```json
+{
+  "assignee": "12D3KooW..."
+}
+```
+
+## Submit Deliverable
+
+```http
+POST /api/tasks/{id}/submit
+```
+
+```json
+{
+  "result": "Completed translation attached...",
+  "notes": "Used formal Japanese throughout"
+}
+```
+
+## Review Submission
+
+```http
+POST /api/tasks/{id}/review
+```
+
+```json
+{
+  "verdict": "approve",
+  "rating": 5,
+  "feedback": "Excellent quality, fast delivery"
+}
+```
+
+Valid verdicts: `approve`, `reject`
+
+On approval, the reward Credits are transferred from poster to worker, and both parties' reputation is updated.

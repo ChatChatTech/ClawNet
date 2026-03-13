@@ -21,7 +21,7 @@ func Open(dataDir string) (*Store, error) {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
 
-	dbPath := filepath.Join(dbDir, "letchat.db")
+	dbPath := filepath.Join(dbDir, "clawnet.db")
 	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=ON")
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)

@@ -1,8 +1,11 @@
 package geo
 
 import (
-	"embed"
+	"archive/zip"
+	"bytes"
+	_ "embed"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -11,8 +14,8 @@ import (
 	"github.com/ip2location/ip2location-go/v9"
 )
 
-//go:embed data/IP2LOCATION-LITE-DB1.BIN
-var embeddedDB embed.FS
+//go:embed data/IP2LOCATION-LITE-DB11.BIN.zip
+var embeddedDBZip []byte
 
 // GeoInfo holds geo information for an IP address.
 type GeoInfo struct {
@@ -27,42 +30,51 @@ type GeoInfo struct {
 // Locator resolves IPs to geographic info.
 type Locator struct {
 	db     *ip2location.DB
-	dbType string // "DB1" or "DB11"
+	dbType string
 }
 
-// NewLocator creates a Locator. It first tries a user-provided DB11 file in dataDir,
-// then falls back to the embedded DB1 (country only).
+// NewLocator creates a Locator using the embedded DB11 database.
 func NewLocator(dataDir string) (*Locator, error) {
-	// Try user-upgraded DB11 first
-	db11Path := filepath.Join(dataDir, "data", "IP2LOCATION-LITE-DB11.BIN")
-	if _, err := os.Stat(db11Path); err == nil {
-		db, err := ip2location.OpenDB(db11Path)
-		if err == nil {
-			return &Locator{db: db, dbType: "DB11"}, nil
-		}
-	}
-
-	// Fall back to embedded DB1
 	tmpDir := filepath.Join(dataDir, "data")
 	os.MkdirAll(tmpDir, 0700)
-	embeddedPath := filepath.Join(tmpDir, "IP2LOCATION-LITE-DB1.BIN")
+	dbPath := filepath.Join(tmpDir, "IP2LOCATION-LITE-DB11.BIN")
 
-	// Write embedded DB only if not already existing
-	if _, err := os.Stat(embeddedPath); os.IsNotExist(err) {
-		data, err := embeddedDB.ReadFile("data/IP2LOCATION-LITE-DB1.BIN")
-		if err != nil {
-			return nil, fmt.Errorf("read embedded db: %w", err)
-		}
-		if err := os.WriteFile(embeddedPath, data, 0644); err != nil {
-			return nil, fmt.Errorf("write db file: %w", err)
+	// Extract embedded zip on first run
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		if err := extractDB11(dbPath); err != nil {
+			return nil, fmt.Errorf("extract embedded db: %w", err)
 		}
 	}
 
-	db, err := ip2location.OpenDB(embeddedPath)
+	db, err := ip2location.OpenDB(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open ip2location: %w", err)
 	}
-	return &Locator{db: db, dbType: "DB1"}, nil
+	return &Locator{db: db, dbType: "DB11"}, nil
+}
+
+func extractDB11(destPath string) error {
+	r, err := zip.NewReader(bytes.NewReader(embeddedDBZip), int64(len(embeddedDBZip)))
+	if err != nil {
+		return err
+	}
+	for _, f := range r.File {
+		if strings.HasSuffix(f.Name, ".BIN") {
+			rc, err := f.Open()
+			if err != nil {
+				return err
+			}
+			defer rc.Close()
+			out, err := os.Create(destPath)
+			if err != nil {
+				return err
+			}
+			defer out.Close()
+			_, err = io.Copy(out, rc)
+			return err
+		}
+	}
+	return fmt.Errorf("no .BIN file found in embedded zip")
 }
 
 // DBType returns the current database type.
@@ -88,15 +100,13 @@ func (l *Locator) Lookup(ipStr string) *GeoInfo {
 	}
 	gi := &GeoInfo{
 		Country:   cleanField(results.Country_short),
+		Region:    cleanField(results.Region),
+		City:      cleanField(results.City),
 		Latitude:  results.Latitude,
 		Longitude: results.Longitude,
+		Timezone:  cleanField(results.Timezone),
 	}
-	if l.dbType == "DB11" {
-		gi.Region = cleanField(results.Region)
-		gi.City = cleanField(results.City)
-		gi.Timezone = cleanField(results.Timezone)
-	}
-	// Fallback: if DB1 returns 0,0 coordinates, use country centroid
+	// Fallback: if coordinates are 0,0, use country centroid
 	if gi.Latitude == 0 && gi.Longitude == 0 && gi.Country != "" {
 		if lat, lon, ok := CountryCentroid(gi.Country); ok {
 			gi.Latitude = lat

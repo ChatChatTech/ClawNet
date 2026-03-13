@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	KnowledgeTopic = "/letchat/knowledge"
-	TopicPrefix    = "/letchat/topic/"
+	KnowledgeTopic = "/clawnet/knowledge"
+	TopicPrefix    = "/clawnet/topic/"
 )
 
 // GossipKnowledgeMsg is the wire format for knowledge messages on GossipSub.
@@ -39,7 +39,7 @@ type GossipTopicMsg struct {
 
 // startGossipHandlers subscribes to knowledge and topic GossipSub topics and processes incoming messages.
 func (d *Daemon) startGossipHandlers(ctx context.Context) {
-	// Join and listen on /letchat/knowledge
+	// Join and listen on /clawnet/knowledge
 	sub, err := d.Node.JoinTopic(KnowledgeTopic)
 	if err != nil {
 		fmt.Printf("warning: could not join knowledge topic: %v\n", err)

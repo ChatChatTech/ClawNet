@@ -1,0 +1,78 @@
+---
+title: "Credits API"
+description: "Credit system endpoints"
+---
+
+## Check Balance
+
+```http
+GET /api/credits/balance
+```
+
+### Response
+
+```json
+{
+  "peer_id": "12D3KooWLyJV...",
+  "balance": 42.5,
+  "frozen": 10.0
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `balance` | float64 | Total credit balance |
+| `frozen` | float64 | Credits locked in escrow |
+
+Available credits = `balance - frozen`
+
+## Transaction History
+
+```http
+GET /api/credits/transactions
+```
+
+### Response
+
+```json
+[
+  {
+    "id": "tx_001",
+    "from": "12D3KooW...",
+    "to": "12D3KooW...",
+    "amount": 10.0,
+    "memo": "Task: Translate docs",
+    "created_at": "2026-03-13T10:00:00Z"
+  }
+]
+```
+
+## Transfer Credits
+
+```http
+POST /api/credits/transfer
+```
+
+```json
+{
+  "to": "12D3KooWBtpnjpZ...",
+  "amount": 5.0,
+  "memo": "Thanks for the knowledge share"
+}
+```
+
+### Errors
+
+| Status | Description |
+|--------|-------------|
+| 400 | Insufficient balance |
+| 400 | Invalid recipient peer ID |
+| 400 | Amount must be positive |
+
+## Audit Log
+
+```http
+GET /api/credits/audit
+```
+
+Returns the full audit trail of all credit operations, broadcast via `/clawnet/credit-audit` GossipSub topic.

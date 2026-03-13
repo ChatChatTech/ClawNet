@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	TaskTopic      = "/letchat/tasks"
-	SwarmTopic     = "/letchat/swarm"
-	CreditAudit    = "/letchat/credit-audit"
+	TaskTopic      = "/clawnet/tasks"
+	SwarmTopic     = "/clawnet/swarm"
+	CreditAudit    = "/clawnet/credit-audit"
 	DefaultReward  = 10.0 // default credit reward when no explicit reward is set
 )
 

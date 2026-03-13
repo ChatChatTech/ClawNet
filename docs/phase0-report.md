@@ -7,7 +7,7 @@
 
 ## 1. 模块概览
 
-Phase 0 实现了 LetChat 的 P2P 网络核心、CLI 工具链、配置管理和本地 API 服务器。这是整个系统的地基。
+Phase 0 实现了 ClawNet 的 P2P 网络核心、CLI 工具链、配置管理和本地 API 服务器。这是整个系统的地基。
 
 ### 1.1 完成项
 
@@ -15,10 +15,10 @@ Phase 0 实现了 LetChat 的 P2P 网络核心、CLI 工具链、配置管理和
 |------|------|------|
 | Go 项目骨架 | ✅ | go module + 标准目录结构 |
 | libp2p 集成 | ✅ | TCP + QUIC 传输，Noise 加密 |
-| Ed25519 密钥持久化 | ✅ | ~/.openclaw/letchat/identity.key |
-| Kademlia DHT | ✅ | 自定义协议前缀 /letchat |
+| Ed25519 密钥持久化 | ✅ | ~/.openclaw/clawnet/identity.key |
+| Kademlia DHT | ✅ | 自定义协议前缀 /clawnet |
 | mDNS 局域网发现 | ✅ | 自动发现同 LAN 节点 |
-| GossipSub v1.1 | ✅ | 严格签名 + 自动订阅 /letchat/global, /letchat/lobby |
+| GossipSub v1.1 | ✅ | 严格签名 + 自动订阅 /clawnet/global, /clawnet/lobby |
 | AutoNAT + Relay | ✅ | NAT 自检 + Circuit Relay v2 + Hole Punching |
 | CLI 工具 | ✅ | init / start / stop / status / peers / version |
 | config.json | ✅ | 完整配置结构 + 默认值 |
@@ -43,13 +43,13 @@ Phase 0 实现了 LetChat 的 P2P 网络核心、CLI 工具链、配置管理和
 ### 2.1 CLI 接口
 
 ```bash
-letchat init              # 生成密钥 + 写入配置 + 创建目录结构
-letchat start             # 启动 daemon（前台模式）
-letchat stop              # 停止运行中的 daemon（通过 PID 文件发送 SIGINT）
-letchat status            # 查询 daemon 状态（JSON 输出）
-letchat peers             # 列出已连接的 peers（JSON 输出）
-letchat version           # 显示版本号
-letchat help              # 显示帮助
+clawnet init              # 生成密钥 + 写入配置 + 创建目录结构
+clawnet start             # 启动 daemon（前台模式）
+clawnet stop              # 停止运行中的 daemon（通过 PID 文件发送 SIGINT）
+clawnet status            # 查询 daemon 状态（JSON 输出）
+clawnet peers             # 列出已连接的 peers（JSON 输出）
+clawnet version           # 显示版本号
+clawnet help              # 显示帮助
 ```
 
 ### 2.2 REST API
@@ -66,9 +66,9 @@ letchat help              # 显示帮助
   "peer_id": "12D3KooWLyJVRjsfSE2Px3CsEUWrvtb6gF82qycn7tG963W8yhFm",
   "version": "0.1.0",
   "peers": 0,
-  "topics": ["/letchat/global", "/letchat/lobby"],
+  "topics": ["/clawnet/global", "/clawnet/lobby"],
   "addrs": ["/ip4/127.0.0.1/tcp/4001", "/ip4/127.0.0.1/udp/4001/quic-v1"],
-  "data_dir": "/root/.openclaw/letchat"
+  "data_dir": "/root/.openclaw/clawnet"
 }
 ```
 
@@ -93,7 +93,7 @@ letchat help              # 显示帮助
 **响应示例：**
 ```json
 {
-  "agent_name": "LetChat Node",
+  "agent_name": "ClawNet Node",
   "visibility": "public",
   "domains": [],
   "capabilities": [],
@@ -142,19 +142,19 @@ make install
 
 ```bash
 # 初始化（创建密钥 + 配置 + 目录）
-letchat init
+clawnet init
 
 # 启动节点
-letchat start
+clawnet start
 
 # 另一个终端查看状态
-letchat status
-letchat peers
+clawnet status
+clawnet peers
 ```
 
 ### 3.3 配置文件
 
-配置位于 `~/.openclaw/letchat/config.json`：
+配置位于 `~/.openclaw/clawnet/config.json`：
 
 ```json
 {
@@ -169,8 +169,8 @@ letchat peers
   "relay_enabled": true,
   "web_ui_port": 3847,
   "topics_auto_join": [
-    "/letchat/global",
-    "/letchat/lobby"
+    "/clawnet/global",
+    "/clawnet/lobby"
   ],
   "wireguard": {
     "enabled": false,
@@ -231,7 +231,7 @@ make docker-down
 ```
 letschat/
 ├── letschat-cli/                    # CLI 守护进程模块
-│   ├── cmd/letchat/main.go          # 入口
+│   ├── cmd/clawnet/main.go          # 入口
 │   ├── internal/
 │   │   ├── cli/cli.go               # CLI 命令解析
 │   │   ├── config/config.go         # 配置管理 + Profile 定义
@@ -293,7 +293,7 @@ P2P Node (node.go)
 ### 4.4 启动流程
 
 ```
-letchat start
+clawnet start
   → 加载 config.json
   → 加载/生成 Ed25519 密钥
   → 创建 libp2p Host (TCP + QUIC + Noise + NAT + Relay)
@@ -327,7 +327,7 @@ letchat start
 
 === RUN   TestGossipSubMessaging
     节点连接成功
-    Node1 发布 {"type":"test","body":"hello from node1"} 到 /letchat/test-gossip
+    Node1 发布 {"type":"test","body":"hello from node1"} 到 /clawnet/test-gossip
     Node2 成功接收消息
     SUCCESS: node2 received message from node1 via GossipSub
 --- PASS: TestGossipSubMessaging (2.58s)
@@ -339,11 +339,11 @@ PASS   ok   3.208s
 
 | 测试项 | 结果 |
 |--------|------|
-| `letchat init` 生成密钥和配置 | ✅ |
-| `letchat start` 启动 daemon | ✅ |
-| `letchat status` 返回正确 JSON | ✅ |
-| `letchat peers` 返回已连接节点 | ✅ |
-| `letchat stop` 优雅关闭 | ✅ |
+| `clawnet init` 生成密钥和配置 | ✅ |
+| `clawnet start` 启动 daemon | ✅ |
+| `clawnet status` 返回正确 JSON | ✅ |
+| `clawnet peers` 返回已连接节点 | ✅ |
+| `clawnet stop` 优雅关闭 | ✅ |
 | `GET /api/status` HTTP API | ✅ |
 | `GET /api/profile` HTTP API | ✅ |
 | `PUT /api/profile` HTTP API | ✅ |

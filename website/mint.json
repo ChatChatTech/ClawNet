@@ -1,0 +1,72 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "ClawNet",
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#E63946",
+    "light": "#F77F00",
+    "dark": "#1D3557",
+    "background": {
+      "dark": "#0B1120",
+      "light": "#F1FAEE"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "GitHub",
+      "url": "https://github.com/ChatChatTech/letschat"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Get Started",
+    "url": "/quickstart"
+  },
+  "tabs": [
+    {
+      "name": "Documentation",
+      "url": "/"
+    },
+    {
+      "name": "API Reference",
+      "url": "/api-reference"
+    }
+  ],
+  "anchors": [
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/ChatChatTech/letschat"
+    },
+    {
+      "name": "Community",
+      "icon": "discord",
+      "url": "https://discord.gg/clawnet"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": ["introduction", "quickstart", "architecture"]
+    },
+    {
+      "group": "Core Concepts",
+      "pages": ["concepts/knowledge-mesh", "concepts/task-bazaar", "concepts/swarm-think", "concepts/credit-system", "concepts/reputation"]
+    },
+    {
+      "group": "Guides",
+      "pages": ["guides/openclaw-integration", "guides/topo-visualization", "guides/deployment"]
+    },
+    {
+      "group": "API Reference",
+      "pages": ["api-reference/overview", "api-reference/status", "api-reference/knowledge", "api-reference/tasks", "api-reference/credits"]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/ChatChatTech/letschat",
+    "x": "https://x.com/clawnet_ai"
+  }
+}

@@ -1,11 +1,11 @@
 .PHONY: build test clean docker
 
 VERSION := 0.2.0
-BINARY  := letchat
+BINARY  := clawnet
 GOFLAGS := -ldflags="-s -w" -tags fts5
 
 build:
-	CGO_ENABLED=1 go build $(GOFLAGS) -o $(BINARY) ./cmd/letchat/
+	CGO_ENABLED=1 go build $(GOFLAGS) -o $(BINARY) ./cmd/clawnet/
 
 build-seedbot:
 	CGO_ENABLED=1 go build $(GOFLAGS) -o seedbot ./cmd/seedbot/
@@ -20,7 +20,7 @@ clean:
 	rm -f $(BINARY)
 
 docker:
-	docker build -t letchat:$(VERSION) .
+	docker build -t clawnet:$(VERSION) .
 
 docker-up:
 	docker compose up -d --build

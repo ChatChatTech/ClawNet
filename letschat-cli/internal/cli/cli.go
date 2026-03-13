@@ -38,10 +38,8 @@ func Execute() error {
 		return cmdPeers()
 	case "topo":
 		return cmdTopo()
-	case "geo-update":
-		return cmdGeoUpdate()
 	case "version":
-		fmt.Printf("letchat v%s\n", daemon.Version)
+		fmt.Printf("clawnet v%s\n", daemon.Version)
 		return nil
 	case "help", "--help", "-h":
 		return printUsage()
@@ -52,17 +50,16 @@ func Execute() error {
 }
 
 func printUsage() error {
-	fmt.Println(`letchat — decentralized agent communication network
+	fmt.Println(`clawnet — decentralized agent communication network
 
 Usage:
-  letchat init              Generate identity key and default config
-  letchat start             Start the daemon (foreground)
-  letchat stop              Stop a running daemon
-  letchat status            Show network status
-  letchat peers             List connected peers
-  letchat topo              Show rotating globe topology (full-screen)
-  letchat geo-update        Download city-level geo database (DB11)
-  letchat version           Show version
+  clawnet init              Generate identity key and default config
+  clawnet start             Start the daemon (foreground)
+  clawnet stop              Stop a running daemon
+  clawnet status            Show network status
+  clawnet peers             List connected peers
+  clawnet topo              Show rotating globe topology (full-screen)
+  clawnet version           Show version
 
 API runs on http://localhost:3847 when daemon is active.`)
 	return nil
@@ -402,7 +399,7 @@ func renderHeader(termW int, stats networkStats) string {
 	var sb strings.Builder
 
 	// === ROW 1: TOP BORDER + TITLE ===
-	titleText := " Letschat Agent Network "
+	titleText := " ClawNet Agent Network "
 	statsText := fmt.Sprintf("Nodes:%d  Credits:%.0f  Topics:%d  v%s",
 		stats.Peers+1, stats.Balance, len(stats.Topics), daemon.Version)
 	// Layout: ┌──[title]──────────┐  with stats embedded in title area
@@ -895,68 +892,6 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 	sb.WriteString("┘\033[0m\033[K")
 
 	return sb.String()
-}
-
-func cmdGeoUpdate() error {
-	dataDir := config.DataDir()
-	targetDir := filepath.Join(dataDir, "data")
-	os.MkdirAll(targetDir, 0700)
-
-	targetPath := filepath.Join(targetDir, "IP2LOCATION-LITE-DB11.BIN")
-
-	// Check for .env file with token
-	token := os.Getenv("IP2LOCATION_TOKEN")
-	if token == "" {
-		// Try reading from .env in working directory
-		envData, err := os.ReadFile(".env")
-		if err == nil {
-			for _, line := range strings.Split(string(envData), "\n") {
-				line = strings.TrimSpace(line)
-				if strings.HasPrefix(line, "IP2LOCATION_TOKEN=") {
-					token = strings.TrimPrefix(line, "IP2LOCATION_TOKEN=")
-					break
-				}
-			}
-		}
-	}
-
-	if token == "" {
-		return fmt.Errorf("IP2LOCATION_TOKEN not set. Set it in environment or .env file")
-	}
-
-	url := fmt.Sprintf("https://www.ip2location.com/download/?token=%s&file=DB11LITEBINIPV6", token)
-
-	fmt.Printf("Downloading city-level database (DB11) to %s ...\n", targetPath)
-	fmt.Println("This may take a while (~100MB)...")
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return fmt.Errorf("download failed: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
-	}
-
-	// The response is a ZIP file, save it first
-	zipPath := targetPath + ".zip"
-	zipFile, err := os.Create(zipPath)
-	if err != nil {
-		return fmt.Errorf("create zip: %w", err)
-	}
-	n, err := io.Copy(zipFile, resp.Body)
-	zipFile.Close()
-	if err != nil {
-		os.Remove(zipPath)
-		return fmt.Errorf("download error: %w", err)
-	}
-	fmt.Printf("Downloaded %d bytes\n", n)
-
-	// We'll need to unzip - for now just tell user
-	fmt.Printf("ZIP saved to: %s\n", zipPath)
-	fmt.Printf("Please extract IP2LOCATION-LITE-DB11.BIN from the ZIP to:\n  %s\n", targetPath)
-	fmt.Println("Then restart the daemon to use city-level geo resolution.")
-	return nil
 }
 
 func apiGet(path string) error {

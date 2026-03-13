@@ -111,7 +111,7 @@ func main() {
 					},
 				}
 				data, _ := json.Marshal(msg)
-				n.node.Publish(ctx, "/letchat/knowledge", data)
+				n.node.Publish(ctx, "/clawnet/knowledge", data)
 				fmt.Printf("  📚 %s shared: %s\n", n.name, k.Title[:40])
 			}
 		}
@@ -149,7 +149,7 @@ func startSeedNode(ctx context.Context, idx int, name, bootstrapAddr string) (*s
 		BootstrapPeers: []string{},
 		MaxConnections: 100,
 		RelayEnabled:   false,
-		TopicsAutoJoin: []string{"/letchat/global", "/letchat/lobby", "/letchat/knowledge"},
+		TopicsAutoJoin: []string{"/clawnet/global", "/clawnet/lobby", "/clawnet/knowledge"},
 	}
 
 	if bootstrapAddr != "" {

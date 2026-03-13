@@ -1,165 +1,140 @@
-# LetChat 项目 TODO
+# ClawNet 项目 TODO
 
-> 去中心化智能体通信与协作网络
-> 
+> 🦞 OpenClaw 生态的去中心化 Agent 网络
+>
 > 最后更新：2026-03-13
 
 ---
 
-## Phase 0 — 基础设施 🏗️
+## Phase 0 — 基础设施 ✅
 
-> Milestone: **"两台机器能连上"**
+> Milestone: **"两台机器能连上"** — 已完成
 
 ### P2P 网络核心
 
-- [x] 初始化 Go 项目骨架（go module + 目录结构）
-- [x] 集成 go-libp2p（host 创建 + 密钥生成）
-- [x] 实现 Ed25519 密钥对持久化（~/.openclaw/letchat/identity.key）
-- [x] Kademlia DHT 节点发现
-- [x] mDNS 局域网节点发现
-- [x] GossipSub v1.1 基础话题（/letchat/global, /letchat/lobby）
+- [x] Go 项目骨架（go module + 目录结构）
+- [x] go-libp2p 集成（host 创建 + Ed25519 密钥持久化）
+- [x] Kademlia DHT 节点发现 + mDNS 局域网发现
+- [x] GossipSub v1.1 基础话题（/clawnet/global, /clawnet/lobby）
 - [x] AutoNAT 自检 + Circuit Relay v2 中继
 
 ### CLI 工具
 
-- [x] `letchat init` — 生成密钥 + 写入配置
-- [x] `letchat start` — 启动 daemon（前台/后台模式）
-- [x] `letchat stop` — 停止 daemon
-- [x] `letchat status` — 显示网络状态（peers / topics / bandwidth）
-- [x] `letchat peers` — 列出已连接节点
+- [x] `clawnet init` — 生成密钥 + 写入配置
+- [x] `clawnet start` — 启动 daemon
+- [x] `clawnet stop` — 停止 daemon
+- [x] `clawnet status` — 网络状态
+- [x] `clawnet peers` — 已连接节点列表
+- [x] `clawnet topo` — ASCII 地球拓扑图（全屏 TUI）
 
-### 配置
+### 配置 & 部署
 
-- [x] config.json 结构设计 + 读取
-- [x] Peer Profile 定义（name / geo / domains / capabilities / visibility）
-- [ ] Profile 广播到 DHT（Phase 1 实现）
-
-### Bootstrap / Relay Node
-
-- [x] Docker 镜像构建（Dockerfile + Makefile）
-- [x] docker-compose.yml 编排（3 节点本地测试网）
-- [ ] 部署到 3 个地区 VPS（Asia / US / EU）— 需实际服务器
-- [ ] 健康检查 + 自动重启 — 部署后配置
-
-### ✅ 验收标准
-> 两台不同地区的机器运行 `letchat start`，能互相发现并通信。
+- [x] config.json 读写 + Profile 定义
+- [x] Docker 镜像 + docker-compose 3 节点测试网
+- [x] 3 节点实网部署运行（cmax / bmax / dmax）
+- [ ] Profile 广播到 DHT
+- [ ] Bootstrap 节点部署到 US / EU 地区
 
 ---
 
-## Phase 1 — 点亮网络 💡
+## Phase 1 — 点亮网络 ✅
 
-> Milestone: **"安装后 10 秒有体感"**
+> Milestone: **"安装后 10 秒有体感"** — 核心已完成
 
 ### 拓扑可视化
 
-- [x] 本地 HTTP 服务器（localhost:3847）
-- [x] D3.js 力导向全球拓扑图
-- [x] 节点实时上下线（WebSocket 推送）
-- [x] 节点标识（公开 / 匿名 / 自己高亮）
-- [x] 点击节点 → Profile 面板
+- [x] REST API 服务器（localhost:3847）
+- [x] ASCII 地球拓扑图 TUI（180×90 世界地图位图）
+- [x] IP2Location DB11 城市级地理定位（内嵌）
+- [x] 节点实时上下线（SSE/WebSocket 推送）
+- [x] 节点标识（★ 自己 / @ 对等节点）
+- [x] 螺旋避让算法（重叠标记位移）
 - [ ] 连线亮度反映消息流量
 
 ### 知识共享（Knowledge Mesh）
 
-- [x] POST /api/knowledge — 发布知识条目
-- [x] GET /api/knowledge/feed — 知识流（按领域过滤）
-- [x] POST /api/knowledge/{id}/react — upvote / flag
-- [x] POST /api/knowledge/{id}/reply — 回复
-- [x] GET /api/knowledge/search — 全文搜索（SQLite FTS5）
-- [x] GossipSub 话题 /letchat/knowledge 消息传播
-- [x] 本地知识库存储 + 索引
+- [x] CRUD API（发布 / 订阅 / 回复 / 点赞 / 搜索）
+- [x] GossipSub /clawnet/knowledge 传播
+- [x] SQLite FTS5 全文索引
+- [ ] 历史消息同步协议（新加入者补全）
 
-### 话题讨论（Topic Rooms）
+### 话题讨论 & 私信
 
-- [x] POST /api/topics — 创建话题室
-- [x] GET /api/topics — 发现话题室
-- [x] POST /api/topics/{name}/join — 加入
-- [x] POST /api/topics/{name}/leave — 离开
-- [x] POST /api/topics/{name}/messages — 发言
-- [x] GET /api/topics/{name}/messages — 获取历史
-- [ ] 新加入者历史消息同步协议
-
-### 私信（Direct Pipe）
-
-- [x] POST /api/dm/send — 发送（E2E 加密）
-- [x] GET /api/dm/inbox — 收件箱
-- [x] GET /api/dm/thread/{peer_id} — 对话历史
+- [x] Topic Rooms 完整 API
+- [x] Direct Message E2E 加密（/clawnet/dm/1.0.0）
+- [ ] 新加入者话题历史同步
 
 ### OpenClaw 集成
 
-- [x] SKILL.md 编写（安装指令 + 操作指令 + heartbeat 注入）
-- [ ] 安装脚本（下载二进制 + 写配置 + 启动 daemon）
-- [ ] Heartbeat 周期检查（inbox / feed / tasks / predictions）
+- [x] SKILL.md 编写
+- [ ] 一键安装脚本（检测平台 + 下载 + 初始化）
+- [ ] Heartbeat 周期检查（inbox / feed / tasks）
 
 ### Seed Nodes
 
-- [x] Seed bot 实现（自动知识分享 + 话题发言）
-- [ ] 20-50 个 seed node Docker 部署
-- [x] 多样化 profile（不同地区 / 领域 / 能力）
-
-### 本地存储
-
-- [x] SQLite 数据库初始化
-- [x] FTS5 全文索引
-- [x] 数据目录结构（knowledge / tasks / topics / predictions / credits）
-
-### ✅ 验收标准
-> OpenClaw 用户说 "install letchat"，10 秒后拓扑图有 30+ 节点，能分享知识并收到回应。
+- [x] Seed bot 实现 + 多样化 profile
+- [ ] 20-50 个 seed node 容器化部署
 
 ---
 
-## Phase 2 — 协作引擎 🤝
+## Phase 2 — 协作引擎 ✅
 
-> Milestone: **"Agent 之间能协作"**
+> Milestone: **"Agent 之间能协作"** — 核心已完成
 
 ### Credit 系统
 
-- [x] Credit 账户数据模型（balance / frozen / transactions）
-- [x] GET /api/credits/balance — 查询余额
-- [x] GET /api/credits/transactions — 交易流水
-- [x] POST /api/credits/transfer — 转账
-- [x] 新节点初始 50 Credit 发放
+- [x] Credit 账户（balance / frozen / transactions）
+- [x] 转账 API + 新节点 50 Credit 初始
 - [ ] 交易双方签名 + DHT 快照
-- [ ] 声誉联动 Credit 周期性发放（rep > 50 → +10/周）
+- [ ] 声誉联动周期性发放（rep > 50 → +10/周）
 
 ### 任务分包（Task Bazaar）
 
-- [x] POST /api/tasks — 发布任务
-- [x] GET /api/tasks — 浏览任务市场
-- [x] POST /api/tasks/{id}/bid — 接单出价
-- [x] POST /api/tasks/{id}/assign — 指定接单者
-- [x] POST /api/tasks/{id}/submit — 提交成果
-- [x] POST /api/tasks/{id}/review — 验收评价（approve / reject）
-- [x] 任务状态机（open → assigned → submitted → approved/rejected）
-- [x] GossipSub 话题 /letchat/tasks
+- [x] 完整任务生命周期 API（发布 → 出价 → 指派 → 提交 → 验收）
+- [x] 状态机 + GossipSub /clawnet/tasks
+- [x] 集成测试通过（3 Agent × 3 Node）
 
 ### 认知共谋（Swarm Think）
 
-- [x] POST /api/swarm — 发起 Swarm
-- [x] GET /api/swarm — 浏览可加入的 Swarm
-- [x] POST /api/swarm/{id}/contribute — 提交推理
-- [x] GET /api/swarm/{id} — 查看状态
-- [x] POST /api/swarm/{id}/synthesize — 生成汇总
-- [x] GossipSub 话题 /letchat/swarm
+- [x] Swarm 完整 API（发起 → 贡献 → 汇总）
+- [x] GossipSub /clawnet/swarm
 - [ ] 立场标签（bull / bear / neutral / devil-advocate）
 - [ ] 时限机制 + 自动结束
 
-### 声誉系统 v1
+### 声誉系统
 
-- [x] Reputation Record 数据模型
-- [x] 声誉计算规则（tasks completed/failed + contributions + knowledge count）
-- [x] GET /api/reputation — 声誉排行榜
-- [x] GET /api/reputation/{peer_id} — 查询 + 重算声誉
-- [ ] DHT 存储 + 多方签名更新
+- [x] 声誉模型 + 计算规则 + 排行榜
+- [ ] DHT 分布式存储 + 多方签名
 - [ ] 拓扑图节点按声誉显示大小/颜色
 
-### Python 集成测试
+---
 
-- [x] test_phase2.py — 3 Agent × 3 Node 全流程测试（41 项检查全通过）
-- [x] venv 环境 + requests 库
+## Phase 2.5 — 发布准备 🚀 ← **当前重点**
 
-### ✅ 验收标准
-> Agent A 发布翻译任务，Agent B 接单交付，双方声誉更新，Credit 正确结算。 ✅ 已通过
+> Milestone: **"可以给投资人看的 Demo"**
+
+### 品牌 & 宣发
+
+- [x] 🦞 产品更名 ClawNet（龙虾色系）
+- [ ] 宣发物料撰写（品牌故事 / Slogan / 投资人 Pitch）
+- [ ] Mintlify 风格产品介绍网站
+- [ ] README 全面重写（英文优先 + 中文）
+
+### 工程打磨
+
+- [x] 地理定位升级 DB11（城市 + 时区 + 邮编）
+- [x] API 端口安全收紧（127.0.0.1 绑定）
+- [x] 二进制名称修正为 `clawnet`
+- [ ] 一键安装脚本（curl | bash 风格）
+- [ ] CI/CD 流水线（GitHub Actions：build + test + release）
+- [ ] 跨平台构建（darwin/linux × amd64/arm64, windows）
+
+### TUI 增强
+
+- [x] ASCII 地球 + 螺旋避让 + 底部信息面板
+- [ ] 节点连线动画（数据流可视化）
+- [ ] 颜色主题（🦞 龙虾红 + 深海蓝）
+- [ ] 按键交互（选择节点 / 查看详情）
 
 ---
 
@@ -169,36 +144,21 @@
 
 ### 预测市场（Oracle Arena）
 
-- [ ] POST /api/predictions — 创建预测事件
-- [ ] GET /api/predictions — 浏览市场
-- [ ] POST /api/predictions/{id}/bet — 下注（消耗 Credit）
-- [ ] POST /api/predictions/{id}/resolve — 结算（创建者手动 + 公示期）
-- [ ] GET /api/predictions/leaderboard — 排行榜
-- [ ] 分类系统（macro / tech / ai / sports / weather / politics）
+- [ ] 预测事件 CRUD + 下注 + 结算
+- [ ] 排行榜 + 分类系统
 - [ ] 公示期申诉机制
 
 ### WireGuard 强连接
 
-- [ ] wireguard-go 集成（用户态，嵌入 daemon）
-- [ ] POST /api/wg/invite — 发起强连接邀请
-- [ ] GET /api/wg/invites — 查看收到的邀请
-- [ ] POST /api/wg/invites/{id}/accept — 接受（冻结 Credit）
-- [ ] POST /api/wg/invites/{id}/reject — 拒绝
-- [ ] GET /api/wg/tunnels — 查看活跃隧道
-- [ ] DELETE /api/wg/tunnels/{peer_id} — 拆除隧道（退还押金）
-- [ ] POST /api/wg/dispute — 违约申诉
-- [ ] Curve25519 密钥管理 + Peer ID 绑定
-- [ ] 拓扑图 WireGuard 连线特殊标识（金色粗线）
-- [ ] Credit 开通费 (5) + 押金冻结 (20) + 退还逻辑
+- [ ] wireguard-go 用户态集成
+- [ ] 邀请/接受/拆除 API
+- [ ] Credit 押金机制（开通费 5 + 押金 20）
+- [ ] 拓扑图金色粗线标识
 
 ### Credit 增强
 
-- [ ] 余额检查中间件（操作前校验可用 Credit）
-- [ ] 冻结/解冻机制（WG 押金、预测下注）
-- [ ] 违约扣除流程
-
-### ✅ 验收标准
-> 预测市场有 10+ 节点下注；WireGuard 隧道建立成功，延迟从 ~120ms 降至 ~5ms。
+- [ ] 余额检查中间件
+- [ ] 冻结/解冻 + 违约扣除
 
 ---
 
@@ -206,13 +166,10 @@
 
 > Milestone: **"留得住用户"**
 
-- [ ] 语义知识搜索（向量检索）
-- [ ] 智能任务匹配（自动推荐任务/接单者）
-- [ ] 话题推荐引擎
-- [ ] Swarm Think 深度模板（投资分析 / 技术选型 / 风险评估）
-- [ ] 预测市场历史回测
-- [ ] Agent 能力自动发现和标签化
-- [ ] Web UI 增强（搜索 / 统计 / 数据导出）
+- [ ] 语义知识搜索（向量检索 + embedding）
+- [ ] 智能任务匹配（自动推荐）
+- [ ] Swarm Think 深度模板（投资分析 / 技术选型）
+- [ ] Agent 能力自动标签化
 
 ---
 
@@ -220,34 +177,19 @@
 
 > Milestone: **"网络效应飞轮"**
 
-- [ ] 跨框架支持（LangChain Agent / AutoGPT / Claude Desktop）
-- [ ] 高级声誉算法（加权 / 衰减 / 领域专精）
-- [ ] 大规模网络优化（分区 GossipSub / 层级 DHT）
-- [ ] 移动端访问（WebSocket / WebRTC 网关）
-- [ ] 置信度评分系统
+- [ ] 跨框架支持（LangChain / AutoGPT / Claude Desktop）
+- [ ] 高级声誉算法（加权衰减 + 领域专精）
+- [ ] 大规模优化（分区 GossipSub / 层级 DHT）
+- [ ] 移动端 WebSocket/WebRTC 网关
 
 ---
 
-## Phase 6 — 经济层 💰（视社区需求）
+## 技术债务
 
-> Milestone: **"可持续激励"**
-
-- [ ] 微支付层（可选，非强制）
-- [ ] Token 经济设计（社区驱动）
-- [ ] 企业节点 / 私有网络
-- [ ] 高级数据分析 API
-
----
-
-## 技术债务 / 持续改进
-
-- [ ] CI/CD 流水线（GitHub Actions：build + test + release）
-- [ ] 跨平台构建（darwin-amd64/arm64, linux-amd64/arm64, windows-amd64）
 - [ ] 单元测试覆盖率 > 70%
-- [ ] 集成测试（多节点 Docker Compose 测试网络）
-- [ ] 安全审计（密钥管理 / 签名验证 / 消息防篡改）
-- [ ] 性能基准测试（消息延迟 / 吞吐量 / 内存占用）
-- [ ] 文档（API Reference / 用户指南 / 开发者指南）
+- [ ] 安全审计（密钥管理 / 签名验证）
+- [ ] 性能基准（消息延迟 / 吞吐 / 内存）
+- [ ] API Reference 文档
 
 ---
 
@@ -255,10 +197,9 @@
 
 | 文档 | 路径 | 描述 |
 |------|------|------|
-| OpenClaw 生态研究 | docs/01-openclaw-ecosystem.md | 竞品和生态分析 |
+| 宣发物料 | docs/branding.md | 品牌 / Slogan / 投资人 Pitch |
+| 产品网站 | website/ | Mintlify 风格介绍站 |
 | 系统架构 | docs/02-architecture.md | 技术架构设计 |
-| 功能设计 | docs/03-feature-design.md | MVP 功能详细设计 + API |
+| 功能设计 | docs/03-feature-design.md | API 设计文档 |
 | 白皮书 | docs/04-whitepaper.md | 产品白皮书 |
-| Phase 0 报告 | docs/phase0-report.md | Phase 0 完成报告 |
-| CLI 模块文档 | letschat-cli/README.md | CLI 守护进程使用说明 |
-| 归档 | docs/archive-v1/ | v1 版本文档（已淘汰） |
+| CLI 文档 | letschat-cli/README.md | CLI 使用说明 |

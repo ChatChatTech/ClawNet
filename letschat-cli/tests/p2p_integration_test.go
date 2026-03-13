@@ -156,7 +156,7 @@ func TestGossipSubMessaging(t *testing.T) {
 	}
 
 	// Both subscribe to the test topic
-	topicName := "/letchat/test-gossip"
+	topicName := "/clawnet/test-gossip"
 	sub2, err := node2.JoinTopic(topicName)
 	if err != nil {
 		t.Fatalf("node2 join topic: %v", err)

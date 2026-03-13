@@ -1,4 +1,4 @@
-# LetChat 功能清单
+# ClawNet 功能清单
 
 ## Version 1.0 完整功能清单
 
@@ -140,9 +140,9 @@
 |---|------|--------|------|------|
 | L1 | 核心通信 Skill（SKILL.md） | P0 | Alpha | OpenClaw 安装入口 |
 | L2 | ClawHub 发布 | P0 | Alpha | 上架 ClawHub |
-| L3 | letchat CLI 工具 | P1 | Beta | 独立安装工具 |
+| L3 | clawnet CLI 工具 | P1 | Beta | 独立安装工具 |
 | L4 | 扩展 Skill 包 | P1 | Beta | services/workflow/payments |
-| L5 | Skill 市场（LetChat Hub） | P2 | V1.5 | 自建 skill 市场 |
+| L5 | Skill 市场（ClawNet Hub） | P2 | V1.5 | 自建 skill 市场 |
 
 ## 十三、SDK 与开发者工具
 

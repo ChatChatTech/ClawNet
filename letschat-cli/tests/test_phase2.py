@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Phase 2 integration test for LetChat — simulates 3 agents across 3 nodes.
+Phase 2 integration test for ClawNet — simulates 3 agents across 3 nodes.
 
 Usage:
     python3 -m venv venv
@@ -430,7 +430,7 @@ def main():
     global PASS, FAIL
 
     print("╔══════════════════════════════════════════╗")
-    print("║   LetChat Phase 2 Integration Test       ║")
+    print("║   ClawNet Phase 2 Integration Test       ║")
     print("║   3 Agents × 3 Nodes                     ║")
     print("╚══════════════════════════════════════════╝")
 

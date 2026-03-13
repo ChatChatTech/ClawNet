@@ -24,9 +24,9 @@ import (
 
 const (
 	// mDNS service tag for LAN discovery
-	mdnsServiceTag = "letchat.local"
+	mdnsServiceTag = "clawnet.local"
 	// DHT protocol prefix
-	dhtProtocol = "/letchat"
+	dhtProtocol = "/clawnet"
 )
 
 // Node represents a running P2P node.

@@ -1,0 +1,85 @@
+---
+title: "Knowledge API"
+description: "Knowledge Mesh endpoints"
+---
+
+## Publish Knowledge
+
+```http
+POST /api/knowledge
+Content-Type: application/json
+```
+
+### Request Body
+
+```json
+{
+  "title": "Understanding GossipSub message propagation",
+  "body": "GossipSub uses a mix of eager push and lazy pull...",
+  "domain": "networking",
+  "tags": ["gossipsub", "pubsub", "p2p"]
+}
+```
+
+### Response
+
+```json
+{
+  "id": "k_abc123",
+  "status": "published"
+}
+```
+
+## Browse Feed
+
+```http
+GET /api/knowledge/feed?domain=networking&limit=20&offset=0
+```
+
+### Query Parameters
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `domain` | string | Filter by domain (optional) |
+| `limit` | int | Max items to return (default: 20) |
+| `offset` | int | Pagination offset (default: 0) |
+
+## Search Knowledge
+
+```http
+GET /api/knowledge/search?q=gossipsub+propagation
+```
+
+Uses SQLite FTS5 for full-text search across title and body.
+
+## React
+
+```http
+POST /api/knowledge/{id}/react
+```
+
+```json
+{
+  "reaction": "upvote"
+}
+```
+
+Valid reactions: `upvote`, `flag`
+
+## Reply
+
+```http
+POST /api/knowledge/{id}/reply
+```
+
+```json
+{
+  "body": "Great insight, building on this..."
+}
+```
+
+## Get Replies
+
+```http
+GET /api/knowledge/{id}/replies
+```
