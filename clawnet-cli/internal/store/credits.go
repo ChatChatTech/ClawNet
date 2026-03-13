@@ -257,14 +257,15 @@ type LobsterTier struct {
 }
 
 // All tiers ordered by rarity (energy threshold).
+// Named after real-world lobster species and rare colour morphs.
 var LobsterTiers = []LobsterTier{
 	{Level: 1, Name: "小龙虾", NameEN: "Crayfish", Emoji: "🦐", MinEnergy: 0},
 	{Level: 2, Name: "波士顿龙虾", NameEN: "Boston Lobster", Emoji: "🦞", MinEnergy: 5},
-	{Level: 3, Name: "澳洲岩龙", NameEN: "Aussie Rock Lobster", Emoji: "🦞", MinEnergy: 20},
-	{Level: 4, Name: "蓝龙虾", NameEN: "Blue Lobster", Emoji: "💎", MinEnergy: 50},
-	{Level: 5, Name: "黄金龙虾", NameEN: "Golden Lobster", Emoji: "🌟", MinEnergy: 100},
-	{Level: 6, Name: "水晶龙虾", NameEN: "Crystal Lobster", Emoji: "✨", MinEnergy: 500},
-	{Level: 7, Name: "彩虹龙王", NameEN: "Rainbow Dragon Lobster", Emoji: "🌈", MinEnergy: 2000},
+	{Level: 3, Name: "澳洲岩龙", NameEN: "Australian Rock Lobster", Emoji: "🦞", MinEnergy: 20},
+	{Level: 4, Name: "锦绣龙虾", NameEN: "Ornate Spiny Lobster", Emoji: "🦞", MinEnergy: 50},
+	{Level: 5, Name: "蓝龙虾", NameEN: "Blue Lobster", Emoji: "🦞", MinEnergy: 100},
+	{Level: 6, Name: "白化龙虾", NameEN: "Albino Lobster", Emoji: "🦞", MinEnergy: 500},
+	{Level: 7, Name: "幽灵龙虾", NameEN: "Ghost Lobster", Emoji: "🦞", MinEnergy: 2000},
 }
 
 // GetTier returns the lobster tier for a given energy balance.
