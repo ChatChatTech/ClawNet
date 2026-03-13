@@ -20,6 +20,8 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/multiformats/go-multiaddr"
 
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/bootstrap"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/btdht"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
 )
 
@@ -39,6 +41,7 @@ type Node struct {
 	Subs       map[string]*pubsub.Subscription
 	Config     *config.Config
 	BwCounter  *metrics.BandwidthCounter
+	BTDHT      *btdht.Discovery
 	cancelFunc context.CancelFunc
 
 	mu sync.RWMutex
@@ -117,6 +120,16 @@ func NewNode(ctx context.Context, priv crypto.PrivKey, cfg *config.Config) (*Nod
 
 	// Connect to bootstrap peers
 	node.connectBootstrapPeers(ctx)
+
+	// Start HTTP bootstrap fetch (GitHub Pages) in background
+	if cfg.HTTPBootstrap {
+		go node.httpBootstrap(ctx)
+	}
+
+	// Start BT Mainline DHT discovery in background
+	if cfg.BTDHT.Enabled {
+		go node.startBTDHT(ctx, cfg)
+	}
 
 	// Start DHT routing discovery in background
 	go node.discoverPeers(ctx)
@@ -220,6 +233,86 @@ func (n *Node) discoverPeers(ctx context.Context) {
 	}
 }
 
+// httpBootstrap fetches bootstrap peers from GitHub Pages and connects.
+func (n *Node) httpBootstrap(ctx context.Context) {
+	list, err := bootstrap.FetchPeers(ctx)
+	if err != nil {
+		fmt.Printf("http-bootstrap: failed: %v\n", err)
+		return
+	}
+	fmt.Printf("http-bootstrap: fetched %d peers (v%d)\n", len(list.Nodes), list.Version)
+	for _, addr := range list.Nodes {
+		ma, err := multiaddr.NewMultiaddr(addr)
+		if err != nil {
+			continue
+		}
+		pi, err := peer.AddrInfoFromP2pAddr(ma)
+		if err != nil {
+			continue
+		}
+		go func(pi peer.AddrInfo) {
+			cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+			defer cancel()
+			if err := n.Host.Connect(cctx, pi); err == nil {
+				fmt.Printf("http-bootstrap: connected to %s\n", pi.ID.String()[:16])
+			}
+		}(*pi)
+	}
+}
+
+// startBTDHT initializes and runs the BitTorrent Mainline DHT discovery.
+func (n *Node) startBTDHT(ctx context.Context, cfg *config.Config) {
+	// Derive libp2p port from first listen address
+	libp2pPort := config.DefaultP2PPort
+	for _, addr := range n.Host.Addrs() {
+		if p, err := addr.ValueForProtocol(multiaddr.P_TCP); err == nil {
+			fmt.Sscanf(p, "%d", &libp2pPort)
+			break
+		}
+	}
+
+	disc, err := btdht.NewDiscovery(cfg.BTDHT.ListenPort, libp2pPort)
+	if err != nil {
+		fmt.Printf("bt-dht: setup failed: %v\n", err)
+		return
+	}
+	n.BTDHT = disc
+
+	if err := disc.Bootstrap(); err != nil {
+		fmt.Printf("bt-dht: bootstrap failed: %v\n", err)
+		// Continue anyway — partial bootstrap can still work
+	}
+
+	fmt.Printf("bt-dht: running on UDP :%d, announcing libp2p port %d\n",
+		cfg.BTDHT.ListenPort, libp2pPort)
+
+	disc.RunLoop(ctx, func(peers []btdht.PeerAddr) {
+		for _, p := range peers {
+			// Try connecting via both TCP and QUIC on the announced port
+			addrs := []string{
+				fmt.Sprintf("/ip4/%s/tcp/%d", p.IP, p.Port),
+				fmt.Sprintf("/ip4/%s/udp/%d/quic-v1", p.IP, p.Port),
+			}
+			for _, addrStr := range addrs {
+				ma, err := multiaddr.NewMultiaddr(addrStr)
+				if err != nil {
+					continue
+				}
+				go func(ma multiaddr.Multiaddr) {
+					cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+					defer cancel()
+					// We don't have the peer ID — libp2p will discover it
+					// during the Noise handshake. Non-libp2p endpoints will
+					// fail quickly at protocol negotiation.
+					n.Host.Connect(cctx, peer.AddrInfo{
+						Addrs: []multiaddr.Multiaddr{ma},
+					})
+				}(ma)
+			}
+		}
+	})
+}
+
 // JoinTopic joins a GossipSub topic and subscribes to it.
 func (n *Node) JoinTopic(topicName string) (*pubsub.Subscription, error) {
 	n.mu.Lock()
@@ -259,6 +352,9 @@ func (n *Node) Publish(ctx context.Context, topicName string, data []byte) error
 // Close shuts down the node gracefully.
 func (n *Node) Close() error {
 	n.cancelFunc()
+	if n.BTDHT != nil {
+		n.BTDHT.Close()
+	}
 	if n.DHT != nil {
 		n.DHT.Close()
 	}
