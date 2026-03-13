@@ -67,25 +67,25 @@ func (d *Daemon) startGossipHandlers(ctx context.Context) {
 		go d.handleMottoSub(ctx, mottoSub)
 	}
 
-	// Publish own motto periodically so new peers receive it
-	if d.Profile != nil && d.Profile.Motto != "" {
-		go func() {
-			time.Sleep(3 * time.Second) // wait for peer connections
+	// Publish own motto periodically so new peers receive it (and late-set mottos)
+	go func() {
+		time.Sleep(3 * time.Second) // wait for peer connections
+		if d.Profile != nil && d.Profile.Motto != "" {
 			d.publishMotto(ctx, d.Profile.Motto)
-			ticker := time.NewTicker(30 * time.Second)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					if d.Profile.Motto != "" {
-						d.publishMotto(ctx, d.Profile.Motto)
-					}
+		}
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if d.Profile != nil && d.Profile.Motto != "" {
+					d.publishMotto(ctx, d.Profile.Motto)
 				}
 			}
-		}()
-	}
+		}
+	}()
 
 	// Start traffic byte counter
 	go d.trackTraffic(ctx)
@@ -106,6 +106,9 @@ func (d *Daemon) handleMottoSub(ctx context.Context, sub *pubsub.Subscription) {
 		}
 		if gm.Type == "motto" && gm.PeerID != "" {
 			d.PeerMottos.Store(gm.PeerID, gm.Motto)
+			if gm.AgentName != "" {
+				d.PeerAgentNames.Store(gm.PeerID, gm.AgentName)
+			}
 		}
 	}
 }

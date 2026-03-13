@@ -108,8 +108,9 @@ func (d *Daemon) handlePeers(w http.ResponseWriter, r *http.Request) {
 	result := make([]map[string]any, 0, len(peers))
 	for _, p := range peers {
 		addrs := d.Node.Host.Peerstore().Addrs(p)
+		pid := p.String()
 		entry := map[string]any{
-			"peer_id": p.String(),
+			"peer_id": pid,
 		}
 		// Resolve geo from first public addr; never expose raw IPs
 		if d.Geo != nil {
@@ -124,6 +125,12 @@ func (d *Daemon) handlePeers(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		if m, ok := d.PeerMottos.Load(pid); ok {
+			entry["motto"] = m.(string)
+		}
+		if n, ok := d.PeerAgentNames.Load(pid); ok {
+			entry["agent_name"] = n.(string)
+		}
 		result = append(result, entry)
 	}
 	writeJSON(w, result)
@@ -134,6 +141,7 @@ func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
 	type peerGeo struct {
 		PeerID         string       `json:"peer_id"`
 		ShortID        string       `json:"short_id"`
+		AgentName      string       `json:"agent_name,omitempty"`
 		Location       string       `json:"location"`
 		Geo            *geo.GeoInfo `json:"geo,omitempty"`
 		IsSelf         bool         `json:"is_self"`
@@ -148,6 +156,7 @@ func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
 	selfEntry := peerGeo{PeerID: selfID, ShortID: shortID(selfID), Location: "Unknown", IsSelf: true}
 	if d.Profile != nil {
 		selfEntry.Motto = d.Profile.Motto
+		selfEntry.AgentName = d.Profile.AgentName
 	}
 	if d.Geo != nil {
 		for _, a := range d.Node.Addrs() {
@@ -195,6 +204,9 @@ func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
 		}
 		if m, ok := d.PeerMottos.Load(pid); ok {
 			entry.Motto = m.(string)
+		}
+		if n, ok := d.PeerAgentNames.Load(pid); ok {
+			entry.AgentName = n.(string)
 		}
 		result = append(result, entry)
 	}

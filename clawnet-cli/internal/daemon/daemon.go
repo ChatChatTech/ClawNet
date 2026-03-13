@@ -31,7 +31,8 @@ type Daemon struct {
 	DataDir    string
 	StartedAt  time.Time
 	ctx        context.Context
-	PeerMottos sync.Map // peer_id -> string
+	PeerMottos      sync.Map // peer_id -> string
+	PeerAgentNames  sync.Map // peer_id -> string
 	rxBytes    atomic.Uint64
 	txBytes    atomic.Uint64
 	nicName    string

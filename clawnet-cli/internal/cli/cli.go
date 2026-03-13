@@ -474,6 +474,7 @@ func cmdTopo() error {
 type peerGeoData struct {
 	PeerID         string   `json:"peer_id"`
 	ShortID        string   `json:"short_id"`
+	AgentName      string   `json:"agent_name,omitempty"`
 	Location       string   `json:"location"`
 	Geo            *geoInfo `json:"geo,omitempty"`
 	IsSelf         bool     `json:"is_self"`
@@ -679,6 +680,7 @@ func renderHeader(termW int, stats networkStats) string {
 type peerInfo struct {
 	shortID        string
 	peerID         string
+	agentName      string
 	location       string
 	country        string
 	region         string
@@ -697,6 +699,7 @@ func buildPeerInfos(peers []peerGeoData) []peerInfo {
 		pi := peerInfo{
 			shortID:        p.ShortID,
 			peerID:         p.PeerID,
+			agentName:      p.AgentName,
 			location:       p.Location,
 			isSelf:         p.IsSelf,
 			latencyMs:      p.LatencyMs,
@@ -1127,6 +1130,9 @@ func renderSelfDetail(pInfos []peerInfo, stats networkStats, w int, now int64) [
 	if self != nil {
 		lines = append(lines, cSelf+" Peer ID:    "+cReset+self.peerID)
 		lines = append(lines, cSelf+" Short ID:   "+cReset+self.shortID)
+		if self.agentName != "" {
+			lines = append(lines, cSelf+" Agent:      "+cReset+self.agentName)
+		}
 		loc := self.location
 		if loc == "" || loc == "Unknown" {
 			loc = self.country
@@ -1214,6 +1220,10 @@ func renderPeersDetail(pInfos []peerInfo, w int, now int64, state *topoState) []
 
 		allEntries = append(allEntries,
 			fmt.Sprintf(cPeerInfo+"  %d. @%s"+cReset, i+1, p.shortID))
+		if p.agentName != "" {
+			allEntries = append(allEntries,
+				fmt.Sprintf("     Name: "+cPeerInfo+"%s"+cReset, p.agentName))
+		}
 		allEntries = append(allEntries,
 			fmt.Sprintf("     ID:  %s", truncStr(p.peerID, w-10)))
 		allEntries = append(allEntries,
