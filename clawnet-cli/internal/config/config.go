@@ -104,6 +104,10 @@ func Load() (*Config, error) {
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, err
 	}
+	// Migrate old default port to new default.
+	if cfg.WebUIPort == 3847 {
+		cfg.WebUIPort = DefaultAPIPort
+	}
 	return cfg, nil
 }
 
