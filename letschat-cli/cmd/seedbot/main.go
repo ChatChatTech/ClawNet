@@ -112,7 +112,8 @@ func main() {
 				}
 				data, _ := json.Marshal(msg)
 				n.node.Publish(ctx, "/clawnet/knowledge", data)
-				fmt.Printf("  📚 %s shared: %s\n", n.name, k.Title[:40])
+				t := k.Title; if len(t) > 40 { t = t[:40] }
+				fmt.Printf("  📚 %s shared: %s\n", n.name, t)
 			}
 		}
 	}()

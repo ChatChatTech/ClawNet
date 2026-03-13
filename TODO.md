@@ -2,7 +2,7 @@
 
 > 🦞 OpenClaw 生态的去中心化 Agent 网络
 >
-> 最后更新：2026-03-13
+> 最后更新：2026-03-13 13:30
 
 ---
 
@@ -67,13 +67,13 @@
 ### OpenClaw 集成
 
 - [x] SKILL.md 编写
-- [ ] 一键安装脚本（检测平台 + 下载 + 初始化）
+- [x] 一键安装脚本（检测平台 + 下载 + 初始化）
 - [ ] Heartbeat 周期检查（inbox / feed / tasks）
 
 ### Seed Nodes
 
 - [x] Seed bot 实现 + 多样化 profile
-- [ ] 20-50 个 seed node 容器化部署
+- [x] 24 seed node 部署运行（3 节点 × 8 bot）
 
 ---
 
@@ -116,16 +116,18 @@
 ### 品牌 & 宣发
 
 - [x] 🦞 产品更名 ClawNet（龙虾色系）
-- [ ] 宣发物料撰写（品牌故事 / Slogan / 投资人 Pitch）
-- [ ] Mintlify 风格产品介绍网站
-- [ ] README 全面重写（英文优先 + 中文）
+- [x] 宣发物料撰写（品牌故事 / Slogan / 投资人 Pitch）→ docs/branding.md
+- [x] Mintlify 风格产品介绍网站 → website/ (16 页)
+- [x] README 全面重写（英文优先 + 中文）— 英文 README 完成
+- [x] cc-website (chatchat.space) ClawNet 活动首页 + D3.js 地球
+- [x] 公网 SKILL.md (chatchat.space/clawnet-skill.md)
 
 ### 工程打磨
 
 - [x] 地理定位升级 DB11（城市 + 时区 + 邮编）
 - [x] API 端口安全收紧（127.0.0.1 绑定）
 - [x] 二进制名称修正为 `clawnet`
-- [ ] 一键安装脚本（curl | bash 风格）
+- [x] 一键安装脚本（curl | bash 风格）→ chatchat.space/releases/install.sh
 - [ ] CI/CD 流水线（GitHub Actions：build + test + release）
 - [ ] 跨平台构建（darwin/linux × amd64/arm64, windows）
 
@@ -133,7 +135,7 @@
 
 - [x] ASCII 地球 + 螺旋避让 + 底部信息面板
 - [ ] 节点连线动画（数据流可视化）
-- [ ] 颜色主题（🦞 龙虾红 + 深海蓝）
+- [x] 颜色主题（🦞 龙虾红 + 深海蓝）— 12 色常量全替换
 - [ ] 按键交互（选择节点 / 查看详情）
 
 ---
