@@ -182,18 +182,33 @@ func Execute() error {
 }
 
 func printUsage() error {
-	fmt.Println(`clawnet — decentralized agent communication network
+	red := "\033[38;2;230;57;70m"
+	coral := "\033[38;2;247;127;0m"
+	tidal := "\033[38;2;69;123;157m"
+	dim := "\033[2m"
+	bold := "\033[1m"
+	rst := "\033[0m"
 
-Usage:
-  clawnet init              Generate identity key and default config
-  clawnet start             Start the daemon (foreground)
-  clawnet stop              Stop a running daemon
-  clawnet status            Show network status
-  clawnet peers             List connected peers
-  clawnet topo              Show rotating globe topology (full-screen)
-  clawnet version           Show version
-
-API runs on http://localhost:3847 when daemon is active.`)
+	for _, line := range clawnetBanner {
+		fmt.Println(red + line + rst)
+	}
+	fmt.Println()
+	fmt.Println(coral + "  Decentralized Agent Communication Network" + rst)
+	fmt.Println(dim + "  https://github.com/ChatChatTech/ClawNet" + rst)
+	fmt.Println()
+	fmt.Println(bold + "USAGE" + rst)
+	fmt.Println(tidal + "  clawnet <command>" + rst)
+	fmt.Println()
+	fmt.Println(bold + "COMMANDS" + rst)
+	fmt.Println(tidal+"  init     "+rst + "Generate identity key and default config")
+	fmt.Println(tidal+"  start    "+rst + "Start the daemon (foreground)")
+	fmt.Println(tidal+"  stop     "+rst + "Stop a running daemon")
+	fmt.Println(tidal+"  status   "+rst + "Show network status")
+	fmt.Println(tidal+"  peers    "+rst + "List connected peers")
+	fmt.Println(tidal+"  topo     "+rst + "Show rotating globe topology (full-screen)")
+	fmt.Println(tidal+"  version  "+rst + "Show version")
+	fmt.Println()
+	fmt.Println(dim + "  API runs on http://localhost:3847 when daemon is active." + rst)
 	return nil
 }
 
@@ -288,20 +303,6 @@ type topoState struct {
 	peerScrollOff int // scroll offset in peer detail list
 }
 
-// trafficHistory stores samples for the sparkline graph
-type trafficHistory struct {
-	nicName    string
-	nicRx      []float64
-	nicTx      []float64
-	lastNicRx  uint64
-	lastNicTx  uint64
-	p2pRx      []float64
-	p2pTx      []float64
-	lastP2pRx  uint64
-	lastP2pTx  uint64
-	lastTime   time.Time
-}
-
 func cmdTopo() error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -362,7 +363,6 @@ func cmdTopo() error {
 	var lastTermW int
 
 	state := &topoState{activePanel: panelGlobe}
-	traffic := &trafficHistory{}
 
 	for {
 		// Process all pending input
@@ -454,12 +454,9 @@ func cmdTopo() error {
 				lastTermW = w
 			}
 
-			// Update traffic samples
-			updateTraffic(traffic, base)
-
 			var frame string
 			if state.detailMode {
-				frame = renderDetailView(peers, w, h, headerCache, netStats, state, traffic)
+				frame = renderDetailView(peers, w, h, headerCache, netStats, state)
 			} else {
 				frame = renderTopoFrame(peers, w, h, angle, headerCache, netStats, state)
 			}
@@ -512,15 +509,6 @@ type creditInfo struct {
 	TotalSpent  float64 `json:"total_spent"`
 }
 
-// trafficStats from daemon /api/traffic
-type trafficStats struct {
-	NicName string `json:"nic_name"`
-	NicRx   uint64 `json:"nic_rx"`
-	NicTx   uint64 `json:"nic_tx"`
-	P2pRx   uint64 `json:"p2p_rx"`
-	P2pTx   uint64 `json:"p2p_tx"`
-}
-
 func fetchGeoPeers(base string) []peerGeoData {
 	resp, err := http.Get(base + "/api/peers/geo")
 	if err != nil {
@@ -569,45 +557,6 @@ func fetchNetworkStats(base string) networkStats {
 		stats.Frozen = ci.Frozen
 	}
 	return stats
-}
-
-func updateTraffic(t *trafficHistory, base string) {
-	resp, err := http.Get(base + "/api/traffic")
-	if err != nil {
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return
-	}
-	var ts trafficStats
-	if err := json.NewDecoder(resp.Body).Decode(&ts); err != nil {
-		return
-	}
-	t.nicName = ts.NicName
-	now := time.Now()
-	if !t.lastTime.IsZero() {
-		dt := now.Sub(t.lastTime).Seconds()
-		if dt > 0 {
-			t.nicRx = appendSample(t.nicRx, float64(ts.NicRx-t.lastNicRx)/dt, 60)
-			t.nicTx = appendSample(t.nicTx, float64(ts.NicTx-t.lastNicTx)/dt, 60)
-			t.p2pRx = appendSample(t.p2pRx, float64(ts.P2pRx-t.lastP2pRx)/dt, 60)
-			t.p2pTx = appendSample(t.p2pTx, float64(ts.P2pTx-t.lastP2pTx)/dt, 60)
-		}
-	}
-	t.lastNicRx = ts.NicRx
-	t.lastNicTx = ts.NicTx
-	t.lastP2pRx = ts.P2pRx
-	t.lastP2pTx = ts.P2pTx
-	t.lastTime = now
-}
-
-func appendSample(s []float64, v float64, maxLen int) []float64 {
-	s = append(s, v)
-	if len(s) > maxLen {
-		s = s[len(s)-maxLen:]
-	}
-	return s
 }
 
 // lookupWorldMap samples the 180x90 equirectangular bitmap.
@@ -972,10 +921,10 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 			if globeCol >= 0 && globeCol < gW {
 				if mc, ok := globeMarkers[[2]int{globeCol, row}]; ok {
 					if mc.isSelf {
-						// Use ASCII * instead of ★ to avoid CJK width issues
-						sb.WriteString(cSelf + "*" + cReset)
+						// Use ASCII @ for self marker (orange)
+						sb.WriteString(cSelf + "@" + cReset)
 					} else {
-						sb.WriteString(densityColor(mc.density) + "@" + cReset)
+						sb.WriteString(densityColor(mc.density) + "*" + cReset)
 					}
 				} else {
 					ch := globe[row][globeCol]
@@ -1104,7 +1053,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 
 // ── Detail view (entered by pressing Enter) ──
 
-func renderDetailView(peers []peerGeoData, termW, termH int, header string, stats networkStats, state *topoState, traffic *trafficHistory) string {
+func renderDetailView(peers []peerGeoData, termW, termH int, header string, stats networkStats, state *topoState) string {
 	innerW := termW - 2
 	if innerW < 10 {
 		innerW = 10
@@ -1126,7 +1075,7 @@ func renderDetailView(peers []peerGeoData, termW, termH int, header string, stat
 	case panelPeers:
 		lines = renderPeersDetail(pInfos, innerW, now, state)
 	case panelGlobe:
-		lines = renderClawNetStats(pInfos, stats, innerW, now, traffic)
+		lines = renderClawNetStats(pInfos, stats, innerW, now)
 	}
 
 	// Emit content lines with proper visible-width padding
@@ -1294,7 +1243,7 @@ func renderPeersDetail(pInfos []peerInfo, w int, now int64, state *topoState) []
 }
 
 // renderClawNetStats shows a neofetch-style page with ASCII banner + stats + sysinfo
-func renderClawNetStats(pInfos []peerInfo, stats networkStats, w int, now int64, traffic *trafficHistory) []string {
+func renderClawNetStats(pInfos []peerInfo, stats networkStats, w int, now int64) []string {
 	var lines []string
 
 	// Count peers by location
@@ -1437,97 +1386,7 @@ func renderClawNetStats(pInfos []peerInfo, stats networkStats, w int, now int64,
 			densityColor(5)+"*"+cReset+" 4-6 nodes  "+
 			densityColor(8)+"*"+cReset+" 7+ nodes")
 
-	// Network traffic sparkline
-	sparkW := w - 22
-	if sparkW > 60 {
-		sparkW = 60
-	}
-	if sparkW < 10 {
-		sparkW = 10
-	}
-
-	nicLabel := traffic.nicName
-	if nicLabel == "" {
-		nicLabel = "NIC"
-	}
-	lines = append(lines, "")
-	lines = append(lines, " "+cTitle+nicLabel+" Traffic"+cReset)
-	if len(traffic.nicRx) > 0 || len(traffic.nicTx) > 0 {
-		rxLast := fmtRate(traffic.nicRx)
-		txLast := fmtRate(traffic.nicTx)
-		lines = append(lines, fmt.Sprintf("   RX %s %s", renderSparkline(traffic.nicRx, sparkW), rxLast))
-		lines = append(lines, fmt.Sprintf("   TX %s %s", renderSparkline(traffic.nicTx, sparkW), txLast))
-	} else {
-		lines = append(lines, cDim+"   (awaiting data...)"+cReset)
-	}
-
-	lines = append(lines, "")
-	lines = append(lines, " "+cTitle+"ClawNet: P2P Traffic"+cReset)
-	if len(traffic.p2pRx) > 0 || len(traffic.p2pTx) > 0 {
-		rxLast := fmtRate(traffic.p2pRx)
-		txLast := fmtRate(traffic.p2pTx)
-		lines = append(lines, fmt.Sprintf("   RX %s %s", renderSparkline(traffic.p2pRx, sparkW), rxLast))
-		lines = append(lines, fmt.Sprintf("   TX %s %s", renderSparkline(traffic.p2pTx, sparkW), txLast))
-	} else {
-		lines = append(lines, cDim+"   (awaiting data...)"+cReset)
-	}
-
 	return lines
-}
-
-// renderSparkline renders a series of float64 values as a Unicode sparkline
-func renderSparkline(samples []float64, width int) string {
-	blocks := []rune{' ', '\u2581', '\u2582', '\u2583', '\u2584', '\u2585', '\u2586', '\u2587', '\u2588'}
-
-	data := samples
-	if len(data) > width {
-		data = data[len(data)-width:]
-	}
-
-	maxVal := 0.0
-	for _, v := range data {
-		if v > maxVal {
-			maxVal = v
-		}
-	}
-	if maxVal == 0 {
-		maxVal = 1
-	}
-
-	var sb strings.Builder
-	sb.WriteString("\033[38;2;69;123;157m") // tidal blue
-	for _, v := range data {
-		idx := int(v / maxVal * float64(len(blocks)-1))
-		if idx < 0 {
-			idx = 0
-		}
-		if idx >= len(blocks) {
-			idx = len(blocks) - 1
-		}
-		sb.WriteRune(blocks[idx])
-	}
-	for i := len(data); i < width; i++ {
-		sb.WriteRune(' ')
-	}
-	sb.WriteString(cReset)
-	return sb.String()
-}
-
-func formatBytes(b float64) string {
-	if b < 1024 {
-		return fmt.Sprintf("%.0fB", b)
-	}
-	if b < 1048576 {
-		return fmt.Sprintf("%.1fKB", b/1024)
-	}
-	return fmt.Sprintf("%.1fMB", b/1048576)
-}
-
-func fmtRate(samples []float64) string {
-	if len(samples) == 0 {
-		return "0B/s"
-	}
-	return formatBytes(samples[len(samples)-1]) + "/s"
 }
 
 // ── Helper: build self info lines for bottom panel ──
