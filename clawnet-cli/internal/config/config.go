@@ -75,6 +75,9 @@ func DefaultConfig() *Config {
 
 // DataDir returns the absolute path to the data directory.
 func DataDir() string {
+	if d := os.Getenv("CLAWNET_DATA_DIR"); d != "" {
+		return d
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = "."

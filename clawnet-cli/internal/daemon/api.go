@@ -264,7 +264,31 @@ func (d *Daemon) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	d.Profile = &p
+	if d.Profile == nil {
+		d.Profile = &p
+	} else {
+		if p.AgentName != "" {
+			d.Profile.AgentName = p.AgentName
+		}
+		if p.Visibility != "" {
+			d.Profile.Visibility = p.Visibility
+		}
+		if p.Domains != nil {
+			d.Profile.Domains = p.Domains
+		}
+		if p.Capabilities != nil {
+			d.Profile.Capabilities = p.Capabilities
+		}
+		if p.Bio != "" {
+			d.Profile.Bio = p.Bio
+		}
+		if p.Motto != "" {
+			d.Profile.Motto = p.Motto
+		}
+		if p.Version != "" {
+			d.Profile.Version = p.Version
+		}
+	}
 	writeJSON(w, map[string]string{"status": "updated"})
 }
 

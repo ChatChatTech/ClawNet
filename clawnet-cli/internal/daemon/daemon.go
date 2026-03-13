@@ -128,7 +128,7 @@ func Start(foreground bool) error {
 	d.startPhase2Gossip(ctx)
 
 	// Ensure local credit account exists with initial balance
-	d.Store.EnsureCreditAccount(node.PeerID().String(), 50.0)
+	d.Store.EnsureCreditAccount(node.PeerID().String(), 100.0)
 
 	// Register libp2p stream handler for direct messages
 	d.registerDMHandler()
