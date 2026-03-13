@@ -68,7 +68,8 @@ func (s *Store) ListReputation(limit int) ([]*ReputationRecord, error) {
 	return recs, rows.Err()
 }
 
-// RecalcReputation recalculates a peer's reputation from their activity.
+// RecalcReputation recalculates a peer's reputation from their activity
+// and syncs prestige gain into the credit account.
 func (s *Store) RecalcReputation(peerID string) (*ReputationRecord, error) {
 	var tasksCompleted, tasksFailed, contributions, knowledgeCount int
 
@@ -77,13 +78,10 @@ func (s *Store) RecalcReputation(peerID string) (*ReputationRecord, error) {
 	s.DB.QueryRow(`SELECT COUNT(*) FROM swarm_contributions WHERE author_id = ?`, peerID).Scan(&contributions)
 	s.DB.QueryRow(`SELECT COUNT(*) FROM knowledge WHERE author_id = ?`, peerID).Scan(&knowledgeCount)
 
-	// Simple scoring: base 50, +5 per completed task, -3 per failed, +2 per contribution, +1 per knowledge
+	// Score uncapped: base 50, +5 per completed task, -3 per failed, +2 per contribution, +1 per knowledge
 	score := 50.0 + float64(tasksCompleted)*5.0 - float64(tasksFailed)*3.0 + float64(contributions)*2.0 + float64(knowledgeCount)*1.0
 	if score < 0 {
 		score = 0
-	}
-	if score > 100 {
-		score = 100
 	}
 
 	rec := &ReputationRecord{

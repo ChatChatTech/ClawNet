@@ -54,7 +54,7 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 	// Phase 2 routes
 	d.RegisterPhase2Routes(mux)
 
-	addr := fmt.Sprintf("127.0.0.1:%d", d.Config.WebUIPort)
+	addr := fmt.Sprintf("0.0.0.0:%d", d.Config.WebUIPort)
 	server := &http.Server{
 		Addr:    addr,
 		Handler: mux,

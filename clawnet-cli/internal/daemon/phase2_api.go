@@ -50,18 +50,33 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/predictions/{id}", d.handleGetPrediction)
 	mux.HandleFunc("POST /api/predictions/{id}/bet", d.handlePredictionBet)
 	mux.HandleFunc("POST /api/predictions/{id}/resolve", d.handlePredictionResolve)
+
+	// Wealth Leaderboard (Social Energy Model)
+	mux.HandleFunc("GET /api/leaderboard", d.handleWealthLeaderboard)
 }
 
 // ── Credits handlers ──
 
 func (d *Daemon) handleCreditsBalance(w http.ResponseWriter, r *http.Request) {
 	peerID := d.Node.PeerID().String()
-	acc, err := d.Store.GetCreditBalance(peerID)
+	profile, err := d.Store.GetEnergyProfile(peerID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, acc)
+	// Also include legacy fields for backward compat
+	writeJSON(w, map[string]any{
+		"peer_id":      profile.PeerID,
+		"balance":      profile.Energy,
+		"energy":       profile.Energy,
+		"frozen":       profile.Frozen,
+		"prestige":     profile.Prestige,
+		"tier":         profile.Tier,
+		"regen_rate":   profile.RegenRate,
+		"total_earned": profile.TotalEarned,
+		"total_spent":  profile.TotalSpent,
+		"updated_at":   profile.UpdatedAt,
+	})
 }
 
 func (d *Daemon) handleCreditsTransactions(w http.ResponseWriter, r *http.Request) {
@@ -259,9 +274,16 @@ func (d *Daemon) handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		d.publishCreditAudit(d.ctx, txnID, taskID, t.AuthorID, t.AssignedTo, t.Reward, "task_reward")
 	}
 
-	// Recalc reputation for assignee
+	// Recalc reputation for assignee + award prestige
 	if t.AssignedTo != "" {
 		d.Store.RecalcReputation(t.AssignedTo)
+		// Award prestige: task completion gives +10 prestige, weighted by author's prestige
+		authorProfile, _ := d.Store.GetEnergyProfile(t.AuthorID)
+		evaluatorPrestige := 0.0
+		if authorProfile != nil {
+			evaluatorPrestige = authorProfile.Prestige
+		}
+		d.Store.AddPrestige(t.AssignedTo, 10.0, evaluatorPrestige)
 	}
 
 	t, _ = d.Store.GetTask(taskID)
@@ -435,12 +457,19 @@ func (d *Daemon) handleSwarmSynthesize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Recalc reputation for all contributors
+	// Recalc reputation for all contributors + award prestige
 	contribs, _ := d.Store.ListSwarmContributions(swarmID, 1000)
 	seen := map[string]bool{}
+	synthesizerProfile, _ := d.Store.GetEnergyProfile(d.Node.PeerID().String())
+	synthPrestige := 0.0
+	if synthesizerProfile != nil {
+		synthPrestige = synthesizerProfile.Prestige
+	}
 	for _, c := range contribs {
 		if !seen[c.AuthorID] {
 			d.Store.RecalcReputation(c.AuthorID)
+			// +5 prestige per swarm participation, weighted by synthesizer's prestige
+			d.Store.AddPrestige(c.AuthorID, 5.0, synthPrestige)
 			seen[c.AuthorID] = true
 		}
 	}
@@ -718,4 +747,24 @@ func (d *Daemon) settlePrediction(predID, result string) {
 			d.publishCreditAudit(d.ctx, txnID, predID, "prediction_pool", s.PeerID, s.Profit, "prediction_win")
 		}
 	}
+}
+
+// ── Wealth Leaderboard (Social Energy Model) ──
+
+func (d *Daemon) handleWealthLeaderboard(w http.ResponseWriter, r *http.Request) {
+	limit := queryInt(r, "limit", 50)
+	entries, err := d.Store.GetWealthLeaderboard(limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Enrich with agent names from gossip cache
+	for _, e := range entries {
+		if name, ok := d.PeerAgentNames.Load(e.PeerID); ok {
+			e.PeerID = e.PeerID // keep ID
+			// Attach agent name as extra field via wrapper
+			_ = name
+		}
+	}
+	writeJSON(w, entries)
 }

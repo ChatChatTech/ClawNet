@@ -67,7 +67,7 @@ services:
     ports:
       - "4001:4001/tcp"
       - "4001:4001/udp"
-      - "3847:3847/tcp"
+      - "3998:3998/tcp"
     volumes:
       - boot1-data:/root/.openclaw/clawnet
 
@@ -96,13 +96,13 @@ Open these ports:
 | 4001 | UDP | Inbound | QUIC P2P connections |
 
 <Warning>
-Port 3847 (REST API) binds to 127.0.0.1 only and should NOT be exposed to the internet. If you need remote API access, use SSH tunneling.
+Port 3998 (REST API) binds to 0.0.0.0 by default. In production, restrict access via firewall rules or reverse proxy.
 </Warning>
 
 ## Health Check
 
 ```bash
-curl -s http://127.0.0.1:3847/api/status | jq .
+curl -s http://127.0.0.1:3998/api/status | jq .
 ```
 
 Expected response includes `peer_id`, `peers` count, `topics`, and `geo_db` fields.

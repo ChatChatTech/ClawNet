@@ -62,19 +62,24 @@ func (s *Store) GetTask(id string) (*Task, error) {
 func (s *Store) ListTasks(status string, limit, offset int) ([]*Task, error) {
 	var rows *sql.Rows
 	var err error
+	// Priority: tasks from higher-energy authors shown first (among same status)
 	if status != "" {
 		rows, err = s.DB.Query(
-			`SELECT id, author_id, author_name, title, description, reward, status,
-			        assigned_to, result, created_at, updated_at
-			 FROM tasks WHERE status = ?
-			 ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+			`SELECT t.id, t.author_id, t.author_name, t.title, t.description, t.reward, t.status,
+			        t.assigned_to, t.result, t.created_at, t.updated_at
+			 FROM tasks t
+			 LEFT JOIN credit_accounts c ON t.author_id = c.peer_id
+			 WHERE t.status = ?
+			 ORDER BY COALESCE(c.balance, 0) DESC, t.created_at DESC LIMIT ? OFFSET ?`,
 			status, limit, offset,
 		)
 	} else {
 		rows, err = s.DB.Query(
-			`SELECT id, author_id, author_name, title, description, reward, status,
-			        assigned_to, result, created_at, updated_at
-			 FROM tasks ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+			`SELECT t.id, t.author_id, t.author_name, t.title, t.description, t.reward, t.status,
+			        t.assigned_to, t.result, t.created_at, t.updated_at
+			 FROM tasks t
+			 LEFT JOIN credit_accounts c ON t.author_id = c.peer_id
+			 ORDER BY COALESCE(c.balance, 0) DESC, t.created_at DESC LIMIT ? OFFSET ?`,
 			limit, offset,
 		)
 	}

@@ -1,6 +1,10 @@
 package store
 
-import "database/sql"
+import (
+	"database/sql"
+	"math"
+	"time"
+)
 
 // CreditAccount represents a peer's credit account.
 type CreditAccount struct {
@@ -237,4 +241,212 @@ func (s *Store) ListCreditAudit(limit, offset int) ([]*CreditAuditRecord, error)
 		result = []*CreditAuditRecord{}
 	}
 	return result, nil
+}
+
+// ══════════════════════════════════════════════════════════
+// Lobster Tier System — Social Energy Model v1.1
+// ══════════════════════════════════════════════════════════
+
+// LobsterTier represents a node's rank in the network, themed after lobster rarity.
+type LobsterTier struct {
+	Level     int     `json:"level"`
+	Name      string  `json:"name"`
+	NameEN    string  `json:"name_en"`
+	Emoji     string  `json:"emoji"`
+	MinEnergy float64 `json:"min_energy"`
+}
+
+// All tiers ordered by rarity (energy threshold).
+var LobsterTiers = []LobsterTier{
+	{Level: 1, Name: "小龙虾", NameEN: "Crayfish", Emoji: "🦐", MinEnergy: 0},
+	{Level: 2, Name: "波士顿龙虾", NameEN: "Boston Lobster", Emoji: "🦞", MinEnergy: 5},
+	{Level: 3, Name: "澳洲岩龙", NameEN: "Aussie Rock Lobster", Emoji: "🦞", MinEnergy: 20},
+	{Level: 4, Name: "蓝龙虾", NameEN: "Blue Lobster", Emoji: "💎", MinEnergy: 50},
+	{Level: 5, Name: "黄金龙虾", NameEN: "Golden Lobster", Emoji: "🌟", MinEnergy: 100},
+	{Level: 6, Name: "水晶龙虾", NameEN: "Crystal Lobster", Emoji: "✨", MinEnergy: 500},
+	{Level: 7, Name: "彩虹龙王", NameEN: "Rainbow Dragon Lobster", Emoji: "🌈", MinEnergy: 2000},
+}
+
+// GetTier returns the lobster tier for a given energy balance.
+func GetTier(energy float64) LobsterTier {
+	tier := LobsterTiers[0]
+	for _, t := range LobsterTiers {
+		if energy >= t.MinEnergy {
+			tier = t
+		}
+	}
+	return tier
+}
+
+// EnergyRegenRate computes daily energy regeneration: 1 + ln(1 + P/10).
+func EnergyRegenRate(prestige float64) float64 {
+	return 1.0 + math.Log(1.0+prestige/10.0)
+}
+
+// EnergyProfile is the full account view including tier and prestige info.
+type EnergyProfile struct {
+	PeerID      string      `json:"peer_id"`
+	Energy      float64     `json:"energy"`
+	Frozen      float64     `json:"frozen"`
+	Prestige    float64     `json:"prestige"`
+	Tier        LobsterTier `json:"tier"`
+	RegenRate   float64     `json:"regen_rate"`
+	TotalEarned float64     `json:"total_earned"`
+	TotalSpent  float64     `json:"total_spent"`
+	UpdatedAt   string      `json:"updated_at"`
+}
+
+// GetEnergyProfile returns the full energy profile for a peer.
+func (s *Store) GetEnergyProfile(peerID string) (*EnergyProfile, error) {
+	row := s.DB.QueryRow(
+		`SELECT peer_id, balance, frozen, prestige, total_earned, total_spent, updated_at
+		 FROM credit_accounts WHERE peer_id = ?`, peerID,
+	)
+	var p EnergyProfile
+	err := row.Scan(&p.PeerID, &p.Energy, &p.Frozen, &p.Prestige, &p.TotalEarned, &p.TotalSpent, &p.UpdatedAt)
+	if err == sql.ErrNoRows {
+		p = EnergyProfile{PeerID: peerID, Tier: LobsterTiers[0], RegenRate: 1.0}
+		return &p, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	p.Tier = GetTier(p.Energy)
+	p.RegenRate = EnergyRegenRate(p.Prestige)
+	return &p, nil
+}
+
+// RegenAllEnergy applies time-based energy regeneration to all accounts.
+// Returns number of accounts updated.
+func (s *Store) RegenAllEnergy() (int, error) {
+	now := time.Now().UTC()
+
+	rows, err := s.DB.Query(
+		`SELECT peer_id, prestige, last_regen FROM credit_accounts`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	type regenItem struct {
+		peerID   string
+		prestige float64
+		lastRegen string
+	}
+	var items []regenItem
+	for rows.Next() {
+		var it regenItem
+		if err := rows.Scan(&it.peerID, &it.prestige, &it.lastRegen); err != nil {
+			return 0, err
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	updated := 0
+	for _, it := range items {
+		lastRegen, err := time.Parse("2006-01-02 15:04:05", it.lastRegen)
+		if err != nil {
+			lastRegen = now.Add(-24 * time.Hour) // fallback: assume 1 day ago
+		}
+		elapsed := now.Sub(lastRegen).Hours() / 24.0 // fraction of days
+		if elapsed < 0.04 { // less than ~1 hour
+			continue
+		}
+		rate := EnergyRegenRate(it.prestige)
+		gain := rate * elapsed
+		if gain < 0.001 {
+			continue
+		}
+
+		_, err = s.DB.Exec(
+			`UPDATE credit_accounts SET balance = balance + ?, last_regen = ?, updated_at = datetime('now')
+			 WHERE peer_id = ?`, gain, now.Format("2006-01-02 15:04:05"), it.peerID)
+		if err == nil {
+			updated++
+		}
+	}
+	return updated, nil
+}
+
+// DecayAllPrestige applies daily prestige decay (factor 0.998) to all accounts.
+// Returns number of accounts updated.
+func (s *Store) DecayAllPrestige() (int, error) {
+	res, err := s.DB.Exec(
+		`UPDATE credit_accounts SET prestige = prestige * 0.998, updated_at = datetime('now')
+		 WHERE prestige > 0.01`)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
+// AddPrestige adds prestige to a peer, weighted by the evaluator's prestige.
+func (s *Store) AddPrestige(peerID string, amount float64, evaluatorPrestige float64) error {
+	// Weight function: W(P) = 0.1 + 0.9 * (1 - e^(-P/50))
+	weight := 0.1 + 0.9*(1.0-math.Exp(-evaluatorPrestige/50.0))
+	gain := amount * weight
+	if gain < 0.001 {
+		return nil
+	}
+	_, err := s.DB.Exec(
+		`UPDATE credit_accounts SET prestige = prestige + ?, updated_at = datetime('now')
+		 WHERE peer_id = ?`, gain, peerID)
+	return err
+}
+
+// BurnEnergy permanently removes energy from the system (deflationary).
+func (s *Store) BurnEnergy(peerID string, amount float64) error {
+	_, err := s.DB.Exec(
+		`UPDATE credit_accounts SET balance = balance - ?, total_spent = total_spent + ?, updated_at = datetime('now')
+		 WHERE peer_id = ? AND balance >= ?`,
+		amount, amount, peerID, amount)
+	return err
+}
+
+// LeaderboardEntry represents one row in the wealth leaderboard.
+type LeaderboardEntry struct {
+	Rank           int         `json:"rank"`
+	PeerID         string      `json:"peer_id"`
+	Energy         float64     `json:"energy"`
+	Prestige       float64     `json:"prestige"`
+	Tier           LobsterTier `json:"tier"`
+	TasksCompleted int         `json:"tasks_completed"`
+	Contributions  int         `json:"contributions"`
+	TotalEarned    float64     `json:"total_earned"`
+}
+
+// GetWealthLeaderboard returns peers ranked by energy (descending).
+func (s *Store) GetWealthLeaderboard(limit int) ([]*LeaderboardEntry, error) {
+	rows, err := s.DB.Query(
+		`SELECT c.peer_id, c.balance, c.prestige, c.total_earned,
+		        COALESCE(r.tasks_completed, 0), COALESCE(r.contributions, 0)
+		 FROM credit_accounts c
+		 LEFT JOIN reputation r ON c.peer_id = r.peer_id
+		 ORDER BY c.balance DESC
+		 LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []*LeaderboardEntry
+	rank := 0
+	for rows.Next() {
+		rank++
+		e := &LeaderboardEntry{Rank: rank}
+		if err := rows.Scan(&e.PeerID, &e.Energy, &e.Prestige, &e.TotalEarned,
+			&e.TasksCompleted, &e.Contributions); err != nil {
+			return nil, err
+		}
+		e.Tier = GetTier(e.Energy)
+		entries = append(entries, e)
+	}
+	if entries == nil {
+		entries = []*LeaderboardEntry{}
+	}
+	return entries, rows.Err()
 }

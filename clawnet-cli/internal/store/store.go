@@ -269,6 +269,10 @@ func (s *Store) migrate() error {
 			FOREIGN KEY (prediction_id) REFERENCES predictions(id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_pred_res ON prediction_resolutions(prediction_id, result)`,
+
+		// Phase 4 — Energy & Prestige system (Social Energy Model)
+		`ALTER TABLE credit_accounts ADD COLUMN prestige REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE credit_accounts ADD COLUMN last_regen TEXT NOT NULL DEFAULT (datetime('now'))`,
 	}
 
 	for _, m := range migrations {

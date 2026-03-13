@@ -89,8 +89,11 @@ func (d *Daemon) startPhase2Gossip(ctx context.Context) {
 	// Swarm auto-close timer: check every 60s for expired swarms
 	go d.swarmExpiryLoop(ctx)
 
-	// Reputation-based credit grants: check every hour, +10/week for rep > 50
-	go d.reputationGrantLoop(ctx)
+	// Energy regen loop: regenerate energy for all accounts based on prestige
+	go d.energyRegenLoop(ctx)
+
+	// Prestige decay loop: apply daily 0.998 decay
+	go d.prestigeDecayLoop(ctx)
 }
 
 // swarmExpiryLoop periodically closes expired swarms.
@@ -124,39 +127,73 @@ func (d *Daemon) swarmExpiryLoop(ctx context.Context) {
 
 // reputationGrantLoop grants +10 credits per week to nodes with reputation > 50.
 // Runs every hour, granting 10/168 ≈ 0.06 credits per check to smooth distribution.
-func (d *Daemon) reputationGrantLoop(ctx context.Context) {
-	// Wait 5 minutes before first check to let the node fully start
+// DEPRECATED: replaced by energyRegenLoop, kept for reference.
+
+// energyRegenLoop regenerates energy for all accounts based on prestige.
+// Rate: 1 + ln(1 + P/10) E/day per account.
+func (d *Daemon) energyRegenLoop(ctx context.Context) {
+	// Wait 2 minutes before first check
 	select {
 	case <-ctx.Done():
 		return
-	case <-time.After(5 * time.Minute):
+	case <-time.After(2 * time.Minute):
 	}
 
-	const grantPerHour = 10.0 / 168.0 // 10 credits per week, checked hourly
-	ticker := time.NewTicker(1 * time.Hour)
+	ticker := time.NewTicker(30 * time.Minute) // check every 30 min
 	defer ticker.Stop()
 
-	grant := func() {
-		peerID := d.Node.PeerID().String()
-		rec, err := d.Store.RecalcReputation(peerID)
-		if err != nil || rec == nil {
+	regen := func() {
+		n, err := d.Store.RegenAllEnergy()
+		if err != nil {
+			fmt.Printf("energy-regen: error: %v\n", err)
 			return
 		}
-		if rec.Score > 50 {
-			txnID := uuid.New().String()
-			if err := d.Store.AddCredits(txnID, peerID, grantPerHour, "reputation_bonus"); err == nil {
-				d.publishCreditAudit(d.ctx, txnID, "", "system", peerID, grantPerHour, "reputation_bonus")
-			}
+		if n > 0 {
+			fmt.Printf("energy-regen: regenerated energy for %d accounts\n", n)
 		}
 	}
 
-	grant() // first run
+	regen() // first run
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			grant()
+			regen()
+		}
+	}
+}
+
+// prestigeDecayLoop applies daily prestige decay (0.998×) to all accounts.
+func (d *Daemon) prestigeDecayLoop(ctx context.Context) {
+	// Wait 3 minutes before first check
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(3 * time.Minute):
+	}
+
+	ticker := time.NewTicker(1 * time.Hour) // check every hour, decay is per-day
+	defer ticker.Stop()
+
+	decay := func() {
+		n, err := d.Store.DecayAllPrestige()
+		if err != nil {
+			fmt.Printf("prestige-decay: error: %v\n", err)
+			return
+		}
+		if n > 0 {
+			fmt.Printf("prestige-decay: decayed %d accounts\n", n)
+		}
+	}
+
+	decay() // first run
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			decay()
 		}
 	}
 }
@@ -365,6 +402,13 @@ func (d *Daemon) handleCreditAuditSub(ctx context.Context, sub *pubsub.Subscript
 
 		// Store the audit record locally for verification
 		d.Store.LogCreditAudit(audit.TxnID, audit.TaskID, audit.From, audit.To, audit.Amount, audit.Reason, audit.Time)
+
+		// If we are the recipient, credit our local account
+		myID := d.Node.PeerID().String()
+		if audit.To == myID && audit.Amount > 0 {
+			d.Store.EnsureCreditAccount(myID, 0)
+			d.Store.AddCredits(audit.TxnID+"_recv", myID, audit.Amount, "received_"+audit.Reason)
+		}
 	}
 }
 

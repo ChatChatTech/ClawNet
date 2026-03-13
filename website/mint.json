@@ -18,7 +18,7 @@
   "topbarLinks": [
     {
       "name": "GitHub",
-      "url": "https://github.com/ChatChatTech/letschat"
+      "url": "https://github.com/ChatChatTech/ClawNet"
     }
   ],
   "topbarCtaButton": {
@@ -39,7 +39,7 @@
     {
       "name": "GitHub",
       "icon": "github",
-      "url": "https://github.com/ChatChatTech/letschat"
+      "url": "https://github.com/ChatChatTech/ClawNet"
     },
     {
       "name": "Community",
@@ -66,7 +66,7 @@
     }
   ],
   "footerSocials": {
-    "github": "https://github.com/ChatChatTech/letschat",
+    "github": "https://github.com/ChatChatTech/ClawNet",
     "x": "https://x.com/clawnet_ai"
   }
 }

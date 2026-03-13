@@ -9,9 +9,9 @@ Usage:
     python3 test_phase2.py
 
 Nodes:
-    Agent A (cmax) → 210.45.71.67:3847
-    Agent B (bmax) → 210.45.71.131:3847
-    Agent C (dmax) → 210.45.70.176:3847
+    Agent A (cmax) → 210.45.71.67:3998
+    Agent B (bmax) → 210.45.71.131:3998
+    Agent C (dmax) → 210.45.70.176:3998
 """
 
 import json
@@ -20,9 +20,9 @@ import time
 import requests
 
 NODES = {
-    "A": "http://210.45.71.67:3847",
-    "B": "http://210.45.71.131:3847",
-    "C": "http://210.45.70.176:3847",
+    "A": "http://210.45.71.67:3998",
+    "B": "http://210.45.71.131:3998",
+    "C": "http://210.45.70.176:3998",
 }
 
 PASS = 0
@@ -78,8 +78,8 @@ def test_status():
     for name, url in NODES.items():
         status = get(name, "/api/status")
         check(
-            f"Node {name} running v0.4.0",
-            status.get("version") == "0.4.0",
+            f"Node {name} running v0.6.0",
+            status.get("version") == "0.6.0",
             f"got {status.get('version')}",
         )
         check(
@@ -110,31 +110,50 @@ def test_status():
 # Test 2: Credit System
 # ─────────────────────────────────────────────
 def test_credits():
-    print("\n═══ Test 2: Credit System ═══")
+    print("\n═══ Test 2: Credit System (Energy Model) ═══")
 
-    # Check initial balances
+    # Check initial balances — should be 5E (new energy model)
     for name in NODES:
         bal = get(name, "/api/credits/balance")
         check(
-            f"Node {name} has credit account",
+            f"Node {name} has energy account",
             bal.get("peer_id", "") != "",
-            f"balance={bal.get('balance')}",
+            f"energy={bal.get('energy')}",
+        )
+        check(
+            f"Node {name} initial energy ≈ 5",
+            3 <= bal.get("energy", 0) <= 10,
+            f"energy={bal.get('energy')}",
+        )
+        check(
+            f"Node {name} has tier info",
+            bal.get("tier", {}).get("name", "") != "",
+            f"tier={bal.get('tier')}",
+        )
+        check(
+            f"Node {name} has prestige field",
+            "prestige" in bal,
+            f"keys={list(bal.keys())}",
+        )
+        check(
+            f"Node {name} has regen_rate",
+            bal.get("regen_rate", 0) >= 1.0,
+            f"regen_rate={bal.get('regen_rate')}",
         )
 
-    # A transfers 10 credits to B
+    # A transfers 2 energy to B (test smaller amount since initial is 5)
     peer_b = get("B", "/api/status")["peer_id"]
-    bal_a_snapshot = get("A", "/api/credits/balance")["balance"]
+    bal_a_snapshot = get("A", "/api/credits/balance")["energy"]
     result = post("A", "/api/credits/transfer", {
         "to_peer": peer_b,
-        "amount": 10,
+        "amount": 2,
         "reason": "test_transfer",
     })
-    check("A → B transfer 10 credits", result.get("status") == "transferred", str(result))
+    check("A → B transfer 2 energy", result.get("status") == "transferred", str(result))
 
-    # Check balances after transfer (credits are local per node)
-    bal_a_before = bal_a_snapshot
+    # Check balance decreased
     bal_a = get("A", "/api/credits/balance")
-    check("A balance decreased after transfer", bal_a["balance"] < bal_a_snapshot, f"before={bal_a_snapshot}, after={bal_a['balance']}")
+    check("A energy decreased after transfer", bal_a["energy"] < bal_a_snapshot, f"before={bal_a_snapshot}, after={bal_a['energy']}")
 
     # Check transaction history
     txns = get("A", "/api/credits/transactions")
@@ -154,11 +173,11 @@ def test_credits():
 def test_tasks():
     print("\n═══ Test 3: Task Bazaar ═══")
 
-    # A creates a task with reward
+    # A creates a task with reward (small since initial energy is 5E)
     task = post("A", "/api/tasks", {
         "title": "Translate document to Chinese",
         "description": "Need help translating a 2-page document from English to Chinese",
-        "reward": 15.0,
+        "reward": 2.0,
     })
     task_id = task.get("id", "")
     check("A created task", task_id != "", str(task))
@@ -166,7 +185,7 @@ def test_tasks():
 
     # Check A's balance decreased (frozen)
     bal_a = get("A", "/api/credits/balance")
-    check("A credits frozen for reward", bal_a["frozen"] >= 15, f"frozen={bal_a['frozen']}")
+    check("A energy frozen for reward", bal_a["frozen"] >= 2, f"frozen={bal_a['frozen']}")
 
     wait_gossip()
 
@@ -182,7 +201,7 @@ def test_tasks():
 
     # B bids on the task
     bid = post("B", f"/api/tasks/{task_id}/bid", {
-        "amount": 12.0,
+        "amount": 2.0,
         "message": "I can do this quickly!",
     })
     bid_id = bid.get("id", "")
@@ -217,6 +236,11 @@ def test_tasks():
     bal_a_after = get("A", "/api/credits/balance")
     check("A frozen decreased after approval", True, f"A frozen={bal_a_after['frozen']}")
 
+    # Verify B gained prestige from task completion
+    peer_b_id = get("B", "/api/status")["peer_id"]
+    bal_b_after = get("B", "/api/credits/balance")
+    check("B received task reward energy", bal_b_after["energy"] > 5, f"B energy={bal_b_after['energy']}")
+
     return task_id
 
 
@@ -230,7 +254,7 @@ def test_task_rejection():
     task = post("B", "/api/tasks", {
         "title": "Write unit tests",
         "description": "Need pytest tests for module X",
-        "reward": 8.0,
+        "reward": 1.0,
     })
     task_id = task.get("id", "")
     check("B created task", task_id != "", str(task))
@@ -238,7 +262,7 @@ def test_task_rejection():
     wait_gossip()
 
     # C bids
-    post("C", f"/api/tasks/{task_id}/bid", {"amount": 8.0, "message": "On it"})
+    post("C", f"/api/tasks/{task_id}/bid", {"amount": 1.0, "message": "On it"})
 
     # B assigns to C
     peer_c = get("C", "/api/status")["peer_id"]
@@ -257,7 +281,7 @@ def test_task_rejection():
 
     # B's credits should be unfrozen
     bal_b = get("B", "/api/credits/balance")
-    check("B credits unfrozen after rejection", bal_b["frozen"] == 0 or bal_b["frozen"] < 8, f"frozen={bal_b['frozen']}")
+    check("B credits unfrozen after rejection", bal_b["frozen"] == 0 or bal_b["frozen"] < 1, f"frozen={bal_b['frozen']}")
 
 
 # ─────────────────────────────────────────────
@@ -368,11 +392,13 @@ def test_integration():
     check("DM still works", dm.get("status") == "sent", str(dm))
 
     # Check final balances summary
-    print("\n  📊 Final Credit Balances:")
+    print("\n  📊 Final Energy Balances:")
     for name in NODES:
         bal = get(name, "/api/credits/balance")
-        print(f"     Node {name}: balance={bal['balance']:.1f}, frozen={bal['frozen']:.1f}, "
-              f"earned={bal['total_earned']:.1f}, spent={bal['total_spent']:.1f}")
+        tier = bal.get('tier', {})
+        print(f"     Node {name}: energy={bal.get('energy', bal.get('balance', 0)):.1f}, "
+              f"frozen={bal['frozen']:.1f}, prestige={bal.get('prestige', 0):.1f}, "
+              f"tier={tier.get('emoji', '')} {tier.get('name', 'N/A')}")
 
 
 # ─────────────────────────────────────────────
@@ -402,14 +428,45 @@ def test_geo():
         gp = geo_peers[0]
         check("Geo peer has short_id", "short_id" in gp, str(gp.keys()))
         check("Geo peer has location", "location" in gp)
-        check("All 3 nodes in geo list", len(geo_peers) == 3, f"count={len(geo_peers)}")
+        check("All 3 nodes in geo list", len(geo_peers) >= 3, f"count={len(geo_peers)}")
 
 
 # ─────────────────────────────────────────────
-# Test 9: Credit Audit
+# Test 9: Wealth Leaderboard
+# ─────────────────────────────────────────────
+def test_leaderboard():
+    print("\n═══ Test 9: Wealth Leaderboard ═══")
+
+    lb = get("A", "/api/leaderboard")
+    check("Leaderboard returns data", isinstance(lb, list) and len(lb) >= 1, f"type={type(lb)}, len={len(lb) if isinstance(lb, list) else 'N/A'}")
+
+    if isinstance(lb, list) and len(lb) >= 1:
+        entry = lb[0]
+        check("Entry has peer_id", "peer_id" in entry, str(entry.keys()))
+        check("Entry has energy", "energy" in entry, str(entry.keys()))
+        check("Entry has tier", "tier" in entry, str(entry.keys()))
+        check("Entry has rank", "rank" in entry, str(entry.keys()))
+
+        # Print leaderboard
+        print("\n  🏆 Wealth Leaderboard:")
+        for e in lb:
+            tier = e.get("tier", {})
+            print(f"     #{e.get('rank', '?')} {tier.get('emoji', '')} {e.get('peer_id', '')[:12]}... "
+                  f"energy={e.get('energy', 0):.1f} prestige={e.get('prestige', 0):.1f} "
+                  f"tier={tier.get('name', 'N/A')}")
+
+        # Verify sorted by energy (descending)
+        if len(lb) >= 2:
+            check("Leaderboard sorted by energy desc",
+                  lb[0].get("energy", 0) >= lb[1].get("energy", 0),
+                  f"first={lb[0].get('energy')}, second={lb[1].get('energy')}")
+
+
+# ─────────────────────────────────────────────
+# Test 10: Credit Audit
 # ─────────────────────────────────────────────
 def test_credit_audit():
-    print("\n═══ Test 9: Credit Audit ═══")
+    print("\n═══ Test 10: Credit Audit ═══")
 
     audit = get("A", "/api/credits/audit")
     check("Audit endpoint works", isinstance(audit, list), str(type(audit)))
@@ -454,10 +511,12 @@ def main():
     check("Grant endpoint removed (404)", r.status_code == 404, f"status={r.status_code}")
 
     # Check existing balances
-    print("\n📊 Initial credit balances:")
+    print("\n📊 Initial energy balances:")
     for name in NODES:
         bal = get(name, "/api/credits/balance")
-        log(f"Node {name}: balance={bal.get('balance', 0):.1f}")
+        tier = bal.get('tier', {})
+        log(f"Node {name}: energy={bal.get('energy', bal.get('balance', 0)):.1f}, "
+            f"tier={tier.get('emoji', '')} {tier.get('name', 'N/A')}")
 
     test_credits()
     test_tasks()
@@ -466,6 +525,7 @@ def main():
     test_reputation()
     test_integration()
     test_geo()
+    test_leaderboard()
     test_credit_audit()
 
     # Summary

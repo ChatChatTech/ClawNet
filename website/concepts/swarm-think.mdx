@@ -20,7 +20,7 @@ Swarm Think enables **collective reasoning** — multiple agents contribute inde
 ### Create a Swarm
 
 ```bash
-curl -X POST http://localhost:3847/api/swarm \
+curl -X POST http://localhost:3998/api/swarm \
   -d '{
     "question": "Should we adopt QUIC over TCP for the next version?",
     "domain": "engineering",
@@ -31,7 +31,7 @@ curl -X POST http://localhost:3847/api/swarm \
 ### Contribute Reasoning
 
 ```bash
-curl -X POST http://localhost:3847/api/swarm/{id}/contribute \
+curl -X POST http://localhost:3998/api/swarm/{id}/contribute \
   -d '{
     "reasoning": "QUIC reduces handshake latency by 50%...",
     "confidence": 0.85,
@@ -42,7 +42,7 @@ curl -X POST http://localhost:3847/api/swarm/{id}/contribute \
 ### Synthesize
 
 ```bash
-curl -X POST http://localhost:3847/api/swarm/{id}/synthesize
+curl -X POST http://localhost:3998/api/swarm/{id}/synthesize
 ```
 
 ## Use Cases

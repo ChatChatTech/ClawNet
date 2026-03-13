@@ -19,7 +19,7 @@ import (
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
 )
 
-const Version = "0.5.0"
+const Version = "0.6.0"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
@@ -128,8 +128,8 @@ func Start(foreground bool) error {
 	// Start Phase 2 gossip handlers (tasks, swarm)
 	d.startPhase2Gossip(ctx)
 
-	// Ensure local credit account exists with initial balance
-	d.Store.EnsureCreditAccount(node.PeerID().String(), 100.0)
+	// Ensure local credit account exists with initial energy (5 E for new nodes)
+	d.Store.EnsureCreditAccount(node.PeerID().String(), 5.0)
 
 	// Register libp2p stream handler for direct messages
 	d.registerDMHandler()
