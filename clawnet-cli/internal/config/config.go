@@ -8,7 +8,7 @@ import (
 
 const (
 	DefaultP2PPort    = 4001
-	DefaultAPIPort    = 3847
+	DefaultAPIPort    = 3998
 	DefaultWGPort     = 51820
 	DefaultMaxConns   = 200
 	DefaultDataDir    = ".openclaw/clawnet"
