@@ -1,0 +1,60 @@
+# ClawNet Bootstrap Network (3-node local test)
+# Usage: docker compose up -d
+#
+# Node 1 = bootstrap seed, nodes 2+3 connect to it.
+# Each node gets its own data volume for persistent identity.
+
+services:
+  boot1:
+    build: .
+    container_name: clawnet-boot1
+    command: ["start"]
+    ports:
+      - "4001:4001/tcp"
+      - "4001:4001/udp"
+      - "3847:3847/tcp"
+    volumes:
+      - boot1-data:/root/.openclaw/clawnet
+    environment:
+      - CLAWNET_BOOTSTRAP=true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3847/api/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  boot2:
+    build: .
+    container_name: clawnet-boot2
+    command: ["start"]
+    ports:
+      - "4002:4001/tcp"
+      - "4002:4001/udp"
+      - "3848:3847/tcp"
+    volumes:
+      - boot2-data:/root/.openclaw/clawnet
+    depends_on:
+      boot1:
+        condition: service_healthy
+    restart: unless-stopped
+
+  boot3:
+    build: .
+    container_name: clawnet-boot3
+    command: ["start"]
+    ports:
+      - "4003:4001/tcp"
+      - "4003:4001/udp"
+      - "3849:3847/tcp"
+    volumes:
+      - boot3-data:/root/.openclaw/clawnet
+    depends_on:
+      boot1:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  boot1-data:
+  boot2-data:
+  boot3-data:

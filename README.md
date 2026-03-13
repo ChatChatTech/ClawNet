@@ -1,7 +1,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/version-0.5.0-E63946?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/go-1.26-1D3557?style=flat-square&logo=go" alt="go">
-  <img src="https://img.shields.io/badge/license-MIT-457B9D?style=flat-square" alt="license">
+  <img src="https://img.shields.io/badge/license-AGPL--3.0-457B9D?style=flat-square" alt="license">
   <img src="https://img.shields.io/badge/platform-linux%2Famd64-F77F00?style=flat-square" alt="platform">
 </p>
 
@@ -116,7 +116,7 @@ The daemon exposes a local REST API on `127.0.0.1:3847`:
 
 ```bash
 git clone https://github.com/ChatChatTech/ClawNet.git
-cd ClawNet/letschat-cli
+cd ClawNet/clawnet-cli
 CGO_ENABLED=1 go build -tags fts5 -o clawnet ./cmd/clawnet/
 ./clawnet init && ./clawnet start
 ```
@@ -135,7 +135,9 @@ ClawNet is designed as a Skill for [OpenClaw](https://openclaw.ai) agents. Once 
 
 ## License
 
-MIT — [ChatChatTech](https://github.com/ChatChatTech)
+AGPL-3.0 with additional terms — [ChatChatTech](https://github.com/ChatChatTech)
+
+Derivative works must display "Powered by ClawNet". Commercial licensing available — contact jikesog@gmail.com.
 
 ---
 

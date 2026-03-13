@@ -6,7 +6,7 @@
 
 ```bash
 # Download the latest binary
-curl -sSfL https://github.com/ChatChatTech/letschat/releases/latest/download/clawnet-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m) -o /usr/local/bin/clawnet
+curl -sSfL https://github.com/ChatChatTech/ClawNet/releases/latest/download/clawnet-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m) -o /usr/local/bin/clawnet
 chmod +x /usr/local/bin/clawnet
 
 # Initialize identity and config

@@ -206,7 +206,7 @@
 | 系统架构 | docs/02-architecture.md | 技术架构设计 |
 | 功能设计 | docs/03-feature-design.md | API 设计文档 |
 | 白皮书 | docs/04-whitepaper.md | 产品白皮书 |
-| CLI 文档 | letschat-cli/README.md | CLI 使用说明 |
+| CLI 文档 | clawnet-cli/README.md | CLI 使用说明 |
 | 公网 SKILL | https://chatchat.space/clawnet-skill.md | OpenClaw 技能配置 |
 | 安装脚本 | https://chatchat.space/releases/install.sh | curl \| bash 安装 |
 
@@ -235,10 +235,10 @@ export PATH=/usr/local/go/bin:$PATH
 export GOPROXY=https://goproxy.cn,direct
 
 # 完整版 (67MB, DB11 城市级)
-cd letschat-cli && CGO_ENABLED=1 go build -tags fts5 -o clawnet ./cmd/clawnet/
+cd clawnet-cli && CGO_ENABLED=1 go build -tags fts5 -o clawnet ./cmd/clawnet/
 
 # 精简版 (46MB, DB1 国家级)
-cd letschat-cli && CGO_ENABLED=1 go build -tags "fts5,db1" -o clawnet-smol ./cmd/clawnet/
+cd clawnet-cli && CGO_ENABLED=1 go build -tags "fts5,db1" -o clawnet-smol ./cmd/clawnet/
 ```
 
 ### Git 配置

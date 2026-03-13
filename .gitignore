@@ -1,7 +1,7 @@
 # Binaries
 /clawnet
-/clawnet-*
-letschat-cli/clawnet
+/clawnet-smol
+clawnet-cli/clawnet
 *.exe
 
 # Go
@@ -22,12 +22,12 @@ Thumbs.db
 # Data directory (local node data)
 .openclaw/
 go1.26.1.linux-amd64.tar.gz
-letschat-cli/clawnet
-letschat-cli/clawnet-smol
-letschat-cli/letchat
-letschat-cli/seedbot
+clawnet-cli/clawnet
+clawnet-cli/clawnet-smol
+clawnet-cli/letchat
+clawnet-cli/seedbot
 venv/
 .venv/
 clawnet-bg.webp
 *.zip
-!letschat-cli/internal/geo/data/*.zip
+!clawnet-cli/internal/geo/data/*.zip
