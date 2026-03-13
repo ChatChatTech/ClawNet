@@ -292,7 +292,74 @@ func cmdStatus() error {
 }
 
 func cmdPeers() error {
-	return apiGet("/api/peers")
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
+	resp, err := http.Get(base + "/api/peers/geo")
+	if err != nil {
+		return fmt.Errorf("cannot connect to daemon (is it running?): %w", err)
+	}
+	defer resp.Body.Close()
+	var peers []peerGeoData
+	if err := json.NewDecoder(resp.Body).Decode(&peers); err != nil {
+		return err
+	}
+
+	red := "\033[38;2;230;57;70m"
+	coral := "\033[38;2;247;127;0m"
+	tidal := "\033[38;2;69;123;157m"
+	dim := "\033[2m"
+	rst := "\033[0m"
+
+	// Separate self and remote peers
+	var self *peerGeoData
+	var remote []peerGeoData
+	for i := range peers {
+		if peers[i].IsSelf {
+			self = &peers[i]
+		} else {
+			remote = append(remote, peers[i])
+		}
+	}
+
+	if self != nil {
+		name := self.AgentName
+		if name == "" {
+			name = self.ShortID
+		}
+		fmt.Printf(red+"  ● %s"+rst+" %s\n", name, dim+self.PeerID+rst)
+		parts := []string{self.Location}
+		if self.Motto != "" {
+			parts = append(parts, "\""+self.Motto+"\"")
+		}
+		fmt.Printf("    %s  %s\n", tidal+"(self)"+rst, strings.Join(parts, "  "))
+	}
+
+	fmt.Printf("\n"+coral+"  %d peers connected"+rst+"\n\n", len(remote))
+
+	for i, p := range remote {
+		name := p.AgentName
+		if name == "" {
+			name = p.ShortID
+		}
+		latStr := ""
+		if p.LatencyMs > 0 {
+			latStr = fmt.Sprintf("  %s%dms%s", dim, p.LatencyMs, rst)
+		}
+		fmt.Printf("  %s%d.%s %s%s%s%s\n", dim, i+1, rst, tidal, name, rst, latStr)
+		loc := p.Location
+		if loc == "" || loc == "Unknown" {
+			loc = "?"
+		}
+		line := "     " + dim + loc + rst
+		if p.Motto != "" {
+			line += "  " + coral + "\"" + p.Motto + "\"" + rst
+		}
+		fmt.Println(line)
+	}
+	return nil
 }
 
 // ── Topo command with keyboard navigation ──
