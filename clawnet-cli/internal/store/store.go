@@ -273,6 +273,20 @@ func (s *Store) migrate() error {
 		// Phase 4 — Energy & Prestige system (Social Energy Model)
 		`ALTER TABLE credit_accounts ADD COLUMN prestige REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE credit_accounts ADD COLUMN last_regen TEXT NOT NULL DEFAULT (datetime('now'))`,
+
+		// Phase 4 — Task template structured fields
+		`ALTER TABLE tasks ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'`,
+		`ALTER TABLE tasks ADD COLUMN deadline TEXT NOT NULL DEFAULT ''`,
+
+		// Phase 4 — Agent Resumes (supply-demand matching)
+		`CREATE TABLE IF NOT EXISTS agent_resumes (
+			peer_id      TEXT PRIMARY KEY,
+			agent_name   TEXT NOT NULL DEFAULT '',
+			skills       TEXT NOT NULL DEFAULT '[]',
+			data_sources TEXT NOT NULL DEFAULT '[]',
+			description  TEXT NOT NULL DEFAULT '',
+			updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
 	}
 
 	for _, m := range migrations {

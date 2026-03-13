@@ -16,6 +16,7 @@ const (
 	SwarmTopic      = "/clawnet/swarm"
 	CreditAudit     = "/clawnet/credit-audit"
 	PredictionTopic = "/clawnet/predictions"
+	ResumeTopic     = "/clawnet/resumes"
 	DefaultReward   = 10.0 // default credit reward when no explicit reward is set
 )
 
@@ -52,6 +53,12 @@ type GossipPredictionMsg struct {
 	Resolution *store.PredictionResolution `json:"resolution,omitempty"`
 }
 
+// GossipResumeMsg is the wire format for agent resume broadcasts.
+type GossipResumeMsg struct {
+	Type   string              `json:"type"` // "resume"
+	Resume *store.AgentResume  `json:"resume,omitempty"`
+}
+
 // startPhase2Gossip subscribes to task and swarm GossipSub topics.
 func (d *Daemon) startPhase2Gossip(ctx context.Context) {
 	// Tasks topic
@@ -85,6 +92,17 @@ func (d *Daemon) startPhase2Gossip(ctx context.Context) {
 	} else {
 		go d.handlePredictionSub(ctx, predSub)
 	}
+
+	// Agent resume topic
+	resumeSub, err := d.Node.JoinTopic(ResumeTopic)
+	if err != nil {
+		fmt.Printf("warning: could not join resume topic: %v\n", err)
+	} else {
+		go d.handleResumeSub(ctx, resumeSub)
+	}
+
+	// Broadcast own resume periodically
+	go d.resumeBroadcastLoop(ctx)
 
 	// Swarm auto-close timer: check every 60s for expired swarms
 	go d.swarmExpiryLoop(ctx)
@@ -508,4 +526,112 @@ func (d *Daemon) publishPredictionResolution(ctx context.Context, r *store.Predi
 	msg := GossipPredictionMsg{Type: "resolution", Resolution: r}
 	data, _ := json.Marshal(msg)
 	return d.Node.Publish(ctx, PredictionTopic, data)
+}
+
+// ── Agent Resume gossip ──
+
+func (d *Daemon) handleResumeSub(ctx context.Context, sub *pubsub.Subscription) {
+	for {
+		msg, err := sub.Next(ctx)
+		if err != nil {
+			return
+		}
+		if msg.ReceivedFrom == d.Node.PeerID() {
+			continue
+		}
+
+		var gm GossipResumeMsg
+		if err := json.Unmarshal(msg.Data, &gm); err != nil {
+			continue
+		}
+		if gm.Type == "resume" && gm.Resume != nil {
+			d.Store.UpsertResume(gm.Resume)
+		}
+	}
+}
+
+// publishResume broadcasts the local agent's resume to the network.
+func (d *Daemon) publishResume(ctx context.Context, r *store.AgentResume) error {
+	r.PeerID = d.Node.PeerID().String()
+	if r.AgentName == "" && d.Profile != nil {
+		r.AgentName = d.Profile.AgentName
+	}
+
+	if err := d.Store.UpsertResume(r); err != nil {
+		return err
+	}
+
+	msg := GossipResumeMsg{Type: "resume", Resume: r}
+	data, _ := json.Marshal(msg)
+	return d.Node.Publish(ctx, ResumeTopic, data)
+}
+
+// resumeBroadcastLoop periodically publishes own resume to the network.
+func (d *Daemon) resumeBroadcastLoop(ctx context.Context) {
+	// Initial delay to let peer connections establish
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(10 * time.Second):
+	}
+
+	broadcast := func() {
+		peerID := d.Node.PeerID().String()
+		resume, _ := d.Store.GetResume(peerID)
+		if resume == nil {
+			// Auto-build resume from profile
+			resume = d.buildResumeFromProfile()
+		}
+		if resume != nil {
+			msg := GossipResumeMsg{Type: "resume", Resume: resume}
+			data, _ := json.Marshal(msg)
+			d.Node.Publish(ctx, ResumeTopic, data)
+		}
+	}
+
+	broadcast()
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			broadcast()
+		}
+	}
+}
+
+// buildResumeFromProfile creates a resume from the node's Profile capabilities and domains.
+func (d *Daemon) buildResumeFromProfile() *store.AgentResume {
+	if d.Profile == nil {
+		return nil
+	}
+	peerID := d.Node.PeerID().String()
+
+	// Merge domains + capabilities into skills
+	skillSet := make(map[string]bool)
+	for _, s := range d.Profile.Domains {
+		skillSet[s] = true
+	}
+	for _, s := range d.Profile.Capabilities {
+		skillSet[s] = true
+	}
+	skills := make([]string, 0, len(skillSet))
+	for s := range skillSet {
+		skills = append(skills, s)
+	}
+
+	skillsJSON, _ := json.Marshal(skills)
+	resume := &store.AgentResume{
+		PeerID:      peerID,
+		AgentName:   d.Profile.AgentName,
+		Skills:      string(skillsJSON),
+		DataSources: "[]",
+		Description: d.Profile.Bio,
+	}
+
+	// Store locally
+	d.Store.UpsertResume(resume)
+	return resume
 }

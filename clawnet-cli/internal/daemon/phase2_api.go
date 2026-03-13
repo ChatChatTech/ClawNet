@@ -53,6 +53,14 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 
 	// Wealth Leaderboard (Social Energy Model)
 	mux.HandleFunc("GET /api/leaderboard", d.handleWealthLeaderboard)
+
+	// Agent Resumes & Matching
+	mux.HandleFunc("PUT /api/resume", d.handleUpdateResume)
+	mux.HandleFunc("GET /api/resume", d.handleGetOwnResume)
+	mux.HandleFunc("GET /api/resumes", d.handleListResumes)
+	mux.HandleFunc("GET /api/resume/{peer_id}", d.handleGetPeerResume)
+	mux.HandleFunc("GET /api/tasks/{id}/match", d.handleMatchAgentsForTask)
+	mux.HandleFunc("GET /api/match/tasks", d.handleMatchTasksForAgent)
 }
 
 // ── Credits handlers ──
@@ -127,11 +135,39 @@ func (d *Daemon) handleCreditsTransfer(w http.ResponseWriter, r *http.Request) {
 // ── Task handlers ──
 
 func (d *Daemon) handleCreateTask(w http.ResponseWriter, r *http.Request) {
-	var t store.Task
-	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+	// Accept tags as either a JSON array or a pre-encoded string
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	var t store.Task
+	if v, ok := raw["title"]; ok {
+		json.Unmarshal(v, &t.Title)
+	}
+	if v, ok := raw["description"]; ok {
+		json.Unmarshal(v, &t.Description)
+	}
+	if v, ok := raw["reward"]; ok {
+		json.Unmarshal(v, &t.Reward)
+	}
+	if v, ok := raw["deadline"]; ok {
+		json.Unmarshal(v, &t.Deadline)
+	}
+	// Tags: accept ["a","b"] array or "a,b" string
+	if v, ok := raw["tags"]; ok {
+		var arr []string
+		if json.Unmarshal(v, &arr) == nil {
+			encoded, _ := json.Marshal(arr)
+			t.Tags = string(encoded)
+		} else {
+			var s string
+			json.Unmarshal(v, &s)
+			t.Tags = s
+		}
+	}
+
 	if t.Title == "" {
 		http.Error(w, `{"error":"title is required"}`, http.StatusBadRequest)
 		return
@@ -767,4 +803,110 @@ func (d *Daemon) handleWealthLeaderboard(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	writeJSON(w, entries)
+}
+
+// ── Agent Resume & Matching ──
+
+func (d *Daemon) handleUpdateResume(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Skills      []string `json:"skills"`
+		DataSources []string `json:"data_sources"`
+		Description string   `json:"description"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	skillsJSON, _ := json.Marshal(body.Skills)
+	dsJSON, _ := json.Marshal(body.DataSources)
+	if body.DataSources == nil {
+		dsJSON = []byte("[]")
+	}
+
+	resume := &store.AgentResume{
+		PeerID:      d.Node.PeerID().String(),
+		AgentName:   d.Profile.AgentName,
+		Skills:      string(skillsJSON),
+		DataSources: string(dsJSON),
+		Description: body.Description,
+	}
+
+	// Save locally first, then respond immediately. Gossip asynchronously.
+	if err := d.Store.UpsertResume(resume); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	go d.publishResume(d.ctx, resume)
+	writeJSON(w, resume)
+}
+
+func (d *Daemon) handleGetOwnResume(w http.ResponseWriter, r *http.Request) {
+	peerID := d.Node.PeerID().String()
+	resume, err := d.Store.GetResume(peerID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if resume == nil {
+		// Auto-build from profile
+		resume = d.buildResumeFromProfile()
+	}
+	if resume == nil {
+		resume = &store.AgentResume{PeerID: peerID, Skills: "[]", DataSources: "[]"}
+	}
+	writeJSON(w, resume)
+}
+
+func (d *Daemon) handleListResumes(w http.ResponseWriter, r *http.Request) {
+	limit := queryInt(r, "limit", 50)
+	resumes, err := d.Store.ListResumes(limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if resumes == nil {
+		resumes = []*store.AgentResume{}
+	}
+	writeJSON(w, resumes)
+}
+
+func (d *Daemon) handleGetPeerResume(w http.ResponseWriter, r *http.Request) {
+	peerID := r.PathValue("peer_id")
+	resume, err := d.Store.GetResume(peerID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if resume == nil {
+		http.Error(w, `{"error":"resume not found"}`, http.StatusNotFound)
+		return
+	}
+	writeJSON(w, resume)
+}
+
+func (d *Daemon) handleMatchAgentsForTask(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("id")
+	matches, err := d.Store.MatchAgentsForTask(taskID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if matches == nil {
+		matches = []*store.MatchResult{}
+	}
+	writeJSON(w, matches)
+}
+
+func (d *Daemon) handleMatchTasksForAgent(w http.ResponseWriter, r *http.Request) {
+	peerID := d.Node.PeerID().String()
+	tasks, err := d.Store.MatchTasksForAgent(peerID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if tasks == nil {
+		tasks = []*store.Task{}
+	}
+	writeJSON(w, tasks)
 }

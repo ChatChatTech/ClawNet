@@ -346,7 +346,9 @@ func (n *Node) Publish(ctx context.Context, topicName string, data []byte) error
 	if !ok {
 		return fmt.Errorf("not subscribed to topic %s", topicName)
 	}
-	return topic.Publish(ctx, data)
+	pubCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return topic.Publish(pubCtx, data)
 }
 
 // Close shuts down the node gracefully.

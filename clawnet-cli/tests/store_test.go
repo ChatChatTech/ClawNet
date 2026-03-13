@@ -249,3 +249,214 @@ func TestStoreDMCRUD(t *testing.T) {
 
 	t.Log("SUCCESS: DM CRUD + inbox + thread + read status working")
 }
+
+func TestResumeAndTaskMatching(t *testing.T) {
+	dir, err := os.MkdirTemp("", "clawnet-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	db, err := store.Open(dir)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer db.Close()
+
+	// --- Resume CRUD ---
+
+	// Insert resume for Agent A (data analyst)
+	resumeA := &store.AgentResume{
+		PeerID:      "peer-A",
+		AgentName:   "DataBot",
+		Skills:      `["data-analysis","python","statistics"]`,
+		DataSources: `["market-data","financial-reports"]`,
+		Description: "Specialized in quantitative data analysis",
+	}
+	if err := db.UpsertResume(resumeA); err != nil {
+		t.Fatalf("upsert resume A: %v", err)
+	}
+
+	// Insert resume for Agent B (web developer)
+	resumeB := &store.AgentResume{
+		PeerID:      "peer-B",
+		AgentName:   "WebDev",
+		Skills:      `["web-scraping","javascript","python"]`,
+		DataSources: `["web-pages"]`,
+		Description: "Full-stack web development agent",
+	}
+	if err := db.UpsertResume(resumeB); err != nil {
+		t.Fatalf("upsert resume B: %v", err)
+	}
+
+	// Insert resume for Agent C (no overlap)
+	resumeC := &store.AgentResume{
+		PeerID:      "peer-C",
+		AgentName:   "ArtBot",
+		Skills:      `["image-generation","creative-writing"]`,
+		DataSources: `[]`,
+		Description: "Creative content generation",
+	}
+	if err := db.UpsertResume(resumeC); err != nil {
+		t.Fatalf("upsert resume C: %v", err)
+	}
+
+	// Get resume
+	got, err := db.GetResume("peer-A")
+	if err != nil {
+		t.Fatalf("get resume: %v", err)
+	}
+	if got == nil || got.AgentName != "DataBot" {
+		t.Fatalf("resume A: got %v", got)
+	}
+
+	// List resumes
+	all, err := db.ListResumes(50)
+	if err != nil {
+		t.Fatalf("list resumes: %v", err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("expected 3 resumes, got %d", len(all))
+	}
+
+	// Update resume
+	resumeA.Skills = `["data-analysis","python","statistics","machine-learning"]`
+	if err := db.UpsertResume(resumeA); err != nil {
+		t.Fatalf("update resume A: %v", err)
+	}
+	got, _ = db.GetResume("peer-A")
+	if got.Skills != `["data-analysis","python","statistics","machine-learning"]` {
+		t.Errorf("updated skills = %q", got.Skills)
+	}
+
+	t.Log("OK: Resume CRUD working")
+
+	// --- Task with tags ---
+
+	// Ensure credit accounts exist
+	db.EnsureCreditAccount("peer-X", 100)
+
+	// Create a task requiring data-analysis + python
+	task1 := &store.Task{
+		ID:       "task-1",
+		AuthorID: "peer-X",
+		Title:    "Analyze Q1 sales data",
+		Tags:     `["data-analysis","python"]`,
+		Deadline: "2026-03-20T00:00:00Z",
+		Reward:   15,
+		Status:   "open",
+	}
+	if err := db.InsertTask(task1); err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+
+	// Verify tags stored
+	fetched, err := db.GetTask("task-1")
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if fetched.Tags != `["data-analysis","python"]` {
+		t.Errorf("task tags = %q", fetched.Tags)
+	}
+	if fetched.Deadline != "2026-03-20T00:00:00Z" {
+		t.Errorf("task deadline = %q", fetched.Deadline)
+	}
+
+	t.Log("OK: Task template with tags + deadline working")
+
+	// --- Matching: agents for task ---
+
+	// Set up reputation for peer-A to be higher
+	db.RecalcReputation("peer-A")
+	db.RecalcReputation("peer-B")
+	db.RecalcReputation("peer-C")
+
+	matches, err := db.MatchAgentsForTask("task-1")
+	if err != nil {
+		t.Fatalf("match agents: %v", err)
+	}
+	if len(matches) == 0 {
+		t.Fatal("expected at least one match")
+	}
+
+	// peer-A has data-analysis + python (2/2 match = 1.0)
+	// peer-B has python (1/2 match = 0.5)
+	// peer-C has no overlap (should not appear)
+	foundA, foundB, foundC := false, false, false
+	for _, m := range matches {
+		switch m.PeerID {
+		case "peer-A":
+			foundA = true
+			if m.MatchScore < 0.99 {
+				t.Errorf("peer-A match score = %.2f, want 1.0", m.MatchScore)
+			}
+		case "peer-B":
+			foundB = true
+			if m.MatchScore < 0.49 || m.MatchScore > 0.51 {
+				t.Errorf("peer-B match score = %.2f, want 0.5", m.MatchScore)
+			}
+		case "peer-C":
+			foundC = true
+		}
+	}
+	if !foundA {
+		t.Error("peer-A should match (data-analysis + python)")
+	}
+	if !foundB {
+		t.Error("peer-B should match (python)")
+	}
+	if foundC {
+		t.Error("peer-C should NOT match (no overlap)")
+	}
+
+	// peer-A should rank higher than peer-B (better match score)
+	if len(matches) >= 2 && matches[0].PeerID != "peer-A" {
+		t.Errorf("expected peer-A to rank first, got %s", matches[0].PeerID)
+	}
+
+	t.Log("OK: Agent-for-task matching working (ranked by skill overlap)")
+
+	// --- Matching: tasks for agent ---
+
+	// Create another task peer-A can't do
+	task2 := &store.Task{
+		ID:       "task-2",
+		AuthorID: "peer-X",
+		Title:    "Generate product images",
+		Tags:     `["image-generation"]`,
+		Reward:   10,
+		Status:   "open",
+	}
+	db.InsertTask(task2)
+
+	// peer-A should see task-1 (matching) and task-2 should rank lower or not appear
+	tasksForA, err := db.MatchTasksForAgent("peer-A")
+	if err != nil {
+		t.Fatalf("match tasks: %v", err)
+	}
+	if len(tasksForA) == 0 {
+		t.Fatal("expected at least one task for peer-A")
+	}
+	if tasksForA[0].ID != "task-1" {
+		t.Errorf("expected task-1 to rank first for peer-A, got %s", tasksForA[0].ID)
+	}
+
+	// peer-C should see task-2 (image-generation matches)
+	tasksForC, err := db.MatchTasksForAgent("peer-C")
+	if err != nil {
+		t.Fatalf("match tasks for C: %v", err)
+	}
+	foundTask2 := false
+	for _, task := range tasksForC {
+		if task.ID == "task-2" {
+			foundTask2 = true
+			break
+		}
+	}
+	if !foundTask2 {
+		t.Error("peer-C should see task-2 (image-generation)")
+	}
+
+	t.Log("OK: Tasks-for-agent matching working")
+	t.Log("SUCCESS: Resume + Task Template + Supply-Demand Matching all verified")
+}
