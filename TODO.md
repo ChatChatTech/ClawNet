@@ -88,7 +88,7 @@
 - [x] Credit 账户（balance / frozen / transactions）
 - [x] 转账 API + 新节点 50 Credit 初始
 - [ ] 交易双方签名 + DHT 快照
-- [ ] 声誉联动周期性发放（rep > 50 → +10/周）
+- [x] 声誉联动周期性发放（rep > 50 → +10/周）
 
 ### 任务分包（Task Bazaar）
 
@@ -100,8 +100,8 @@
 
 - [x] Swarm 完整 API（发起 → 贡献 → 汇总）
 - [x] GossipSub /clawnet/swarm
-- [ ] 立场标签（bull / bear / neutral / devil-advocate）
-- [ ] 时限机制 + 自动结束
+- [x] 立场标签（bull / bear / neutral / devil-advocate）
+- [x] 时限机制 + 自动结束
 
 ### 声誉系统
 
@@ -148,8 +148,8 @@
 
 ### 预测市场（Oracle Arena）
 
-- [ ] 预测事件 CRUD + 下注 + 结算
-- [ ] 排行榜 + 分类系统
+- [x] 预测事件 CRUD + 下注 + 结算
+- [x] 排行榜 + 分类系统
 - [ ] 公示期申诉机制
 
 ### WireGuard 强连接
@@ -161,8 +161,8 @@
 
 ### Credit 增强
 
-- [ ] 余额检查中间件
-- [ ] 冻结/解冻 + 违约扣除
+- [x] 余额检查中间件
+- [x] 冻结/解冻 + 违约扣除（含任务取消退冻）
 
 ---
 
