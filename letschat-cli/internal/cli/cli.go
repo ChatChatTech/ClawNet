@@ -20,6 +20,22 @@ import (
 	"golang.org/x/term"
 )
 
+// 🦞 ClawNet Lobster Theme — ANSI color palette
+const (
+	cBorder    = "\033[38;2;230;57;70m"  // Lobster Red #E63946 — borders
+	cTitle     = "\033[1;38;2;241;250;238m" // Sea Foam bold — title text
+	cSelf      = "\033[1;38;2;247;127;0m"  // Coral Orange bold #F77F00 — ★ self
+	cPeer      = "\033[1;38;2;230;57;70m"  // Lobster Red bold #E63946 — @ peers
+	cCoast     = "\033[38;2;69;123;157m"   // Tidal Blue #457B9D — coastline
+	cLand      = "\033[38;2;29;53;87m"     // Deep Ocean #1D3557 — land
+	cOcean     = "\033[2;38;2;29;53;87m"   // Deep Ocean dim — ocean dots
+	cEdge      = "\033[2;38;2;230;57;70m"  // Lobster Red dim — globe edge ()
+	cSelfInfo  = "\033[38;2;241;250;238m"  // Sea Foam #F1FAEE — self panel
+	cPeerInfo  = "\033[38;2;247;127;0m"    // Coral Orange #F77F00 — peer cards
+	cHelp      = "\033[2;37m"              // dim white — help line
+	cReset     = "\033[0m"
+)
+
 func Execute() error {
 	if len(os.Args) < 2 {
 		return printUsage()
@@ -413,13 +429,13 @@ func renderHeader(termW int, stats networkStats) string {
 	dashL := fillTotal / 2
 	dashR := fillTotal - dashL
 
-	sb.WriteString("\033[36m┌")
+	sb.WriteString(cBorder + "┌")
 	sb.WriteString(strings.Repeat("─", dashL))
-	sb.WriteString("\033[1;37m")
+	sb.WriteString(cTitle)
 	sb.WriteString(headerDisplay)
-	sb.WriteString("\033[0;36m")
+	sb.WriteString(cReset + cBorder)
 	sb.WriteString(strings.Repeat("─", dashR))
-	sb.WriteString("┐\033[0m")
+	sb.WriteString("┐" + cReset)
 	sb.WriteString("\033[K\r\n")
 
 	return sb.String()
@@ -619,30 +635,30 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 
 	// Globe rows
 	for row := 0; row < gH; row++ {
-		sb.WriteString("\033[36m│\033[0m")
+		sb.WriteString(cBorder + "│" + cReset)
 		sb.WriteString(strings.Repeat(" ", globePadL))
 		for _, ch := range globe[row] {
 			switch ch {
 			case '★':
-				sb.WriteString("\033[1;31m★\033[0m")
+				sb.WriteString(cSelf + "★" + cReset)
 			case '@':
-				sb.WriteString("\033[1;31m@\033[0m")
+				sb.WriteString(cPeer + "@" + cReset)
 			case '#':
-				sb.WriteString("\033[37m#\033[0m")
+				sb.WriteString(cCoast + "#" + cReset)
 			case '.':
-				sb.WriteString("\033[32m.\033[0m")
+				sb.WriteString(cLand + "." + cReset)
 			case '(', ')':
-				sb.WriteString("\033[2;36m")
+				sb.WriteString(cEdge)
 				sb.WriteRune(ch)
-				sb.WriteString("\033[0m")
+				sb.WriteString(cReset)
 			case '·':
-				sb.WriteString("\033[2;34m·\033[0m")
+				sb.WriteString(cOcean + "·" + cReset)
 			default:
 				sb.WriteByte(' ')
 			}
 		}
 		sb.WriteString(strings.Repeat(" ", globePadR))
-		sb.WriteString("\033[36m│\033[0m\033[K\r\n")
+		sb.WriteString(cBorder + "│" + cReset + "\033[K\r\n")
 	}
 
 	// ── Separator above bottom panel (with ┬ for vertical divider) ──
@@ -661,11 +677,11 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 	}
 
 	// Emit separator above bottom panel: ├──...──┬──...──┤
-	sb.WriteString("\033[36m├")
+	sb.WriteString(cBorder + "├")
 	sb.WriteString(strings.Repeat("─", selfW))
 	sb.WriteString("┬")
 	sb.WriteString(strings.Repeat("─", peerW))
-	sb.WriteString("┤\033[0m\033[K\r\n")
+	sb.WriteString("┤" + cReset + "\033[K\r\n")
 
 	// Build self info lines
 	selfLines := make([]string, bottomH)
@@ -851,28 +867,28 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 
 	// Emit bottom rows
 	for i := 0; i < bottomH; i++ {
-		sb.WriteString("\033[36m│\033[0m")
-		sb.WriteString("\033[37m")
+		sb.WriteString(cBorder + "│" + cReset)
+		sb.WriteString(cSelfInfo)
 		sb.WriteString(selfLines[i])
-		sb.WriteString("\033[0m")
-		sb.WriteString("\033[36m│\033[0m")
-		sb.WriteString("\033[33m")
+		sb.WriteString(cReset)
+		sb.WriteString(cBorder + "│" + cReset)
+		sb.WriteString(cPeerInfo)
 		// Make sure peerLines[i] is exactly peerW visible chars
 		pl := peerLines[i]
 		if len([]rune(pl)) > peerW {
 			pl = string([]rune(pl)[:peerW])
 		}
 		sb.WriteString(pl)
-		sb.WriteString("\033[0m")
-		sb.WriteString("\033[36m│\033[0m\033[K\r\n")
+		sb.WriteString(cReset)
+		sb.WriteString(cBorder + "│" + cReset + "\033[K\r\n")
 	}
 
 	// ── Separator below bottom panel: ├──...──┴──...──┤ ──
-	sb.WriteString("\033[36m├")
+	sb.WriteString(cBorder + "├")
 	sb.WriteString(strings.Repeat("─", selfW))
 	sb.WriteString("┴")
 	sb.WriteString(strings.Repeat("─", peerW))
-	sb.WriteString("┤\033[0m\033[K\r\n")
+	sb.WriteString("┤" + cReset + "\033[K\r\n")
 
 	// ── Help line ──
 	help := " q:Quit  ★:You  @:Peer"
@@ -881,15 +897,15 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 	if helpPad < 0 {
 		helpPad = 0
 	}
-	sb.WriteString("\033[36m│\033[2;37m")
+	sb.WriteString(cBorder + "│" + cHelp)
 	sb.WriteString(help)
 	sb.WriteString(strings.Repeat(" ", helpPad))
-	sb.WriteString("\033[36m│\033[0m\033[K\r\n")
+	sb.WriteString(cBorder + "│" + cReset + "\033[K\r\n")
 
 	// ── Bottom frame ──
-	sb.WriteString("\033[36m└")
+	sb.WriteString(cBorder + "└")
 	sb.WriteString(strings.Repeat("─", innerW))
-	sb.WriteString("┘\033[0m\033[K")
+	sb.WriteString("┘" + cReset + "\033[K")
 
 	return sb.String()
 }
