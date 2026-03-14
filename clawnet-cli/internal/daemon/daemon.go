@@ -19,7 +19,7 @@ import (
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
 )
 
-const Version = "0.6.3"
+const Version = "0.6.4"
 
 // Daemon holds the running node and all services.
 type Daemon struct {

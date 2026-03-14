@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
@@ -151,9 +152,45 @@ func emitRow(sb *strings.Builder, content string, innerW int) {
 	sb.WriteString(cBorder + "│" + cReset + "\033[K\r\n")
 }
 
+// isDaemonRunning checks PID file + process alive + API responding.
+func isDaemonRunning() bool {
+	dataDir := config.DataDir()
+	data, err := os.ReadFile(filepath.Join(dataDir, "daemon.pid"))
+	if err != nil {
+		return false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	if err := proc.Signal(syscall.Signal(0)); err != nil {
+		return false
+	}
+	// Process alive — quick API health check
+	cfg, err := config.Load()
+	if err != nil {
+		return true // process alive, assume running
+	}
+	client := http.Client{Timeout: 500 * time.Millisecond}
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/api/status", cfg.WebUIPort))
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == 200
+}
+
 func Execute() error {
 	if len(os.Args) < 2 {
-		return printUsage()
+		// No args: if daemon running → show status, else → start
+		if isDaemonRunning() {
+			return cmdStatus()
+		}
+		return cmdStart()
 	}
 
 	switch os.Args[1] {
@@ -270,6 +307,10 @@ func cmdInit() error {
 }
 
 func cmdStart() error {
+	if isDaemonRunning() {
+		fmt.Println("Daemon is already running.")
+		return cmdStatus()
+	}
 	return daemon.Start(true)
 }
 
