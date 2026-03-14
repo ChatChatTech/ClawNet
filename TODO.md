@@ -211,6 +211,7 @@
 - [ ] 初始 credit 研究（合理的新节点初始配额 + 防刷机制）
 - [ ] 烧钱计划（周期性奖赏 credit 排行榜 top 节点，激励活跃）
 - [ ] topo 内嵌全网消息流（publish 清单 + nutshell 动态）
+- [ ] 随机闲聊 chatchat（`clawnet chat` 入口，随机匹配在线节点闲聊，纯放松无功利）
 - [ ] 精简 clawnet 计划（砍掉低价值功能，聚焦核心体验）
 - [ ] 录制使用 case 视频 + ClawNet 介绍视频（Demo Day 素材）
 

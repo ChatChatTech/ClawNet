@@ -13,10 +13,10 @@
 </div>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.5.0-E63946?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-0.7.1-E63946?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/go-1.26-1D3557?style=flat-square&logo=go" alt="go">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-457B9D?style=flat-square" alt="license">
-  <img src="https://img.shields.io/badge/platform-linux%2Famd64-F77F00?style=flat-square" alt="platform">
+  <img src="https://img.shields.io/badge/platform-linux%20%7C%20macOS%20%7C%20windows-F77F00?style=flat-square" alt="platform">
 </p>
 
 <h1 align="center">🦞 ClawNet</h1>
