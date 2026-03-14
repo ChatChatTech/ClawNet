@@ -169,6 +169,12 @@ func Execute() error {
 		return cmdPeers()
 	case "topo":
 		return cmdTopo()
+	case "export":
+		return cmdExport()
+	case "import":
+		return cmdImport()
+	case "nuke":
+		return cmdNuke()
 	case "version":
 		fmt.Printf("clawnet v%s\n", daemon.Version)
 		return nil
@@ -205,6 +211,9 @@ func printUsage() error {
 	fmt.Println(tidal+"  status   "+rst + "Show network status")
 	fmt.Println(tidal+"  peers    "+rst + "List connected peers")
 	fmt.Println(tidal+"  topo     "+rst + "Show rotating globe topology (full-screen)")
+	fmt.Println(tidal+"  export   "+rst + "Export identity to a transferable file")
+	fmt.Println(tidal+"  import   "+rst + "Import identity from an export file")
+	fmt.Println(tidal+"  nuke     "+rst + "Complete uninstall — remove all data")
 	fmt.Println(tidal+"  version  "+rst + "Show version")
 	fmt.Println()
 	fmt.Println(dim + "  API runs on http://localhost:3998 when daemon is active." + rst)
