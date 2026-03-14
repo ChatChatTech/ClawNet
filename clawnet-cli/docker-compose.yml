@@ -12,13 +12,14 @@ services:
     ports:
       - "4001:4001/tcp"
       - "4001:4001/udp"
-      - "3847:3847/tcp"
+      - "6881:6881/udp"
+      - "3998:3998/tcp"
     volumes:
       - boot1-data:/root/.openclaw/clawnet
     environment:
       - CLAWNET_BOOTSTRAP=true
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3847/api/status"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3998/api/status"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -31,7 +32,8 @@ services:
     ports:
       - "4002:4001/tcp"
       - "4002:4001/udp"
-      - "3848:3847/tcp"
+      - "6882:6881/udp"
+      - "3999:3998/tcp"
     volumes:
       - boot2-data:/root/.openclaw/clawnet
     depends_on:
@@ -46,7 +48,8 @@ services:
     ports:
       - "4003:4001/tcp"
       - "4003:4001/udp"
-      - "3849:3847/tcp"
+      - "6883:6881/udp"
+      - "4000:3998/tcp"
     volumes:
       - boot3-data:/root/.openclaw/clawnet
     depends_on:

@@ -34,4 +34,5 @@ clawnet-bg.webp
 
 # Secrets
 GITHUB_TOKEN
+CLOUDFLARE_TOKEN
 dist/

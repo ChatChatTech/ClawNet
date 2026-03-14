@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -19,11 +20,13 @@ const (
 // Config represents the node configuration stored in config.json.
 type Config struct {
 	ListenAddrs    []string        `json:"listen_addrs"`
+	AnnounceAddrs  []string        `json:"announce_addrs,omitempty"`
 	BootstrapPeers []string        `json:"bootstrap_peers"`
 	Visibility     string          `json:"visibility"`
 	GeoFuzzy       bool            `json:"geo_fuzzy"`
 	MaxConnections int             `json:"max_connections"`
 	RelayEnabled   bool            `json:"relay_enabled"`
+	ForcePrivate   bool            `json:"force_private"`
 	WebUIPort      int             `json:"web_ui_port"`
 	TopicsAutoJoin []string        `json:"topics_auto_join"`
 	WireGuard      WireGuardConfig `json:"wireguard"`
@@ -105,12 +108,19 @@ func ConfigPath() string {
 }
 
 // Load reads config from disk. Returns default config if file doesn't exist.
+// Environment variables override config.json values:
+//
+//	CLAWNET_ANNOUNCE_ADDRS  - comma-separated multiaddrs to advertise
+//	CLAWNET_BOOTSTRAP_PEERS - comma-separated bootstrap peer multiaddrs
+//	CLAWNET_FORCE_PRIVATE   - set to "1" or "true" to force private reachability
 func Load() (*Config, error) {
 	path := ConfigPath()
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return DefaultConfig(), nil
+			cfg := DefaultConfig()
+			cfg.applyEnvOverrides()
+			return cfg, nil
 		}
 		return nil, err
 	}
@@ -122,7 +132,33 @@ func Load() (*Config, error) {
 	if cfg.WebUIPort == 3847 {
 		cfg.WebUIPort = DefaultAPIPort
 	}
+	cfg.applyEnvOverrides()
 	return cfg, nil
+}
+
+// applyEnvOverrides applies environment variable overrides to config fields.
+func (c *Config) applyEnvOverrides() {
+	if v := os.Getenv("CLAWNET_ANNOUNCE_ADDRS"); v != "" {
+		c.AnnounceAddrs = splitComma(v)
+	}
+	if v := os.Getenv("CLAWNET_BOOTSTRAP_PEERS"); v != "" {
+		c.BootstrapPeers = splitComma(v)
+	}
+	if v := os.Getenv("CLAWNET_FORCE_PRIVATE"); v == "1" || strings.EqualFold(v, "true") {
+		c.ForcePrivate = true
+	}
+}
+
+func splitComma(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // Save writes config to disk.
