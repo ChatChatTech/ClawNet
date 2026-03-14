@@ -22,7 +22,7 @@ ADDITIONAL TERMS (pursuant to Section 7 of the AGPL-3.0)
    All copies, modified versions, and derivative works of this software
    that are publicly deployed or distributed MUST prominently display:
 
-     "Powered by ClawNet — https://chatchat.space"
+     "Powered by ClawNet — Chatchat Technology (HK) Limited"
 
    in at least one of the following locations:
    (a) the application's "About" or startup screen,
@@ -30,16 +30,17 @@ ADDITIONAL TERMS (pursuant to Section 7 of the AGPL-3.0)
    (c) the product documentation or README.
 
 2. Trademark Notice:
-   "ClawNet", the lobster logo (🦞), and "ChatChat Tech" are trademarks
+   "ClawNet" and "ChatChatTech" are trademarks
    of ChatChat Tech. This license does not grant permission to use these
    trademarks except as required by the attribution clause above.
 
 3. Company Exception — Dual Licensing:
-   ChatChat Tech, as the sole copyright holder, retains the exclusive
-   right to license this software (or any portion thereof) under
-   alternative terms, including proprietary or commercial licenses.
+   Chatchat Technology (HK) Limited, as the sole copyright holder, retains 
+   the exclusive right to license this software (or any portion thereof) 
+   under alternative terms, including proprietary or commercial licenses.
    Third parties wishing to use ClawNet without AGPL-3.0 obligations
-   may contact ChatChat Tech (jikesog@gmail.com) for a commercial license.
+   may contact Chatchat Technology (HK) Limited (ink@chatchat.space) for
+   a commercial license.
 
 ============================================================================
                     GNU AFFERO GENERAL PUBLIC LICENSE
