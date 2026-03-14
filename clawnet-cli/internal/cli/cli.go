@@ -13,7 +13,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
@@ -416,7 +415,7 @@ func cmdTopo() error {
 	}()
 
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGWINCH)
+	notifyResize(sigCh)
 	defer signal.Stop(sigCh)
 
 	angle := 0.0
