@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
 	"github.com/google/uuid"
@@ -939,10 +940,33 @@ func (d *Daemon) handleUploadTaskBundle(w http.ResponseWriter, r *http.Request) 
 
 	// Limit bundle size to 50 MB
 	r.Body = http.MaxBytesReader(w, r.Body, 50<<20)
-	data, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, `{"error":"bundle too large or read error"}`, http.StatusBadRequest)
-		return
+
+	var data []byte
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "multipart/") {
+		// Handle multipart/form-data (nutshell CLI sends this)
+		if err := r.ParseMultipartForm(50 << 20); err != nil {
+			http.Error(w, `{"error":"invalid multipart form"}`, http.StatusBadRequest)
+			return
+		}
+		file, _, err := r.FormFile("bundle")
+		if err != nil {
+			http.Error(w, `{"error":"missing bundle field in form"}`, http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+		data, err = io.ReadAll(file)
+		if err != nil {
+			http.Error(w, `{"error":"read error"}`, http.StatusBadRequest)
+			return
+		}
+	} else {
+		// Handle raw binary body
+		data, err = io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, `{"error":"bundle too large or read error"}`, http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Validate NUT magic header
