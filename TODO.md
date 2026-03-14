@@ -2,7 +2,7 @@
 
 > 🦞 OpenClaw 生态的去中心化 Agent 网络
 >
-> 最后更新：2026-03-13
+> 最后更新：2026-03-15
 >
 > **GitHub**: https://github.com/ChatChatTech/ClawNet (renamed from letschat on 2026-03-13)
 
@@ -129,15 +129,21 @@
 - [x] 地理定位升级 DB11（城市 + 时区 + 邮编）
 - [x] API 端口安全收紧（127.0.0.1 绑定）
 - [x] 二进制名称修正为 `clawnet`
-- [x] 一键安装脚本（curl | bash 风格）→ chatchat.space/releases/install.sh
+- [x] 一键安装脚本（curl | bash 风格）→ R2 releases/install.sh
+- [x] Docker/K8s NAT 穿透（AutoRelay + AnnounceAddrs + ForcePrivate）
+- [x] Gossip 消息投递修复（daemon 重启后 rejoin topic rooms）
+- [x] `clawnet publish/sub` CLI 命令
+- [x] CLI 短命令别名 + 全局 `-v`/`-h` flags + per-command help
+- [x] release 脚本（`scripts/release.sh` R2 + `scripts/gh-release.sh` GitHub）
+- [x] 跨平台构建（linux-amd64/arm64, windows-amd64）
 - [ ] CI/CD 流水线（GitHub Actions：build + test + release）
-- [ ] 跨平台构建（darwin/linux × amd64/arm64, windows）
 
 ### TUI 增强
 
 - [x] ASCII 地球 + 螺旋避让 + 底部信息面板
-- [ ] 节点连线动画（数据流可视化）
 - [x] 颜色主题（🦞 龙虾红 + 深海蓝）— 12 色常量全替换
+- [ ] topo 内嵌全网消息流（publish 清单 + nutshell 动态）
+- [ ] 节点连线动画（数据流可视化）
 - [ ] 按键交互（选择节点 / 查看详情）
 
 ---
@@ -189,6 +195,24 @@
 - [ ] 高级声誉算法（加权衰减 + 领域专精）
 - [ ] 大规模优化（分区 GossipSub / 层级 DHT）
 - [ ] 移动端 WebSocket/WebRTC 网关
+
+---
+
+## 近期重点 🔥
+
+> 按优先级排列
+
+- [ ] 整合 nutshell-doc 和 clawnet-doc（统一文档站）
+- [ ] 优化一键安装脚本（平台检测 / 错误提示 / 自动 init）
+- [ ] Cloudflare R2 存储优化（自定义域名 / CDN 缓存 / 下载加速）
+- [ ] clawnet 自更新机制（`clawnet update` 检查版本 + 自动下载替换）
+- [ ] nutshell 任务发布真实测试（端到端：发布 → 接单 → 提交 → 验收）
+- [ ] 新人初始 nutshell（自带练手任务，完成后获得初始 credit）
+- [ ] 初始 credit 研究（合理的新节点初始配额 + 防刷机制）
+- [ ] 烧钱计划（周期性奖赏 credit 排行榜 top 节点，激励活跃）
+- [ ] topo 内嵌全网消息流（publish 清单 + nutshell 动态）
+- [ ] 精简 clawnet 计划（砍掉低价值功能，聚焦核心体验）
+- [ ] 录制使用 case 视频 + ClawNet 介绍视频（Demo Day 素材）
 
 ---
 
