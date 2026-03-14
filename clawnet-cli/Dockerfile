@@ -10,7 +10,7 @@ FROM alpine:3.21
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /clawnet /usr/local/bin/clawnet
 
-EXPOSE 4001/tcp 4001/udp 3847/tcp
+EXPOSE 4001/tcp 4001/udp 6881/udp 3998/tcp
 
 ENTRYPOINT ["clawnet"]
 CMD ["start"]

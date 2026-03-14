@@ -61,6 +61,31 @@ func NewNode(ctx context.Context, priv crypto.PrivKey, cfg *config.Config) (*Nod
 		listenAddrs = append(listenAddrs, ma)
 	}
 
+	// Parse announce addresses for AddrsFactory (Docker/K8s external addrs).
+	var announceAddrs []multiaddr.Multiaddr
+	for _, s := range cfg.AnnounceAddrs {
+		ma, err := multiaddr.NewMultiaddr(s)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("invalid announce addr %q: %w", s, err)
+		}
+		announceAddrs = append(announceAddrs, ma)
+	}
+
+	// Parse bootstrap peers into AddrInfo for relay and direct connect.
+	var bootstrapInfos []peer.AddrInfo
+	for _, addr := range cfg.BootstrapPeers {
+		ma, err := multiaddr.NewMultiaddr(addr)
+		if err != nil {
+			continue
+		}
+		pi, err := peer.AddrInfoFromP2pAddr(ma)
+		if err != nil {
+			continue
+		}
+		bootstrapInfos = append(bootstrapInfos, *pi)
+	}
+
 	bwc := metrics.NewBandwidthCounter()
 
 	opts := []libp2p.Option{
@@ -76,11 +101,30 @@ func NewNode(ctx context.Context, priv crypto.PrivKey, cfg *config.Config) (*Nod
 		libp2p.EnableHolePunching(),
 	}
 
+	// Override advertised addresses when running behind NAT/Docker.
+	if len(announceAddrs) > 0 {
+		addrs := announceAddrs // capture for closure
+		opts = append(opts, libp2p.AddrsFactory(func(_ []multiaddr.Multiaddr) []multiaddr.Multiaddr {
+			return addrs
+		}))
+	}
+
+	// Force private reachability so AutoNAT immediately seeks relay
+	// without waiting for (failing) reachability probes.
+	if cfg.ForcePrivate {
+		opts = append(opts, libp2p.ForceReachabilityPrivate())
+	}
+
 	if cfg.RelayEnabled {
 		opts = append(opts,
 			libp2p.EnableRelay(),
 			libp2p.EnableRelayService(),
 		)
+		// AutoRelay obtains relay addresses through bootstrap nodes
+		// so container/NATed nodes become reachable via circuit relay.
+		if len(bootstrapInfos) > 0 {
+			opts = append(opts, libp2p.EnableAutoRelayWithStaticRelays(bootstrapInfos))
+		}
 	}
 
 	h, err := libp2p.New(opts...)
@@ -262,12 +306,20 @@ func (n *Node) httpBootstrap(ctx context.Context) {
 
 // startBTDHT initializes and runs the BitTorrent Mainline DHT discovery.
 func (n *Node) startBTDHT(ctx context.Context, cfg *config.Config) {
-	// Derive libp2p port from first listen address
+	// Determine port to announce: prefer announce addr, fall back to host addr.
 	libp2pPort := config.DefaultP2PPort
-	for _, addr := range n.Host.Addrs() {
-		if p, err := addr.ValueForProtocol(multiaddr.P_TCP); err == nil {
-			fmt.Sscanf(p, "%d", &libp2pPort)
-			break
+	if len(cfg.AnnounceAddrs) > 0 {
+		if ma, err := multiaddr.NewMultiaddr(cfg.AnnounceAddrs[0]); err == nil {
+			if p, err := ma.ValueForProtocol(multiaddr.P_TCP); err == nil {
+				fmt.Sscanf(p, "%d", &libp2pPort)
+			}
+		}
+	} else {
+		for _, addr := range n.Host.Addrs() {
+			if p, err := addr.ValueForProtocol(multiaddr.P_TCP); err == nil {
+				fmt.Sscanf(p, "%d", &libp2pPort)
+				break
+			}
 		}
 	}
 
