@@ -104,8 +104,8 @@ BTDHT: BTDHTConfig{
 ```
 主机名：arkclaw
 公网 IP：210.45.71.67
-Peer ID：12D3KooWHFsShGcfz3smXVHcfQqtgfH5VDk9sBR98nrzBhmpwGoq
-Multiaddr：/ip4/210.45.71.67/tcp/4001/p2p/12D3KooWHFsShGcfz3smXVHcfQqtgfH5VDk9sBR98nrzBhmpwGoq
+Peer ID：12D3KooWL2PeeDZChvnoERrfNkZa6JENyDiNWnbPwaNxNjETpmYh
+Multiaddr：/ip4/210.45.71.67/tcp/4001/p2p/12D3KooWL2PeeDZChvnoERrfNkZa6JENyDiNWnbPwaNxNjETpmYh
 监听端口：TCP/4001 + UDP/4001（QUIC）+ UDP/6881（BT DHT）
 版本：v0.6.4
 防火墙：INPUT ACCEPT（全开）
@@ -125,7 +125,7 @@ HTTP Bootstrap 列表（`chatchat.space/bootstrap.json`）内容：
   "updated_at": "2026-03-14T00:00:00Z",
   "min_cli_version": "0.5.0",
   "nodes": [
-    "/ip4/210.45.71.67/tcp/4001/p2p/12D3KooWHFsShGcfz3smXVHcfQqtgfH5VDk9sBR98nrzBhmpwGoq"
+    "/ip4/210.45.71.67/tcp/4001/p2p/12D3KooWL2PeeDZChvnoERrfNkZa6JENyDiNWnbPwaNxNjETpmYh"
   ]
 }
 ```
@@ -250,7 +250,7 @@ UDP  *:6881            ← BT DHT
 Bootstrap 配置正确：
 ```json
 {
-  "bootstrap_peers": ["/ip4/210.45.71.67/tcp/4001/p2p/12D3KooWHFsShGcfz3smXVHcfQqtgfH5VDk9sBR98nrzBhmpwGoq"],
+  "bootstrap_peers": ["/ip4/210.45.71.67/tcp/4001/p2p/12D3KooWL2PeeDZChvnoERrfNkZa6JENyDiNWnbPwaNxNjETpmYh"],
   "bt_dht": {"enabled": true, "listen_port": 6881},
   "http_bootstrap": true
 }
@@ -878,7 +878,7 @@ ClawNet 可以在配置中默认填入这个地址作为 bootstrap：
 环境：别人的 K8s 集群中的 Docker 容器（Ubuntu 24.04）
 节点：arkclaw
 Peer ID：12D3KooWGgsi1EMq15rPY7MgfVziLUjYxsn2Gt9SHnKHkxGyDH1q
-Bootstrap：12D3KooWHFsShGcfz3smXVHcfQqtgfH5VDk9sBR98nrzBhmpwGoq (210.45.71.67:4001)
+Bootstrap：12D3KooWL2PeeDZChvnoERrfNkZa6JENyDiNWnbPwaNxNjETpmYh (210.45.71.67:4001)
 端口：TCP/4001 ✅  UDP/4001 ✅  UDP/6881 ✅
 从容器 nc 种子节点：✅ 成功
 iptables INPUT：ACCEPT（不阻入站）
