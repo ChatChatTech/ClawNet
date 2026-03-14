@@ -17,7 +17,7 @@ const (
 	CreditAudit     = "/clawnet/credit-audit"
 	PredictionTopic = "/clawnet/predictions"
 	ResumeTopic     = "/clawnet/resumes"
-	DefaultReward   = 10.0 // default credit reward when no explicit reward is set
+	DefaultReward   = 1.0  // default credit reward when no explicit reward is set
 )
 
 // GossipTaskMsg is the wire format for task messages.
