@@ -89,6 +89,22 @@ func (d *Daemon) startGossipHandlers(ctx context.Context) {
 
 	// Start traffic byte counter
 	go d.trackTraffic(ctx)
+
+	// Re-join previously joined topic rooms (restores handleTopicMessages goroutines)
+	topics, err := d.Store.ListTopics()
+	if err == nil {
+		for _, t := range topics {
+			if t.Joined {
+				gsTopicName := TopicPrefix + t.Name
+				roomSub, err := d.Node.JoinTopic(gsTopicName)
+				if err != nil {
+					fmt.Printf("warning: could not rejoin topic %s: %v\n", t.Name, err)
+					continue
+				}
+				go d.handleTopicMessages(ctx, t.Name, roomSub)
+			}
+		}
+	}
 }
 
 func (d *Daemon) handleMottoSub(ctx context.Context, sub *pubsub.Subscription) {
