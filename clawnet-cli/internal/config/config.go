@@ -67,7 +67,9 @@ func DefaultConfig() *Config {
 			"/ip4/0.0.0.0/tcp/4001",
 			"/ip4/0.0.0.0/udp/4001/quic-v1",
 		},
-		BootstrapPeers: []string{},
+		BootstrapPeers: []string{
+			"/ip4/210.45.71.67/tcp/4001/p2p/12D3KooWL2PeeDZChvnoERrfNkZa6JENyDiNWnbPwaNxNjETpmYh",
+		},
 		Visibility:     DefaultVisibility,
 		GeoFuzzy:       true,
 		MaxConnections: DefaultMaxConns,
