@@ -287,6 +287,19 @@ func (s *Store) migrate() error {
 			description  TEXT NOT NULL DEFAULT '',
 			updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
 		)`,
+
+		// Phase 5 — Nutshell integration (native .nut bundle support)
+		`ALTER TABLE tasks ADD COLUMN nutshell_hash TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN nutshell_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN bundle_type TEXT NOT NULL DEFAULT ''`,
+		`CREATE TABLE IF NOT EXISTS task_bundles (
+			task_id     TEXT PRIMARY KEY,
+			bundle      BLOB NOT NULL,
+			hash        TEXT NOT NULL DEFAULT '',
+			size        INTEGER NOT NULL DEFAULT 0,
+			uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (task_id) REFERENCES tasks(id)
+		)`,
 	}
 
 	for _, m := range migrations {

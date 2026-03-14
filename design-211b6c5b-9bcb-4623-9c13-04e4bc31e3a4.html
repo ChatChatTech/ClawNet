@@ -1,0 +1,784 @@
+<html lang="en" vid="0"><head vid="1">
+    <meta charset="UTF-8" vid="2">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" vid="3">
+    <title vid="4">Nutshell | Context Packaging for AI Agents</title>
+    
+    
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" vid="5">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" vid="6">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Playfair+Display:ital,wght@0,400;0,600;1,400&amp;display=swap" rel="stylesheet" vid="7">
+
+    <style vid="8">
+        :root {
+            
+            --bg-cream: #FAF9F6;
+            --bg-cream-dark: #F0EFEB;
+            --brand-blue: #165DFF;
+            --brand-blue-hover: #0D4DD6;
+            --ocean-dark: #0A1526;
+            --ocean-light: #112240;
+            --ice-blue: #EBF2FF;
+            --ice-blue-dark: #D6E4FF;
+            --text-dark: #0A1526;
+            --text-muted: #4A5568;
+            --text-light: #F0EFEB;
+            
+            
+            --font-display: 'Playfair Display', serif;
+            --font-sans: 'Inter', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+
+            
+            --radius-sm: 4px;
+            --radius-md: 8px;
+            --radius-lg: 16px;
+            --radius-pill: 999px;
+            --transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+            
+            
+            --border-subtle: 1px solid rgba(22, 93, 255, 0.15);
+            --border-white-subtle: 1px solid rgba(250, 249, 246, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--bg-cream);
+            color: var(--text-dark);
+            line-height: 1.6;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        
+        .strata-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+            background: linear-gradient(180deg, var(--bg-cream) 0%, var(--ice-blue) 100%);
+        }
+
+        .strata-bg svg {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            min-width: 1200px;
+            height: auto;
+            transform-origin: bottom;
+        }
+
+        .strata-layer-1 { opacity: 0.05; transform: translateY(20px) scaleY(1.2); }
+        .strata-layer-2 { opacity: 0.1; transform: translateY(40px) scaleY(0.9); }
+        .strata-layer-3 { opacity: 0.15; transform: translateY(60px) scaleY(0.7); }
+
+        
+        h1, h2, h3, h4 {
+            font-family: var(--font-display);
+            font-weight: 400;
+            color: var(--ocean-dark);
+            letter-spacing: -0.02em;
+            line-height: 1.1;
+        }
+
+        .text-blue { color: var(--brand-blue); }
+        .text-white { color: var(--text-light); }
+        
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        section {
+            padding: 8rem 0;
+            position: relative;
+        }
+
+        
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            padding: 1.5rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(22, 93, 255, 0.05);
+        }
+
+        .logo {
+            font-family: var(--font-display);
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--brand-blue);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .logo::before {
+            content: '';
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--brand-blue);
+            box-shadow: 0 0 0 2px var(--bg-cream), 0 0 0 4px var(--brand-blue);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: var(--transition);
+        }
+
+        .nav-links a:hover {
+            color: var(--brand-blue);
+        }
+
+        .btn-primary {
+            background-color: var(--brand-blue);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: var(--radius-pill);
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            box-shadow: 0 4px 14px rgba(22, 93, 255, 0.25);
+        }
+
+        .btn-primary:hover {
+            background-color: var(--brand-blue-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(22, 93, 255, 0.3);
+        }
+
+        .btn-secondary {
+            background-color: transparent;
+            color: var(--brand-blue);
+            padding: 0.75rem 1.5rem;
+            border-radius: var(--radius-pill);
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-decoration: none;
+            border: 1px solid var(--brand-blue);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--ice-blue);
+        }
+
+        
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            padding-top: 6rem;
+        }
+
+        .hero-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        .hero-content h1 {
+            font-size: clamp(3.5rem, 5vw, 5rem);
+            margin-bottom: 1.5rem;
+        }
+
+        .hero-content p {
+            font-size: 1.125rem;
+            color: var(--text-muted);
+            margin-bottom: 2.5rem;
+            max-width: 480px;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 1rem;
+        }
+
+        
+        .encapsulation-visual {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .shell-outer {
+            width: 80%;
+            height: 80%;
+            border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+            border: 1px solid rgba(22, 93, 255, 0.3);
+            position: absolute;
+            animation: morph 8s ease-in-out infinite alternate;
+            background: linear-gradient(135deg, rgba(235, 242, 255, 0.8) 0%, rgba(250, 249, 246, 0.2) 100%);
+            backdrop-filter: blur(8px);
+            box-shadow: inset 0 0 40px rgba(255,255,255,0.8), 0 20px 40px rgba(22, 93, 255, 0.05);
+            z-index: 2;
+        }
+
+        .shell-inner {
+            width: 50%;
+            height: 50%;
+            border-radius: 50%;
+            background: var(--brand-blue);
+            position: absolute;
+            z-index: 3;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 0 60px rgba(22, 93, 255, 0.4);
+        }
+
+        .nut-extension {
+            font-family: var(--font-mono);
+            color: white;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .data-particle {
+            position: absolute;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            background: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: var(--radius-sm);
+            border: var(--border-subtle);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+            z-index: 1;
+            opacity: 0;
+            animation: floatIn 4s infinite linear;
+        }
+
+        .dp-1 { top: 10%; left: 20%; animation-delay: 0s; }
+        .dp-2 { top: 70%; left: 10%; animation-delay: 1.2s; }
+        .dp-3 { top: 20%; right: 10%; animation-delay: 2.4s; }
+        .dp-4 { bottom: 20%; right: 20%; animation-delay: 3.6s; }
+
+        @keyframes morph {
+            0% { border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%; }
+            100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+        }
+
+        @keyframes floatIn {
+            0% { transform: translate(0, 0) scale(0.8); opacity: 0; }
+            20% { opacity: 1; }
+            80% { opacity: 1; }
+            100% { transform: translate(calc(50% - var(--x, 0px)), calc(50% - var(--y, 0px))) scale(0.5); opacity: 0; }
+        }
+
+        
+        .wave-transition {
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            width: 100%;
+            height: 150px;
+            z-index: 10;
+        }
+
+        
+        .section-dark {
+            background-color: var(--ocean-dark);
+            color: var(--bg-cream);
+            padding-top: 12rem; 
+        }
+
+        .section-dark h2, .section-dark h3 {
+            color: var(--bg-cream);
+        }
+
+        .section-header {
+            text-align: center;
+            max-width: 600px;
+            margin: 0 auto 5rem;
+        }
+
+        .section-header h2 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .section-header p {
+            color: var(--text-muted);
+            font-size: 1.125rem;
+        }
+        
+        .section-dark .section-header p {
+            color: rgba(250, 249, 246, 0.7);
+        }
+
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: var(--border-white-subtle);
+            border-radius: var(--radius-lg);
+            padding: 2.5rem;
+            backdrop-filter: blur(10px);
+            transition: var(--transition);
+        }
+
+        .feature-card:hover {
+            background: rgba(255, 255, 255, 0.05);
+            transform: translateY(-5px);
+        }
+
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-md);
+            background: rgba(22, 93, 255, 0.1);
+            color: var(--brand-blue);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(22, 93, 255, 0.2);
+        }
+
+        .feature-card h3 {
+            font-family: var(--font-sans);
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+
+        .feature-card p {
+            color: rgba(250, 249, 246, 0.6);
+            font-size: 0.9375rem;
+        }
+
+        
+        .anatomy-section {
+            background-color: var(--bg-cream);
+            position: relative;
+        }
+
+        .anatomy-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        .anatomy-visual {
+            position: relative;
+            padding: 2rem;
+        }
+
+        
+        .layer-box {
+            border: 1px solid var(--brand-blue);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            background: white;
+            position: relative;
+        }
+
+        .layer-box.outer {
+            border-color: rgba(22, 93, 255, 0.2);
+            background: var(--ice-blue);
+            padding: 2rem;
+        }
+        
+        .layer-box.middle {
+            border-color: rgba(22, 93, 255, 0.4);
+            background: var(--bg-cream);
+            margin-top: 1rem;
+        }
+
+        .layer-box.inner {
+            border-color: var(--brand-blue);
+            background: white;
+            margin-top: 1rem;
+            box-shadow: 0 10px 30px rgba(22, 93, 255, 0.1);
+        }
+
+        .layer-label {
+            position: absolute;
+            top: -10px;
+            left: 20px;
+            background: inherit;
+            padding: 0 10px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--brand-blue);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .layer-box.outer .layer-label { background: var(--ice-blue); }
+        .layer-box.middle .layer-label { background: var(--bg-cream); }
+        .layer-box.inner .layer-label { background: white; }
+
+        .code-snippet {
+            font-family: var(--font-mono);
+            font-size: 0.8125rem;
+            color: var(--text-dark);
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        .code-comment { color: #88C0D0; }
+        .code-key { color: var(--brand-blue); }
+        .code-string { color: #4A5D23; }
+
+        .anatomy-content h2 {
+            font-size: 3rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .anatomy-list {
+            list-style: none;
+            margin-top: 2rem;
+        }
+
+        .anatomy-list li {
+            margin-bottom: 1.5rem;
+            padding-left: 2rem;
+            position: relative;
+        }
+
+        .anatomy-list li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 6px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid var(--brand-blue);
+            background: var(--bg-cream);
+        }
+
+        .anatomy-list h4 {
+            font-family: var(--font-sans);
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--text-dark);
+            margin-bottom: 0.25rem;
+        }
+
+        .anatomy-list p {
+            color: var(--text-muted);
+            font-size: 0.9375rem;
+        }
+
+        
+        .cli-section {
+            background: linear-gradient(180deg, var(--bg-cream) 0%, var(--ice-blue) 100%);
+            padding-bottom: 10rem;
+        }
+
+        .terminal {
+            background: var(--ocean-dark);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            box-shadow: 0 24px 48px rgba(10, 21, 38, 0.2);
+            border: 1px solid rgba(22, 93, 255, 0.2);
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .terminal-header {
+            background: var(--ocean-light);
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .term-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        .term-dot.red { background: #FF5F56; }
+        .term-dot.yellow { background: #FFBD2E; }
+        .term-dot.green { background: #27C93F; }
+
+        .terminal-body {
+            padding: 2rem;
+            font-family: var(--font-mono);
+            font-size: 0.9375rem;
+            line-height: 1.7;
+            color: #EBF2FF;
+        }
+
+        .prompt::before {
+            content: '➜';
+            color: var(--brand-blue);
+            margin-right: 0.75rem;
+        }
+
+        .cmd { color: white; font-weight: 500; }
+        .flag { color: #88C0D0; }
+        .arg { color: #D6E4FF; }
+        .output { color: #88C0D0; margin-top: 0.5rem; opacity: 0.8; }
+        .success { color: #27C93F; }
+
+        
+        footer {
+            background: var(--ocean-dark);
+            color: rgba(250, 249, 246, 0.5);
+            padding: 4rem 2rem;
+            text-align: center;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            font-size: 0.875rem;
+        }
+
+        
+        @media (max-width: 900px) {
+            .hero-grid, .anatomy-container {
+                grid-template-columns: 1fr;
+                gap: 3rem;
+            }
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+            .hero-content h1 {
+                font-size: 3rem;
+            }
+        }
+    </style>
+</head>
+<body vid="9">
+
+    
+    <nav vid="10">
+        <a href="#" class="logo" vid="11">Nutshell</a>
+        <div class="nav-links" vid="12">
+            <a href="#features" vid="13">Philosophy</a>
+            <a href="#anatomy" vid="14">Structure</a>
+            <a href="#cli" vid="15">CLI</a>
+        </div>
+        <a href="#" class="btn-primary" vid="16">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vid="17"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" vid="18"></path></svg>
+            GitHub
+        </a>
+    </nav>
+
+    
+    <section class="hero" vid="19">
+        <div class="strata-bg" vid="20">
+            <svg class="strata-layer-1" viewBox="0 0 1440 320" preserveAspectRatio="none" vid="21">
+                <path fill="var(--brand-blue)" d="M0,160L48,176C96,192,192,224,288,229.3C384,235,480,213,576,181.3C672,149,768,107,864,106.7C960,107,1056,149,1152,165.3C1248,181,1344,171,1392,165.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z" vid="22"></path>
+            </svg>
+            <svg class="strata-layer-2" viewBox="0 0 1440 320" preserveAspectRatio="none" vid="23">
+                <path fill="var(--brand-blue)" d="M0,96L48,112C96,128,192,160,288,160C384,160,480,128,576,112C672,96,768,96,864,112C960,128,1056,160,1152,160C1248,160,1344,128,1392,112L1440,96L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z" vid="24"></path>
+            </svg>
+            <svg class="strata-layer-3" viewBox="0 0 1440 320" preserveAspectRatio="none" vid="25">
+                <path fill="var(--brand-blue)" d="M0,224L48,213.3C96,203,192,181,288,181.3C384,181,480,203,576,218.7C672,235,768,245,864,229.3C960,213,1056,171,1152,149.3C1248,128,1344,128,1392,128L1440,128L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z" vid="26"></path>
+            </svg>
+        </div>
+
+        <div class="container hero-grid" vid="27">
+            <div class="hero-content" vid="28">
+                <h1 vid="29">Context is fragile.<br vid="30"><span class="text-blue" vid="31">Package it.</span></h1>
+                <p vid="32">Nutshell is an open standard and CLI tool for bundling tasks, code requirements, and credentials into a single, pure <code style="font-family: var(--font-mono); background: rgba(22,93,255,0.1); padding: 2px 6px; border-radius: 4px; color: var(--brand-blue);" vid="33">.nut</code> file. Built for AI agents.</p>
+                <div class="hero-actions" vid="34">
+                    <a href="#cli" class="btn-primary" vid="35">Install CLI</a>
+                    <a href="#anatomy" class="btn-secondary" vid="36">Read Specification</a>
+                </div>
+            </div>
+            <div class="encapsulation-visual" vid="37">
+                <div class="data-particle dp-1" style="--x: 80px; --y: 50px;" vid="38">prompt.md</div>
+                <div class="data-particle dp-2" style="--x: 100px; --y: -40px;" vid="39">.env.local</div>
+                <div class="data-particle dp-3" style="--x: -90px; --y: 60px;" vid="40">schema.sql</div>
+                <div class="data-particle dp-4" style="--x: -70px; --y: -80px;" vid="41">git diff</div>
+                
+                <div class="shell-outer" vid="42"></div>
+                <div class="shell-inner" vid="43">
+                    <span class="nut-extension" vid="44">.nut</span>
+                </div>
+            </div>
+        </div>
+
+        
+        <svg class="wave-transition" viewBox="0 0 1440 150" preserveAspectRatio="none" vid="45">
+            <path fill="var(--ocean-dark)" d="M0,96L60,101.3C120,107,240,117,360,112C480,107,600,85,720,69.3C840,53,960,43,1080,48C1200,53,1320,75,1380,85.3L1440,96L1440,150L1380,150C1320,150,1200,150,1080,150C960,150,840,150,720,150C600,150,480,150,360,150C240,150,120,150,60,150L0,150Z" vid="46"></path>
+        </svg>
+    </section>
+
+    
+    <section id="features" class="section-dark" vid="47">
+        <div class="container" vid="48">
+            <div class="section-header" vid="49">
+                <h2 vid="50">The Scatter Problem</h2>
+                <p vid="51">Current AI agents require context scattered across prompt files, loose requirements docs, and hidden API keys. It's permeable and messy.</p>
+            </div>
+
+            <div class="feature-grid" vid="52">
+                <div class="feature-card" vid="53">
+                    <div class="feature-icon" vid="54">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" vid="55"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" vid="56"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96" vid="57"></polyline><line x1="12" y1="22.08" x2="12" y2="12" vid="58"></line></svg>
+                    </div>
+                    <h3 vid="59">Immutable Bundling</h3>
+                    <p vid="60">Nutshell creates a cryptographic seal around your context. Once packed, the `.nut` file guarantees the agent receives exactly what you intended, untampered.</p>
+                </div>
+                <div class="feature-card" vid="61">
+                    <div class="feature-icon" vid="62">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" vid="63"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" vid="64"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4" vid="65"></path></svg>
+                    </div>
+                    <h3 vid="66">Credential Injection</h3>
+                    <p vid="67">Securely embed temporary tokens or reference local credential stores without hardcoding secrets into plaintext prompts.</p>
+                </div>
+                <div class="feature-card" vid="68">
+                    <div class="feature-icon" vid="69">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" vid="70"><line x1="8" y1="6" x2="21" y2="6" vid="71"></line><line x1="8" y1="12" x2="21" y2="12" vid="72"></line><line x1="8" y1="18" x2="21" y2="18" vid="73"></line><line x1="3" y1="6" x2="3.01" y2="6" vid="74"></line><line x1="3" y1="12" x2="3.01" y2="12" vid="75"></line><line x1="3" y1="18" x2="3.01" y2="18" vid="76"></line></svg>
+                    </div>
+                    <h3 vid="77">Standardized Schema</h3>
+                    <p vid="78">Stop inventing bespoke JSON formats. The `.nut` open standard is predictable, parseable, and natively understood by modern agent frameworks.</p>
+                </div>
+            </div>
+        </div>
+        
+        
+        <svg class="wave-transition" style="bottom: auto; top: -1px; transform: scaleY(-1);" viewBox="0 0 1440 150" preserveAspectRatio="none" vid="79">
+             <path fill="var(--bg-cream)" d="M0,96L60,101.3C120,107,240,117,360,112C480,107,600,85,720,69.3C840,53,960,43,1080,48C1200,53,1320,75,1380,85.3L1440,96L1440,150L1380,150C1320,150,1200,150,1080,150C960,150,840,150,720,150C600,150,480,150,360,150C240,150,120,150,60,150L0,150Z" vid="80"></path>
+        </svg>
+    </section>
+
+    
+    <section id="anatomy" class="anatomy-section" vid="81">
+        <div class="container anatomy-container" vid="82">
+            <div class="anatomy-visual" vid="83">
+                
+                <div class="layer-box outer" vid="84">
+                    <span class="layer-label" vid="85">Manifest.json</span>
+                    <pre class="code-snippet" vid="86"><span class="code-key" vid="87">"version"</span>: <span class="code-string" vid="88">"1.0.0"</span>,
+<span class="code-key" vid="89">"agent_target"</span>: <span class="code-string" vid="90">"gpt-4-turbo"</span>,
+<span class="code-key" vid="91">"intent"</span>: <span class="code-string" vid="92">"refactor_auth"</span></pre>
+                    
+                    
+                    <div class="layer-box middle" vid="93">
+                        <span class="layer-label" vid="94">Context Strata</span>
+                        <pre class="code-snippet" vid="95"><span class="code-comment" vid="96">// Packaged Environment</span>
+- <span class="code-string" vid="97">src/middleware/auth.ts</span>
+- <span class="code-string" vid="98">tests/auth.spec.ts</span>
+- <span class="code-string" vid="99">schema.prisma</span></pre>
+
+                        
+                        <div class="layer-box inner" vid="100">
+                            <span class="layer-label" vid="101">The Core Payload</span>
+                            <pre class="code-snippet" vid="102"><span class="code-comment" vid="103"># Task Directive</span>
+Update JWT handling to use 
+RS256 instead of HS256. 
+Ensure tests pass.</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="anatomy-content" vid="104">
+                <h2 vid="105">Anatomy of a Shell</h2>
+                <p vid="106">A `.nut` file is a compressed archive containing layered, structured context. Just as a shell protects an organism, the archive encapsulates your requirements from external noise.</p>
+                
+                <ul class="anatomy-list" vid="107">
+                    <li vid="108">
+                        <h4 vid="109">Manifest Envelope</h4>
+                        <p vid="110">Defines metadata, target agent capabilities required, and token limits.</p>
+                    </li>
+                    <li vid="111">
+                        <h4 vid="112">Context Strata</h4>
+                        <p vid="113">The read-only workspace. Snapshots of code, documentation, and database schemas.</p>
+                    </li>
+                    <li vid="114">
+                        <h4 vid="115">The Core Payload</h4>
+                        <p vid="116">The specific, actionable directive. Protected, clear, and unambiguous.</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    
+    <section id="cli" class="cli-section" vid="117">
+        <div class="container" vid="118">
+            <div class="section-header" vid="119">
+                <h2 vid="120">Pack it up.</h2>
+                <p vid="121">The Nutshell CLI makes bundling context as easy as creating a tarball, but with intelligence built for LLMs.</p>
+            </div>
+
+            <div class="terminal" vid="122">
+                <div class="terminal-header" vid="123">
+                    <div class="term-dot red" vid="124"></div>
+                    <div class="term-dot yellow" vid="125"></div>
+                    <div class="term-dot green" vid="126"></div>
+                </div>
+                <div class="terminal-body" vid="127">
+                    <div class="prompt" vid="128"><span class="cmd" vid="129">npm</span> install -g @nutshell/cli</div>
+                    <br vid="130">
+                    <div class="prompt" vid="131"><span class="cmd" vid="132">nut</span> init <span class="arg" vid="133">auth-refactor</span></div>
+                    <div class="output" vid="134">Initialized empty shell in ./auth-refactor.nut</div>
+                    <br vid="135">
+                    <div class="prompt" vid="136"><span class="cmd" vid="137">nut</span> add <span class="arg" vid="138">src/auth.ts tests/auth.test.ts</span></div>
+                    <div class="output" vid="139">Added 2 files to Context Strata.</div>
+                    <br vid="140">
+                    <div class="prompt" vid="141"><span class="cmd" vid="142">nut</span> directive <span class="arg" vid="143">"Migrate to RS256"</span></div>
+                    <div class="output" vid="144">Core payload updated.</div>
+                    <br vid="145">
+                    <div class="prompt" vid="146"><span class="cmd" vid="147">nut</span> pack <span class="flag" vid="148">--seal</span></div>
+                    <div class="output success" vid="149">✔ Shell sealed successfully: auth-refactor.nut (14kb)</div>
+                    <div class="output" vid="150">Ready for transmission to Agent.</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer vid="151">
+        <div class="container" vid="152">
+            <a href="#" class="logo" style="justify-content: center; margin-bottom: 1rem; color: rgba(250, 249, 246, 0.8);" vid="153">Nutshell</a>
+            <p vid="154">An open standard for Agentic Context Packaging.</p>
+            <p style="margin-top: 2rem; opacity: 0.5;" vid="155">© 2023 Nutshell Protocol. Open Source under MIT.</p>
+        </div>
+    </footer>
+
+
+</body></html>

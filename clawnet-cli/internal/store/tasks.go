@@ -17,6 +17,10 @@ type Task struct {
 	Result      string  `json:"result"`
 	CreatedAt   string  `json:"created_at"`
 	UpdatedAt   string  `json:"updated_at"`
+	// Nutshell integration (optional — populated when task originates from a .nut bundle)
+	NutshellHash string `json:"nutshell_hash,omitempty"` // SHA-256 of the .nut bundle
+	NutshellID   string `json:"nutshell_id,omitempty"`   // nutshell manifest ID
+	BundleType   string `json:"bundle_type,omitempty"`   // request, delivery, template, etc.
 }
 
 // TaskBid represents a bid on a task.
@@ -33,14 +37,18 @@ type TaskBid struct {
 // InsertTask upserts a task.
 func (s *Store) InsertTask(t *Task) error {
 	_, err := s.DB.Exec(
-		`INSERT INTO tasks (id, author_id, author_name, title, description, tags, deadline, reward, status)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO tasks (id, author_id, author_name, title, description, tags, deadline, reward, status,
+		                     nutshell_hash, nutshell_id, bundle_type)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   title = excluded.title, description = excluded.description,
 		   tags = excluded.tags, deadline = excluded.deadline,
 		   reward = excluded.reward, status = excluded.status,
+		   nutshell_hash = excluded.nutshell_hash, nutshell_id = excluded.nutshell_id,
+		   bundle_type = excluded.bundle_type,
 		   updated_at = datetime('now')`,
 		t.ID, t.AuthorID, t.AuthorName, t.Title, t.Description, t.Tags, t.Deadline, t.Reward, t.Status,
+		t.NutshellHash, t.NutshellID, t.BundleType,
 	)
 	return err
 }
@@ -49,12 +57,14 @@ func (s *Store) InsertTask(t *Task) error {
 func (s *Store) GetTask(id string) (*Task, error) {
 	row := s.DB.QueryRow(
 		`SELECT id, author_id, author_name, title, description, tags, deadline, reward, status,
-		        assigned_to, result, created_at, updated_at
+		        assigned_to, result, created_at, updated_at,
+		        nutshell_hash, nutshell_id, bundle_type
 		 FROM tasks WHERE id = ?`, id,
 	)
 	t := &Task{}
 	err := row.Scan(&t.ID, &t.AuthorID, &t.AuthorName, &t.Title, &t.Description,
-		&t.Tags, &t.Deadline, &t.Reward, &t.Status, &t.AssignedTo, &t.Result, &t.CreatedAt, &t.UpdatedAt)
+		&t.Tags, &t.Deadline, &t.Reward, &t.Status, &t.AssignedTo, &t.Result, &t.CreatedAt, &t.UpdatedAt,
+		&t.NutshellHash, &t.NutshellID, &t.BundleType)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -69,7 +79,8 @@ func (s *Store) ListTasks(status string, limit, offset int) ([]*Task, error) {
 	if status != "" {
 		rows, err = s.DB.Query(
 			`SELECT t.id, t.author_id, t.author_name, t.title, t.description, t.tags, t.deadline, t.reward, t.status,
-			        t.assigned_to, t.result, t.created_at, t.updated_at
+			        t.assigned_to, t.result, t.created_at, t.updated_at,
+			        t.nutshell_hash, t.nutshell_id, t.bundle_type
 			 FROM tasks t
 			 LEFT JOIN credit_accounts c ON t.author_id = c.peer_id
 			 WHERE t.status = ?
@@ -79,7 +90,8 @@ func (s *Store) ListTasks(status string, limit, offset int) ([]*Task, error) {
 	} else {
 		rows, err = s.DB.Query(
 			`SELECT t.id, t.author_id, t.author_name, t.title, t.description, t.tags, t.deadline, t.reward, t.status,
-			        t.assigned_to, t.result, t.created_at, t.updated_at
+			        t.assigned_to, t.result, t.created_at, t.updated_at,
+			        t.nutshell_hash, t.nutshell_id, t.bundle_type
 			 FROM tasks t
 			 LEFT JOIN credit_accounts c ON t.author_id = c.peer_id
 			 ORDER BY COALESCE(c.balance, 0) DESC, t.created_at DESC LIMIT ? OFFSET ?`,
@@ -95,7 +107,8 @@ func (s *Store) ListTasks(status string, limit, offset int) ([]*Task, error) {
 	for rows.Next() {
 		t := &Task{}
 		if err := rows.Scan(&t.ID, &t.AuthorID, &t.AuthorName, &t.Title, &t.Description,
-			&t.Tags, &t.Deadline, &t.Reward, &t.Status, &t.AssignedTo, &t.Result, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&t.Tags, &t.Deadline, &t.Reward, &t.Status, &t.AssignedTo, &t.Result, &t.CreatedAt, &t.UpdatedAt,
+			&t.NutshellHash, &t.NutshellID, &t.BundleType); err != nil {
 			return nil, err
 		}
 		tasks = append(tasks, t)
@@ -374,4 +387,41 @@ func sqrtRep(rep float64) float64 {
 		return 0.1
 	}
 	return guess
+}
+
+// ── Nutshell bundle storage ──
+
+// InsertTaskBundle stores a .nut bundle blob for a task.
+func (s *Store) InsertTaskBundle(taskID string, bundle []byte, hash string) error {
+	_, err := s.DB.Exec(
+		`INSERT INTO task_bundles (task_id, bundle, hash, size)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(task_id) DO UPDATE SET
+		   bundle = excluded.bundle, hash = excluded.hash,
+		   size = excluded.size, uploaded_at = datetime('now')`,
+		taskID, bundle, hash, len(bundle),
+	)
+	return err
+}
+
+// GetTaskBundle retrieves the .nut bundle blob for a task.
+func (s *Store) GetTaskBundle(taskID string) ([]byte, string, error) {
+	var bundle []byte
+	var hash string
+	err := s.DB.QueryRow(
+		`SELECT bundle, hash FROM task_bundles WHERE task_id = ?`, taskID,
+	).Scan(&bundle, &hash)
+	if err == sql.ErrNoRows {
+		return nil, "", nil
+	}
+	return bundle, hash, err
+}
+
+// HasTaskBundle checks if a bundle exists for a task.
+func (s *Store) HasTaskBundle(taskID string) (bool, error) {
+	var count int
+	err := s.DB.QueryRow(
+		`SELECT COUNT(*) FROM task_bundles WHERE task_id = ?`, taskID,
+	).Scan(&count)
+	return count > 0, err
 }

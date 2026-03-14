@@ -1,8 +1,10 @@
 package daemon
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
@@ -27,6 +29,10 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/tasks/{id}/approve", d.handleTaskApprove)
 	mux.HandleFunc("POST /api/tasks/{id}/reject", d.handleTaskReject)
 	mux.HandleFunc("POST /api/tasks/{id}/cancel", d.handleTaskCancel)
+
+	// Task Bazaar — Nutshell bundle endpoints
+	mux.HandleFunc("POST /api/tasks/{id}/bundle", d.handleUploadTaskBundle)
+	mux.HandleFunc("GET /api/tasks/{id}/bundle", d.handleDownloadTaskBundle)
 
 	// Swarm Think
 	mux.HandleFunc("POST /api/swarm", d.handleCreateSwarm)
@@ -166,6 +172,16 @@ func (d *Daemon) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 			json.Unmarshal(v, &s)
 			t.Tags = s
 		}
+	}
+	// Nutshell integration fields (optional)
+	if v, ok := raw["nutshell_hash"]; ok {
+		json.Unmarshal(v, &t.NutshellHash)
+	}
+	if v, ok := raw["nutshell_id"]; ok {
+		json.Unmarshal(v, &t.NutshellID)
+	}
+	if v, ok := raw["bundle_type"]; ok {
+		json.Unmarshal(v, &t.BundleType)
 	}
 
 	if t.Title == "" {
@@ -797,9 +813,7 @@ func (d *Daemon) handleWealthLeaderboard(w http.ResponseWriter, r *http.Request)
 	// Enrich with agent names from gossip cache
 	for _, e := range entries {
 		if name, ok := d.PeerAgentNames.Load(e.PeerID); ok {
-			e.PeerID = e.PeerID // keep ID
-			// Attach agent name as extra field via wrapper
-			_ = name
+			_ = name // TODO: attach agent name as extra field
 		}
 	}
 	writeJSON(w, entries)
@@ -909,4 +923,69 @@ func (d *Daemon) handleMatchTasksForAgent(w http.ResponseWriter, r *http.Request
 		tasks = []*store.Task{}
 	}
 	writeJSON(w, tasks)
+}
+
+// ── Nutshell bundle handlers ──
+
+func (d *Daemon) handleUploadTaskBundle(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("id")
+
+	// Verify task exists
+	t, err := d.Store.GetTask(taskID)
+	if err != nil || t == nil {
+		http.Error(w, `{"error":"task not found"}`, http.StatusNotFound)
+		return
+	}
+
+	// Limit bundle size to 50 MB
+	r.Body = http.MaxBytesReader(w, r.Body, 50<<20)
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, `{"error":"bundle too large or read error"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Validate NUT magic header
+	if len(data) < 4 || string(data[:3]) != "NUT" {
+		http.Error(w, `{"error":"invalid .nut bundle (bad magic)"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Compute SHA-256 hash
+	hash := sha256hex(data)
+
+	if err := d.Store.InsertTaskBundle(taskID, data, hash); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, map[string]any{
+		"task_id": taskID,
+		"hash":    hash,
+		"size":    len(data),
+	})
+}
+
+func (d *Daemon) handleDownloadTaskBundle(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("id")
+
+	bundle, hash, err := d.Store.GetTaskBundle(taskID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if bundle == nil {
+		http.Error(w, `{"error":"no bundle for this task"}`, http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.nut"`, taskID))
+	w.Header().Set("X-Nutshell-Hash", hash)
+	w.Write(bundle)
+}
+
+func sha256hex(data []byte) string {
+	h := sha256.Sum256(data)
+	return fmt.Sprintf("%x", h[:])
 }

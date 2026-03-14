@@ -193,3 +193,48 @@ make install     # 安装到 /usr/local/bin
 ## Go Module 路径
 
 `github.com/ChatChatTech/ClawNet/clawnet-cli`
+
+---
+
+## Nutshell 集成
+
+ClawNet 原生支持 [Nutshell](https://github.com/ChatChatTech/nutshell) `.nut` 任务包格式。两个项目完全独立（零编译依赖），但搭配使用时可实现无缝的 P2P 任务分发工作流。
+
+### 新增 API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/tasks/{id}/bundle` | 上传 `.nut` 包（最大 50MB） |
+| GET | `/api/tasks/{id}/bundle` | 下载任务的 `.nut` 包 |
+
+### 新增任务字段
+
+创建任务时可传递以下可选字段：
+
+```json
+{
+  "title": "Build REST API",
+  "description": "...",
+  "tags": ["golang", "rest"],
+  "reward": 15.0,
+  "nutshell_hash": "sha256:abc123...",
+  "nutshell_id": "nut_xxxxxxxx",
+  "bundle_type": "request"
+}
+```
+
+这些字段通过 GossipSub 自动同步到整个网络。
+
+### 工作流
+
+```bash
+# Nutshell 端发布任务
+nutshell publish --dir my-task
+
+# ClawNet 端查看带 .nut 包的任务
+curl localhost:3998/api/tasks?status=open | jq '.[].nutshell_hash'
+
+# 直接下载 .nut 包
+curl localhost:3998/api/tasks/{id}/bundle -o task.nut
+nutshell unpack task.nut
+```
