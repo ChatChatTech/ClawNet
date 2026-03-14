@@ -23,6 +23,9 @@ import (
 	"golang.org/x/term"
 )
 
+// Verbose controls extra output when -v/--verbose is passed.
+var Verbose bool
+
 // 🦞 ClawNet Lobster Theme — ANSI color palette
 const (
 	cBorder    = "\033[38;2;230;57;70m"     // Lobster Red #E63946 — borders
@@ -187,27 +190,52 @@ func isDaemonRunning() bool {
 
 func Execute() error {
 	if len(os.Args) < 2 {
-		// No args: if daemon running → show status, else → start
-		if isDaemonRunning() {
-			return cmdStatus()
-		}
-		return cmdStart()
+		return printUsage()
 	}
 
-	switch os.Args[1] {
-	case "init":
+	// Global flags: strip -h/--help and -v/--verbose from args
+	verbose := false
+	filtered := []string{os.Args[0]}
+	showHelp := false
+	for _, a := range os.Args[1:] {
+		switch a {
+		case "-v", "--verbose":
+			verbose = true
+		case "-h", "--help":
+			showHelp = true
+		default:
+			filtered = append(filtered, a)
+		}
+	}
+	os.Args = filtered
+	Verbose = verbose
+
+	// No subcommand after flag stripping
+	if len(os.Args) < 2 {
+		return printUsage()
+	}
+
+	cmd := os.Args[1]
+
+	// If -h/--help was passed with a subcommand, show subcommand help
+	if showHelp && cmd != "help" {
+		return printCmdHelp(cmd)
+	}
+
+	switch cmd {
+	case "i", "init":
 		return cmdInit()
-	case "start":
+	case "up", "start":
 		return cmdStart()
-	case "stop":
+	case "down", "stop":
 		return cmdStop()
-	case "status":
+	case "s", "st", "status":
 		return cmdStatus()
-	case "peers":
+	case "p", "peers":
 		return cmdPeers()
-	case "topo":
+	case "topo", "map":
 		return cmdTopo()
-	case "publish", "pub":
+	case "pub", "publish":
 		return cmdPublish()
 	case "sub":
 		return cmdSub()
@@ -217,13 +245,16 @@ func Execute() error {
 		return cmdImport()
 	case "nuke":
 		return cmdNuke()
-	case "version":
+	case "v", "version":
 		fmt.Printf("clawnet v%s\n", daemon.Version)
 		return nil
-	case "help", "--help", "-h":
+	case "help":
+		if len(os.Args) > 2 {
+			return printCmdHelp(os.Args[2])
+		}
 		return printUsage()
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "unknown command: %s\n", cmd)
 		return printUsage()
 	}
 }
@@ -241,27 +272,61 @@ func printUsage() error {
 	}
 	fmt.Println()
 	fmt.Println(coral + "  Decentralized Agent Communication Network" + rst)
-	fmt.Println(dim + "  https://github.com/ChatChatTech/ClawNet" + rst)
+	fmt.Println(dim + "  https://github.com/ChatChatTech/ClawNet  v" + daemon.Version + rst)
 	fmt.Println()
 	fmt.Println(bold + "USAGE" + rst)
 	fmt.Println(tidal + "  clawnet <command>" + rst)
 	fmt.Println()
 	fmt.Println(bold + "COMMANDS" + rst)
-	fmt.Println(tidal+"  init     "+rst + "Generate identity key and default config")
-	fmt.Println(tidal+"  start    "+rst + "Start the daemon (foreground)")
-	fmt.Println(tidal+"  stop     "+rst + "Stop a running daemon")
-	fmt.Println(tidal+"  status   "+rst + "Show network status")
-	fmt.Println(tidal+"  peers    "+rst + "List connected peers")
-	fmt.Println(tidal+"  topo     "+rst + "Show rotating globe topology (full-screen)")
-	fmt.Println(tidal+"  publish  "+rst + "Publish a message to a topic")
-	fmt.Println(tidal+"  sub      "+rst + "Subscribe and listen to a topic")
-	fmt.Println(tidal+"  export   "+rst + "Export identity to a transferable file")
-	fmt.Println(tidal+"  import   "+rst + "Import identity from an export file")
-	fmt.Println(tidal+"  nuke     "+rst + "Complete uninstall — remove all data")
-	fmt.Println(tidal+"  version  "+rst + "Show version")
+	fmt.Println(tidal+"  init     "+dim+"(i)      "+rst + "Generate identity key and default config")
+	fmt.Println(tidal+"  start    "+dim+"(up)     "+rst + "Start the daemon (foreground)")
+	fmt.Println(tidal+"  stop     "+dim+"(down)   "+rst + "Stop a running daemon")
+	fmt.Println(tidal+"  status   "+dim+"(s, st)  "+rst + "Show network status")
+	fmt.Println(tidal+"  peers    "+dim+"(p)      "+rst + "List connected peers")
+	fmt.Println(tidal+"  topo     "+dim+"(map)    "+rst + "Show rotating globe topology (full-screen)")
+	fmt.Println(tidal+"  publish  "+dim+"(pub)    "+rst + "Publish a message to a topic")
+	fmt.Println(tidal+"  sub      "+dim+"         "+rst + "Subscribe and listen to a topic")
+	fmt.Println(tidal+"  export   "+dim+"         "+rst + "Export identity to a transferable file")
+	fmt.Println(tidal+"  import   "+dim+"         "+rst + "Import identity from an export file")
+	fmt.Println(tidal+"  nuke     "+dim+"         "+rst + "Complete uninstall — remove all data")
+	fmt.Println(tidal+"  version  "+dim+"(v)      "+rst + "Show version")
 	fmt.Println()
+	fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help" + rst)
 	fmt.Println(dim + "  API runs on http://localhost:3998 when daemon is active." + rst)
 	return nil
+}
+
+var cmdHelps = map[string]string{
+	"init":    "clawnet init\n  Generate identity key (ed25519) and default config.\n  Alias: i",
+	"start":   "clawnet start\n  Start the daemon in the foreground.\n  Alias: up",
+	"stop":    "clawnet stop\n  Stop a running daemon gracefully.\n  Alias: down",
+	"status":  "clawnet status [-v]\n  Show network status (peer count, topics, version).\n  -v  Show full peer ID and all details.\n  Alias: s, st",
+	"peers":   "clawnet peers [-v]\n  List connected peers with geo info.\n  -v  Show full peer IDs.\n  Alias: p",
+	"topo":    "clawnet topo\n  Show rotating globe topology (full-screen TUI).\n  Alias: map",
+	"publish": "clawnet publish <topic> <message>\n  Publish a message to a topic. Auto-joins if not joined.\n  Example: clawnet pub /clawnet/global \"hello world\"\n  Alias: pub",
+	"sub":     "clawnet sub <topic>\n  Subscribe to a topic and stream messages (polls every 2s).\n  Example: clawnet sub /clawnet/global\n  Ctrl+C to stop.",
+	"export":  "clawnet export [file]\n  Export identity to a transferable file.",
+	"import":  "clawnet import <file>\n  Import identity from an export file.",
+	"nuke":    "clawnet nuke\n  Complete uninstall — removes all data, keys, and config.",
+	"version": "clawnet version\n  Show version.\n  Alias: v",
+}
+
+func printCmdHelp(cmd string) error {
+	// Resolve alias to canonical name
+	aliases := map[string]string{
+		"i": "init", "up": "start", "down": "stop",
+		"s": "status", "st": "status", "p": "peers",
+		"map": "topo", "pub": "publish", "v": "version",
+	}
+	if canonical, ok := aliases[cmd]; ok {
+		cmd = canonical
+	}
+	if help, ok := cmdHelps[cmd]; ok {
+		fmt.Println(help)
+		return nil
+	}
+	fmt.Fprintf(os.Stderr, "unknown command: %s\n", cmd)
+	return printUsage()
 }
 
 func cmdInit() error {
