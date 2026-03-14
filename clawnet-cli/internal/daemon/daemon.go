@@ -128,8 +128,8 @@ func Start(foreground bool) error {
 	// Start Phase 2 gossip handlers (tasks, swarm)
 	d.startPhase2Gossip(ctx)
 
-	// Ensure local credit account exists with initial energy (5 E for new nodes)
-	d.Store.EnsureCreditAccount(node.PeerID().String(), 5.0)
+	// Ensure local credit account exists with initial energy (42 E for new nodes)
+	d.Store.EnsureCreditAccount(node.PeerID().String(), 42.0)
 
 	// Register libp2p stream handler for direct messages
 	d.registerDMHandler()
