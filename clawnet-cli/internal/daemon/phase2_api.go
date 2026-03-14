@@ -3,6 +3,7 @@ package daemon
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -288,6 +289,10 @@ func (d *Daemon) handleTaskAssign(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := d.Store.AssignTask(taskID, body.AssignTo); err != nil {
+		if errors.Is(err, store.ErrTaskStateConflict) {
+			http.Error(w, `{"error":"task is not open — cannot assign"}`, http.StatusConflict)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -308,6 +313,10 @@ func (d *Daemon) handleTaskSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := d.Store.SubmitTask(taskID, body.Result); err != nil {
+		if errors.Is(err, store.ErrTaskStateConflict) {
+			http.Error(w, `{"error":"task is not assigned — cannot submit"}`, http.StatusConflict)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -328,6 +337,10 @@ func (d *Daemon) handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := d.Store.ApproveTask(taskID); err != nil {
+		if errors.Is(err, store.ErrTaskStateConflict) {
+			http.Error(w, `{"error":"task is not submitted — cannot approve"}`, http.StatusConflict)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -376,6 +389,10 @@ func (d *Daemon) handleTaskReject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := d.Store.RejectTask(taskID); err != nil {
+		if errors.Is(err, store.ErrTaskStateConflict) {
+			http.Error(w, `{"error":"task is not submitted — cannot reject"}`, http.StatusConflict)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -411,6 +428,10 @@ func (d *Daemon) handleTaskCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := d.Store.CancelTask(taskID); err != nil {
+		if errors.Is(err, store.ErrTaskStateConflict) {
+			http.Error(w, `{"error":"task is not open/assigned — cannot cancel"}`, http.StatusConflict)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

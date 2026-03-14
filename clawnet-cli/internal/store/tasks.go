@@ -152,52 +152,87 @@ func (s *Store) ListTaskBids(taskID string) ([]*TaskBid, error) {
 
 // AssignTask assigns a task to a bidder and freezes the reward.
 func (s *Store) AssignTask(taskID, assigneeID string) error {
-	_, err := s.DB.Exec(
+	res, err := s.DB.Exec(
 		`UPDATE tasks SET status = 'assigned', assigned_to = ?, updated_at = datetime('now')
 		 WHERE id = ? AND status = 'open'`,
 		assigneeID, taskID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrTaskStateConflict
+	}
+	return nil
 }
 
 // SubmitTask marks a task as submitted with a result.
 func (s *Store) SubmitTask(taskID, result string) error {
-	_, err := s.DB.Exec(
+	res, err := s.DB.Exec(
 		`UPDATE tasks SET status = 'submitted', result = ?, updated_at = datetime('now')
 		 WHERE id = ? AND status = 'assigned'`,
 		result, taskID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrTaskStateConflict
+	}
+	return nil
 }
 
 // ApproveTask marks a task as approved.
 func (s *Store) ApproveTask(taskID string) error {
-	_, err := s.DB.Exec(
+	res, err := s.DB.Exec(
 		`UPDATE tasks SET status = 'approved', updated_at = datetime('now')
 		 WHERE id = ? AND status = 'submitted'`,
 		taskID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrTaskStateConflict
+	}
+	return nil
 }
 
 // RejectTask marks a task as rejected.
 func (s *Store) RejectTask(taskID string) error {
-	_, err := s.DB.Exec(
+	res, err := s.DB.Exec(
 		`UPDATE tasks SET status = 'rejected', updated_at = datetime('now')
 		 WHERE id = ? AND status = 'submitted'`,
 		taskID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrTaskStateConflict
+	}
+	return nil
 }
 
 // CancelTask cancels an open or assigned task (only the author should call this).
 func (s *Store) CancelTask(taskID string) error {
-	_, err := s.DB.Exec(
+	res, err := s.DB.Exec(
 		`UPDATE tasks SET status = 'cancelled', updated_at = datetime('now')
 		 WHERE id = ? AND status IN ('open', 'assigned')`,
 		taskID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrTaskStateConflict
+	}
+	return nil
 }
 
 // MatchResult represents a ranked agent candidate for a task.
