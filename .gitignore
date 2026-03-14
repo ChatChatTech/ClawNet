@@ -31,3 +31,7 @@ venv/
 clawnet-bg.webp
 *.zip
 !clawnet-cli/internal/geo/data/*.zip
+
+# Secrets
+GITHUB_TOKEN
+dist/
