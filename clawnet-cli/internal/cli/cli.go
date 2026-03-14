@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -206,6 +207,10 @@ func Execute() error {
 		return cmdPeers()
 	case "topo":
 		return cmdTopo()
+	case "publish", "pub":
+		return cmdPublish()
+	case "sub":
+		return cmdSub()
 	case "export":
 		return cmdExport()
 	case "import":
@@ -248,6 +253,8 @@ func printUsage() error {
 	fmt.Println(tidal+"  status   "+rst + "Show network status")
 	fmt.Println(tidal+"  peers    "+rst + "List connected peers")
 	fmt.Println(tidal+"  topo     "+rst + "Show rotating globe topology (full-screen)")
+	fmt.Println(tidal+"  publish  "+rst + "Publish a message to a topic")
+	fmt.Println(tidal+"  sub      "+rst + "Subscribe and listen to a topic")
 	fmt.Println(tidal+"  export   "+rst + "Export identity to a transferable file")
 	fmt.Println(tidal+"  import   "+rst + "Import identity from an export file")
 	fmt.Println(tidal+"  nuke     "+rst + "Complete uninstall — remove all data")
@@ -1703,6 +1710,153 @@ func buildPeerLines(pInfos []peerInfo, peerW, bottomH int) []string {
 	}
 
 	return peerLines
+}
+
+func cmdPublish() error {
+	if len(os.Args) < 4 {
+		fmt.Fprintf(os.Stderr, "usage: clawnet publish <topic> <message>\n")
+		fmt.Fprintf(os.Stderr, "  e.g. clawnet publish /clawnet/global \"hello world\"\n")
+		return nil
+	}
+	topic := url.PathEscape(os.Args[2])
+	msg := strings.Join(os.Args[3:], " ")
+	// Auto-join the topic first (ignore errors — may already be joined)
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
+	http.Post(base+"/api/topics/"+topic+"/join", "application/json", nil)
+	return apiPost("/api/topics/"+topic+"/messages", map[string]string{"body": msg})
+}
+
+func cmdSub() error {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "usage: clawnet sub <topic>\n")
+		fmt.Fprintf(os.Stderr, "  e.g. clawnet sub /clawnet/global\n")
+		return nil
+	}
+	topic := url.PathEscape(os.Args[2])
+	displayTopic := os.Args[2]
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
+
+	// First, join the topic
+	http.Post(base+"/api/topics/"+topic+"/join", "application/json", nil)
+
+	// Print last 10 messages
+	resp, err := http.Get(base + "/api/topics/" + topic + "/messages?limit=10")
+	if err != nil {
+		return fmt.Errorf("cannot connect to daemon: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var msgs []struct {
+		AuthorID   string `json:"author_id"`
+		AuthorName string `json:"author_name"`
+		Body       string `json:"body"`
+		CreatedAt  string `json:"created_at"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&msgs); err != nil {
+		return err
+	}
+
+	coral := "\033[38;2;247;127;0m"
+	dim := "\033[2m"
+	rst := "\033[0m"
+
+	fmt.Printf("%ssubscribed to %s%s (last %d messages)\n\n", coral, displayTopic, rst, len(msgs))
+	for _, m := range msgs {
+		ts := m.CreatedAt
+		if len(ts) > 19 {
+			ts = ts[11:19]
+		}
+		from := m.AuthorName
+		if from == "" {
+			from = m.AuthorID
+		}
+		if len(from) > 16 {
+			from = from[:16]
+		}
+		fmt.Printf("%s%s%s %s%s%s: %s\n", dim, ts, rst, coral, from, rst, m.Body)
+	}
+
+	// Poll for new messages
+	fmt.Printf("\n%slistening... (Ctrl+C to stop)%s\n\n", dim, rst)
+	seen := len(msgs)
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-sigCh:
+			fmt.Println()
+			return nil
+		case <-ticker.C:
+			resp, err := http.Get(base + "/api/topics/" + topic + "/messages?limit=50")
+			if err != nil {
+				continue
+			}
+			var allMsgs []struct {
+				AuthorID   string `json:"author_id"`
+				AuthorName string `json:"author_name"`
+				Body       string `json:"body"`
+				CreatedAt  string `json:"created_at"`
+			}
+			json.NewDecoder(resp.Body).Decode(&allMsgs)
+			resp.Body.Close()
+			if len(allMsgs) > seen {
+				for _, m := range allMsgs[seen:] {
+					ts := m.CreatedAt
+					if len(ts) > 19 {
+						ts = ts[11:19]
+					}
+					from := m.AuthorName
+					if from == "" {
+						from = m.AuthorID
+					}
+					if len(from) > 16 {
+						from = from[:16]
+					}
+					fmt.Printf("%s%s%s %s%s%s: %s\n", dim, ts, rst, coral, from, rst, m.Body)
+				}
+				seen = len(allMsgs)
+			}
+		}
+	}
+}
+
+func apiPost(path string, body any) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("http://127.0.0.1:%d%s", cfg.WebUIPort, path)
+	data, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	resp, err := http.Post(url, "application/json", strings.NewReader(string(data)))
+	if err != nil {
+		return fmt.Errorf("cannot connect to daemon (is it running?): %w", err)
+	}
+	defer resp.Body.Close()
+	resBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("API error %d: %s", resp.StatusCode, string(resBody))
+	}
+	var out any
+	if err := json.Unmarshal(resBody, &out); err != nil {
+		fmt.Println(string(resBody))
+		return nil
+	}
+	pretty, _ := json.MarshalIndent(out, "", "  ")
+	fmt.Println(string(pretty))
+	return nil
 }
 
 func apiGet(path string) error {

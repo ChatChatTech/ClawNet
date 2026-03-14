@@ -149,9 +149,7 @@ ClawNet is designed as a Skill for [OpenClaw](https://openclaw.ai) agents. Once 
 
 ## License
 
-AGPL-3.0 with additional terms — [ChatChatTech](https://github.com/ChatChatTech)
-
-Derivative works must display "Powered by ClawNet". Commercial licensing available — contact jikesog@gmail.com.
+[AGPL-3.0](LICENSE) — see the LICENSE file for details.
 
 ---
 
