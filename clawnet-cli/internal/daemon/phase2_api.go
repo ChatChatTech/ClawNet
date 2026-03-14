@@ -227,6 +227,13 @@ func (d *Daemon) handleGetTask(w http.ResponseWriter, r *http.Request) {
 
 func (d *Daemon) handleTaskBid(w http.ResponseWriter, r *http.Request) {
 	taskID := r.PathValue("id")
+
+	// Prevent self-bidding: cannot bid on your own task
+	if task, _ := d.Store.GetTask(taskID); task != nil && task.AuthorID == d.Node.PeerID().String() {
+		http.Error(w, `{"error":"cannot bid on your own task"}`, http.StatusForbidden)
+		return
+	}
+
 	var body struct {
 		Amount  float64 `json:"amount"`
 		Message string  `json:"message"`
@@ -273,6 +280,13 @@ func (d *Daemon) handleTaskAssign(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"assign_to is required"}`, http.StatusBadRequest)
 		return
 	}
+
+	// Prevent self-assignment: cannot assign your own task to yourself
+	if task, _ := d.Store.GetTask(taskID); task != nil && task.AuthorID == body.AssignTo {
+		http.Error(w, `{"error":"cannot assign task to its author"}`, http.StatusForbidden)
+		return
+	}
+
 	if err := d.Store.AssignTask(taskID, body.AssignTo); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -318,25 +332,32 @@ func (d *Daemon) handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Pay the assignee: unfreeze and transfer
-	if t.Reward > 0 && t.AssignedTo != "" {
-		d.Store.UnfreezeCredits(t.AuthorID, t.Reward)
-		txnID := uuid.New().String()
-		d.Store.TransferCredits(txnID, t.AuthorID, t.AssignedTo, t.Reward, "task_reward", taskID)
-		// Broadcast credit audit for peer supervision
-		d.publishCreditAudit(d.ctx, txnID, taskID, t.AuthorID, t.AssignedTo, t.Reward, "task_reward")
-	}
-
-	// Recalc reputation for assignee + award prestige
-	if t.AssignedTo != "" {
-		d.Store.RecalcReputation(t.AssignedTo)
-		// Award prestige: task completion gives +10 prestige, weighted by author's prestige
-		authorProfile, _ := d.Store.GetEnergyProfile(t.AuthorID)
-		evaluatorPrestige := 0.0
-		if authorProfile != nil {
-			evaluatorPrestige = authorProfile.Prestige
+	// Prevent self-approve: if somehow author == assignee, just unfreeze credits (no transfer/prestige)
+	if t.AssignedTo == t.AuthorID {
+		if t.Reward > 0 {
+			d.Store.UnfreezeCredits(t.AuthorID, t.Reward)
 		}
-		d.Store.AddPrestige(t.AssignedTo, 10.0, evaluatorPrestige)
+	} else {
+		// Pay the assignee: unfreeze and transfer
+		if t.Reward > 0 && t.AssignedTo != "" {
+			d.Store.UnfreezeCredits(t.AuthorID, t.Reward)
+			txnID := uuid.New().String()
+			d.Store.TransferCredits(txnID, t.AuthorID, t.AssignedTo, t.Reward, "task_reward", taskID)
+			// Broadcast credit audit for peer supervision
+			d.publishCreditAudit(d.ctx, txnID, taskID, t.AuthorID, t.AssignedTo, t.Reward, "task_reward")
+		}
+
+		// Recalc reputation for assignee + award prestige
+		if t.AssignedTo != "" {
+			d.Store.RecalcReputation(t.AssignedTo)
+			// Award prestige: task completion gives +10 prestige, weighted by author's prestige
+			authorProfile, _ := d.Store.GetEnergyProfile(t.AuthorID)
+			evaluatorPrestige := 0.0
+			if authorProfile != nil {
+				evaluatorPrestige = authorProfile.Prestige
+			}
+			d.Store.AddPrestige(t.AssignedTo, 10.0, evaluatorPrestige)
+		}
 	}
 
 	t, _ = d.Store.GetTask(taskID)
