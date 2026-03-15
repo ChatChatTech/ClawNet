@@ -1,4 +1,4 @@
-# ClawNet × Yggdrasil 集成方案：「蜕壳」
+# ClawNet × overlay mesh 集成方案：「蜕壳」
 
 > 版本: v0.1 draft · 2026-03-16
 
@@ -6,9 +6,9 @@
 
 ## 一、背景
 
-ClawNet 已通过 Ironwood 库（与 Yggdrasil 完全相同的 commit `7017dbc41d8e`）实现了 overlay 层，当前连接 36+ 个 Yggdrasil 公开节点，参与全球 ~4000 节点的 mesh 路由。但目前只使用了 **datagram 能力**（DM 后备、gossip 广播），没有启用 TUN 设备和 IPv6 地址。
+ClawNet 已通过 Ironwood 库（与 overlay mesh 完全相同的 commit `7017dbc41d8e`）实现了 overlay 层，当前连接 36+ 个 overlay mesh 公开节点，参与全球 ~4000 节点的 mesh 路由。但目前只使用了 **datagram 能力**（DM 后备、gossip 广播），没有启用 TUN 设备和 IPv6 地址。
 
-「蜕壳」是 ClawNet 全面拥抱 Yggdrasil 的渐进式功能——保留原有网络方案，同时新增 Yggdrasil TUN + IPv6 能力，用户主动激活后方可使用。
+「蜕壳」是 ClawNet 全面拥抱 overlay mesh 的渐进式功能——保留原有网络方案，同时新增 overlay mesh TUN + IPv6 能力，用户主动激活后方可使用。
 
 ---
 
@@ -19,16 +19,16 @@ ClawNet 已通过 Ironwood 库（与 Yggdrasil 完全相同的 commit `7017dbc41
 - 不需要公网 IP、不需要端口映射
 - 对教育网、运营商 NAT、双重 NAT 环境的 ClawNet 节点至关重要
 
-### 2.2 Yggdrasil IPv6 身份
+### 2.2 overlay mesh IPv6 身份
 - 每个节点获得一个由 Ed25519 公钥推导的 `200::/7` IPv6 地址
 - 地址 = SHA-512 变换(公钥)，无需注册或分配
 - 公钥已有（与 libp2p Peer ID 同源），激活即可推导
 - 例：cmax 公钥 `97a983...` → 地址 `200:ac69:adb:f1e8:558a:dc4c:568f:e2f0`
 
 ### 2.3 libp2p 增强
-- `detectYggdrasilAddrs()` 会自动发现 TUN 上的 200:: 地址
+- `detectoverlay meshAddrs()` 会自动发现 TUN 上的 200:: 地址
 - 宣布 `/ip6/200:x:x:x/tcp/4001` 到 DHT
-- 所有在 Yggdrasil 网络上的 ClawNet 节点可以直接互连（绕过公网 NAT）
+- 所有在 overlay mesh 网络上的 ClawNet 节点可以直接互连（绕过公网 NAT）
 - QUIC + TCP 双栈可用
 
 ### 2.4 抗审查与隐私
@@ -38,8 +38,8 @@ ClawNet 已通过 Ironwood 库（与 Yggdrasil 完全相同的 commit `7017dbc41
 - 分布式拓扑 → 无单点可封锁
 
 ### 2.5 推广 ClawNet
-- ~4000 Yggdrasil 活跃用户是天然潜在用户群
-- Yggdrasil 社区看重去中心化和 mesh 理念，与 ClawNet 高度契合
+- ~4000 overlay mesh 活跃用户是天然潜在用户群
+- overlay mesh 社区看重去中心化和 mesh 理念，与 ClawNet 高度契合
 - 可通过 NodeInfo 字段广播 ClawNet 信息
 
 ### 2.6 零成本
@@ -55,7 +55,7 @@ ClawNet 已通过 Ironwood 库（与 Yggdrasil 完全相同的 commit `7017dbc41
 
 **TUN 设备会在系统中创建真实网卡，内核路由表新增 `200::/7 → claw0`。**
 
-任何监听 `[::]`（所有 IPv6）或 `0.0.0.0`（所有接口）的系统服务都将通过 Yggdrasil 网络可达：
+任何监听 `[::]`（所有 IPv6）或 `0.0.0.0`（所有接口）的系统服务都将通过 overlay mesh 网络可达：
 
 | 服务 | 默认监听 | 暴露情况 |
 |------|---------|---------|
@@ -71,8 +71,8 @@ ClawNet 已通过 Ironwood 库（与 Yggdrasil 完全相同的 commit `7017dbc41
 同一个 Ed25519 私钥用于：
 1. libp2p 身份（Peer ID、流加密、DHT）
 2. Ironwood overlay 路由
-3. Yggdrasil 握手签名
-4. **新增**：Yggdrasil IPv6 地址推导
+3. overlay mesh 握手签名
+4. **新增**：overlay mesh IPv6 地址推导
 
 虽然各层的协议隔离较好（不同用途、不同上下文），但密码学最佳实践建议不同用途使用不同密钥。
 
@@ -80,11 +80,11 @@ ClawNet 已通过 Ironwood 库（与 Yggdrasil 完全相同的 commit `7017dbc41
 
 ### 3.3 🟡 中风险：流量指纹
 
-- Yggdrasil TCP 连接（明文 `meta` + TLV 握手）有可识别的流量特征
+- overlay mesh TCP 连接（明文 `meta` + TLV 握手）有可识别的流量特征
 - 对于严格审查的网络环境，握手指纹可能被检测
 - 但内容始终加密，只有连接特征可识别
 
-**缓解措施**：可选 TLS/WebSocket 链接类型（Yggdrasil core 支持）。
+**缓解措施**：可选 TLS/WebSocket 链接类型（overlay mesh core 支持）。
 
 ### 3.4 🟢 低风险：网络资源消耗
 
@@ -97,7 +97,7 @@ ClawNet 已通过 Ironwood 库（与 Yggdrasil 完全相同的 commit `7017dbc41
 
 - 不泄露真实 IP（除明确的 TCP 对等连接）
 - 200:: 地址由公钥推导，公钥本就是公开信息
-- Yggdrasil 路由信息（spanning tree 坐标）不暴露地理位置
+- overlay mesh 路由信息（spanning tree 坐标）不暴露地理位置
 
 ---
 
@@ -113,7 +113,7 @@ ClawNet 已通过 Ironwood 库（与 Yggdrasil 完全相同的 commit `7017dbc41
 | TUN 设备 | ✅ claw0 激活 | ✅ claw0 激活 |
 | IPv6 地址 | ✅ 200::/7 已分配 | ✅ 200::/7 已分配 |
 | libp2p IPv6 | ✅ 宣布 200:: 地址 | ✅ 宣布 200:: 地址 |
-| **入站来源** | 🔒 仅已知 ClawNet 节点 | 🌐 任意 Yggdrasil 节点 |
+| **入站来源** | 🔒 仅已知 ClawNet 节点 | 🌐 任意 overlay mesh 节点 |
 | **入站端口** | 🔒 仅 4001/4002 | 🔒 仅 4001/4002 |
 | Ygg 客户端通信 | ❌ 被软件防火墙拦截 | ✅ 允许（端口白名单内） |
 | 可达 Ygg 节点数 | ~3 个 ClawNet 节点 | ~4000+ 全球节点 |
@@ -150,10 +150,10 @@ ClawNet 已通过 Ironwood 库（与 Yggdrasil 完全相同的 commit `7017dbc41
    └──────────────────────────────────────────┘
 
    结果：只有其他 ClawNet 节点可以通过 IPv6 互通
-   Yggdrasil 普通客户端被公钥校验拦截
+   overlay mesh 普通客户端被公钥校验拦截
 
 
-   蜕壳后 — 开放 Yggdrasil 网络
+   蜕壳后 — 开放 overlay mesh 网络
    ═══════════════════════════════
 
    ┌──────────────────────────────────────────┐
@@ -171,7 +171,7 @@ ClawNet 已通过 Ironwood 库（与 Yggdrasil 完全相同的 commit `7017dbc41
    │   │  软件防火墙 L2    │                    │
    │   │  ┌──────────────┐│                    │
    │   │  │ 来源校验：    ││  ← 任意合法       │
-   │   │  │ 任意 200::/7 ││    Yggdrasil 源   │
+   │   │  │ 任意 200::/7 ││    overlay mesh 源   │
    │   │  └──────────────┘│                    │
    │   │  ┌──────────────┐│                    │
    │   │  │ 端口白名单：  ││  ← TCP 4001/4002  │
@@ -180,7 +180,7 @@ ClawNet 已通过 Ironwood 库（与 Yggdrasil 完全相同的 commit `7017dbc41
    │   └──────────────────┘                    │
    └──────────────────────────────────────────┘
 
-   结果：~4000 Yggdrasil 节点均可在白名单端口范围内通信
+   结果：~4000 overlay mesh 节点均可在白名单端口范围内通信
    sshd/nginx 等服务仍被端口白名单拦截
 ```
 
@@ -196,31 +196,31 @@ $ clawnet molt
 ║  当前状态：蜕壳前（ClawNet 专属 IPv6）                    ║
 ║  您的 IPv6: 200:ac69:adb:f1e8:558a:dc4c:568f:e2f0       ║
 ║                                                          ║
-║  蜕壳将开放 Yggdrasil 全网通信。                          ║
+║  蜕壳将开放 overlay mesh 全网通信。                          ║
 ║  蜕壳前：仅 ClawNet 节点可通过 IPv6 互通                  ║
-║  蜕壳后：~4000 Yggdrasil 节点均可在白名单端口内通信       ║
+║  蜕壳后：~4000 overlay mesh 节点均可在白名单端口内通信       ║
 ║                                                          ║
 ║  ── 蜕壳后的变化 ──                                       ║
 ║                                                          ║
 ║  1. 软件防火墙从"公钥白名单"降级为"端口白名单"             ║
-║  2. 任意 Yggdrasil 节点可连接 TCP 4001/4002               ║
+║  2. 任意 overlay mesh 节点可连接 TCP 4001/4002               ║
 ║  3. SSH/HTTP 等服务仍被端口白名单拦截                      ║
 ║  4. 可通过 `clawnet unmolt` 随时恢复                      ║
 ║                                                          ║
 ║  ── 风险提示 ──                                           ║
 ║                                                          ║
 ║  • 攻击面从 ~3 个 ClawNet 节点扩大到 ~4000 Ygg 节点      ║
-║  • 恶意 Yggdrasil 节点可尝试连接 libp2p 端口              ║
+║  • 恶意 overlay mesh 节点可尝试连接 libp2p 端口              ║
 ║  • libp2p 有自己的身份验证，非 ClawNet 节点无法加入       ║
 ║                                                          ║
 ║  ── 免责声明 ──                                           ║
 ║                                                          ║
-║  蜕壳功能通过 Yggdrasil 开源协议接入全球 mesh 网络。      ║
+║  蜕壳功能通过 overlay mesh 开源协议接入全球 mesh 网络。      ║
 ║  ClawNet 团队对以下情况不承担责任：                        ║
 ║                                                          ║
 ║  a) 因用户自行关闭或绕过软件防火墙导致的安全事件          ║
 ║  b) 因网络环境或当地法律法规对加密 mesh 网络的限制        ║
-║  c) 因第三方 Yggdrasil 节点行为导致的任何问题             ║
+║  c) 因第三方 overlay mesh 节点行为导致的任何问题             ║
 ║  d) 因密钥泄露导致的身份冒用                              ║
 ║                                                          ║
 ╠══════════════════════════════════════════════════════════╣
@@ -292,7 +292,7 @@ clawnet unmolt
 
 ### 4.5.1 设计目标
 
-ClawNet 内置 84 个初始公开 Yggdrasil TCP peer。但公开节点可能下线、网络拥塞或变更地址。
+ClawNet 内置 84 个初始公开 overlay mesh TCP peer。但公开节点可能下线、网络拥塞或变更地址。
 PeerManager 负责自动维护一个健康的 peer 连接池。
 
 ### 4.5.2 架构
@@ -309,7 +309,7 @@ PeerManager 负责自动维护一个健康的 peer 连接池。
 
  数据流：
  ┌────────────────────────────────────────────────────────┐
- │  启动: Load(peers.json) ∪ DefaultYggdrasilPeers        │
+ │  启动: Load(peers.json) ∪ Defaultoverlay meshPeers        │
  │    → 去重合并                                           │
  │    → 按上次成功时间排序                                  │
  │    → 交给 Transport 连接                                │
@@ -401,7 +401,7 @@ type PeerState struct {
 
 ### 5.2 应用层方案：ipv6rwc 过滤器
 
-关键洞察：**所有 Yggdrasil IPv6 流量都经过 ipv6rwc 层**——这是 Ironwood PacketConn 与 TUN 设备之间的桥梁。在这一层做过滤，等于在"管道入口"设置阀门。
+关键洞察：**所有 overlay mesh IPv6 流量都经过 ipv6rwc 层**——这是 Ironwood PacketConn 与 TUN 设备之间的桥梁。在这一层做过滤，等于在"管道入口"设置阀门。
 
 ```
 外部 Ygg 节点 → ironwood → core.ReadFrom()
@@ -508,13 +508,13 @@ iptables: 内核层面过滤，作用于 netfilter → 包已经到了内核
 ### Phase 1：基础蜕壳 + Peer 管理（MVP）
 - [ ] 扩展 peers.go 到 84 个初始公开 peer（TCP, 100% uptime）
 - [ ] 实现 PeerManager（健康探测、指数退避、磁盘持久化）
-- [ ] 嵌入 Yggdrasil `address` 包（IPv6 地址推导）
+- [ ] 嵌入 overlay mesh `address` 包（IPv6 地址推导）
 - [ ] 嵌入 `ipv6rwc`（带两级防火墙的版本）
 - [ ] 嵌入 `tun`（TUN 设备管理）
 - [ ] overlay 启用时自动创建 TUN + 分配 IPv6（L1 模式）
 - [ ] 新增 `clawnet molt` / `clawnet unmolt` 命令（切换 L1 ↔ L2）
 - [ ] 配置持久化（`molted` 字段）
-- [ ] `detectYggdrasilAddrs()` 自动宣布 200:: 地址
+- [ ] `detectoverlay meshAddrs()` 自动宣布 200:: 地址
 
 ### Phase 2：增强
 - [ ] TLS/WebSocket 链接支持（抗流量指纹）
@@ -523,7 +523,7 @@ iptables: 内核层面过滤，作用于 netfilter → 包已经到了内核
 - [ ] `clawnet molt --dry-run` 模式（只计算 IPv6 不切换模式）
 - [ ] Gossip 交换 peer 列表（ClawNet 节点间共享好用 peer）
 
-### Phase 3：Yggdrasil 生态
+### Phase 3：overlay mesh 生态
 - [ ] NodeInfo 广播 ClawNet 信息
 - [ ] 通过 200:: 地址直接发起 libp2p 连接
 - [ ] multicast 本地发现（LAN 内自动发现）
@@ -535,7 +535,7 @@ iptables: 内核层面过滤，作用于 netfilter → 包已经到了内核
 **Q: overlay 启用后就有 IPv6 了吗？**
 A: 是的。overlay 启用即创建 TUN + 分配 200:: 地址。蜕壳前软件防火墙限制仅 ClawNet 节点可通信。
 
-**Q: 蜕壳前 Yggdrasil 客户端能 ping 到我吗？**
+**Q: 蜕壳前 overlay mesh 客户端能 ping 到我吗？**
 A: 不能。L1 防火墙在 ipv6rwc 层拦截所有非 ClawNet 来源的包，包括 ICMPv6。
 
 **Q: 蜕壳后别人能 SSH 到我的机器吗？**

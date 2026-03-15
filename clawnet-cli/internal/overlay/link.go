@@ -1,7 +1,7 @@
 package overlay
 
 // Link-level connection management for the ClawNet overlay network.
-// Inspired by Yggdrasil's src/core/link.go — manages TCP/TLS connections
+// Link management for ClawNet overlay transport — manages TCP/TLS connections
 // with per-link byte counting, exponential backoff, and URI-based addressing.
 
 import (
@@ -58,7 +58,7 @@ type linkOptions struct {
 }
 
 // linkConn wraps net.Conn with atomic RX/TX byte counters and per-second
-// rate tracking. Modeled after Yggdrasil's linkConn for per-link traffic stats.
+// rate tracking. Modeled after the link connection pattern for per-link traffic stats.
 type linkConn struct {
 	// rx/tx at struct start for 64-bit alignment on 32-bit platforms
 	rx     uint64
@@ -84,7 +84,7 @@ func (c *linkConn) Write(p []byte) (n int, err error) {
 }
 
 // links manages all overlay link connections (TCP and TLS).
-// Uses sync.Mutex for thread safety (simplified from Yggdrasil's actor model).
+// Uses sync.Mutex for thread safety (simplified actor model).
 type links struct {
 	transport  *Transport
 	tcp        *linkTCP
@@ -226,7 +226,7 @@ func (l *links) parseOptions(u *url.URL) linkOptions {
 }
 
 // connectLoop is the persistent connection goroutine with exponential backoff.
-// Modeled after Yggdrasil's link connection loop in src/core/link.go.
+// Modeled after the link connection loop pattern.
 func (l *links) connectLoop(u *url.URL, info linkInfo, state *link, options linkOptions, lt linkType) {
 	defer func() {
 		l.mu.Lock()
@@ -445,11 +445,11 @@ func (l *links) handleIncoming(u *url.URL, conn net.Conn, options linkOptions) {
 	}
 }
 
-// handler performs the Yggdrasil-compatible wire handshake then hands the
+// handler performs the wire handshake then hands the
 // connection to ironwood. onSuccess is called after handshake succeeds
 // (resets backoff). Blocks until the link disconnects.
 func (l *links) handler(lt linkType, options linkOptions, conn *linkConn, onSuccess func()) error {
-	remoteKey, prio, err := yggHandshake(conn, l.transport.privKey, options.priority, options.password)
+	remoteKey, prio, err := overlayHandshake(conn, l.transport.privKey, options.priority, options.password)
 	if err != nil {
 		return fmt.Errorf("handshake: %w", err)
 	}
@@ -553,7 +553,8 @@ func (l *links) RetryPeersNow() {
 
 // PeerInfo contains rich information about a link peer, merging
 // link-layer stats (RX/TX bytes, rate, uptime) with ironwood routing info.
-// Inspired by Yggdrasil's core.PeerInfo in src/core/api.go.
+// PeerInfo holds status for a single overlay link.
+// Returned by GetPeers() for API consumers.
 type PeerInfo struct {
 	URI           string        `json:"uri"`
 	Up            bool          `json:"up"`
@@ -574,7 +575,7 @@ type PeerInfo struct {
 }
 
 // GetPeers returns rich peer info by merging link-layer and ironwood stats.
-// Mirrors Yggdrasil's Core.GetPeers() from src/core/api.go.
+// GetPeers returns status info for all overlay links.
 func (l *links) GetPeers() []PeerInfo {
 	iwPeers := l.transport.pc.PacketConn.Debug.GetPeers()
 	type iwInfo struct {
