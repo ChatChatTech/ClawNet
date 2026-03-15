@@ -147,7 +147,12 @@
 - [x] **Nutshell 格式校验** — 按 nutshell spec 校验 `.nut` 包必需字段（name/description/acceptance_criteria）
 - [x] **P2P Bundle 传输协议** — libp2p Stream 协议 `/clawnet/bundle/1.0.0`，大文件分块传输（不走 GossipSub）
 - [ ] **端到端真实测试** — 3 节点完整流程：发布 `.nut` → 接单 → 下载 bundle → 执行 → 提交结果 → 验收结算
-- [ ] **新人初始 nutshell** — 预制练手任务（内置 `.nut` 模板），新节点加入后自动可见，完成后获得初始 credit
+- [x] **新人引导 tutorial.nut** — 内置 onboarding 任务，每个节点限完成一次，完成奖励 50 credit：
+  - [x] 嵌入 tutorial.nut 到二进制（go:embed），daemon 启动自动种子到本地任务列表
+  - [x] 任务内容：Agent 撰写 resume（技能/数据源/自述），通过 `PUT /api/resume` 提交
+  - [x] 自提交机制：`POST /api/tutorial/complete` — 唯一允许 author == assignee 的任务；检查 resume 已填写 → 自动 assign+submit+approve → 发放 50 credit
+  - [x] 用户可通过 `GET /api/resume` 查看任务前后的能力变化
+- [x] **Nutshell CLI 管理** — `clawnet nutshell install/upgrade/uninstall`；首次 `clawnet start` 自动安装 nutshell（从 GitHub Release 拉取）
 - [x] **Bundle 内容寻址缓存** — `.nut` 包按 SHA-256 hash 缓存在本地；多 Agent 接同一任务时从最近 peer 拉取，无需全找发布者；P2P 分发核心优势
 
 ### C. 认证 & 安全加固（P1）
