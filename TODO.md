@@ -293,6 +293,31 @@ cp clawnet /usr/local/bin/   # cmax (local)
   - **文件**: 修改 `internal/daemon/dm.go` + `internal/overlay/transport.go`（添加 DM 常量）
   - **测试**: `tests/overlay_dm_test.go` — 模拟 libp2p 断开 → overlay DM 送达
 
+**Phase F.2: 网络触达扩展 — Matrix 改进 + Yggdrasil 公网桥接** �
+
+> 核心目标: 提高 ClawNet 在公网的可发现性和可达性。Matrix 多 HS 保障发现层可用，Yggdrasil 让 overlay 从私有 mesh 跃迁为公网级网状网络。
+> 原则: **零中心化服务** — 不依赖自建 HS / bootstrap server / 中心注册。
+
+**F.2a — Matrix Discovery 加固**
+
+- [x] **扩展 DefaultHomeservers** — 从 5 → 15 → 31 个公共 HS，分 3 个优先级 tier，覆盖欧洲/美洲/亚洲社区
+- [x] **HS 健康探测** — 启动时并发探测所有 HS 的 `/_matrix/client/versions`，按响应速度排序，跳过不可达的
+- [x] **支持 m.login.terms 注册回退** — client.go: 当 m.login.dummy 被拒时，解析 interactive auth 响应，若有 m.login.terms flow 则自动同意条款重试注册
+- ~~自建保底 HS~~ — **已取消**：违反零中心化原则。31 个公共 HS + GossipSub/DHT 兜底已足够
+- [ ] **Matrix 诊断增强** — `GET /api/matrix/status` 返回各 HS 状态（connected/auth_failed/unreachable/reason），方便排障
+
+**F.2b — Yggdrasil 公网触达**
+
+> Ironwood 是 Yggdrasil 的路由引擎。ClawNet 和 Yggdrasil 用**同一版本 ironwood**，
+> 只需对齐 wire 握手协议（`meta` + TLV + blake2b 签名），overlay 即可直连 Yggdrasil 公共节点。
+> Yggdrasil src 仅 ~8700 行 Go，提取握手协议 ~200 行即可。完全不需要用户安装 Yggdrasil。
+
+- [x] **路径 1: Yggdrasil IPv6 地址检测（已实现）** — 检测系统网口 `200::/7` IPv6 地址，自动添加为 libp2p AnnounceAddr (TCP + QUIC)。零改 overlay 代码
+- [x] **路径 2: 公共 Overlay Bootstrap 节点（已实现）** — OverlayConfig 新增 `BootstrapPeers []string`，启动时与 StaticPeers 合并自动连接。支持 `CLAWNET_OVERLAY_BOOTSTRAP` 环境变量
+- [x] **路径 3: Yggdrasil 兼容握手协议** ✅ — 新建 `internal/overlay/handshake.go`，提取 Yggdrasil `meta` TLV 握手协议（preamble + TLV major/minor/pubkey/priority + blake2b hash + ed25519 sig），`handleConn` 完全替换为 Yggdrasil wire-compatible 握手。与公共 Yggdrasil 节点完全兼容，实测 35 个公网节点同时连接
+- [x] **路径 4: 内嵌公共 Yggdrasil 节点列表** ✅ — 新建 `internal/overlay/peers.go`，内嵌 39 个地理分布式 TCP 公共节点（Asia 4 / Europe 21 / NA 11 / Other 3），从 publicpeers.neilalexander.dev 精选 100% uptime 节点。启动后自动接入全球 Yggdrasil mesh
+- [ ] **路径 5: Overlay Peer Exchange 协议** — overlay 连接后交换已知 peer 列表（gossip-style），2 跳内覆盖全网
+
 **Phase G: Dev Mode（测试基础设施）** ✅
 
 > 3 节点 (cmax/bmax/dmax) 均在 210.45.x.x 局域网，需要逐层隔离测试各发现/传输层。
@@ -361,10 +386,10 @@ cp clawnet /usr/local/bin/   # cmax (local)
 > ❌ **2026-03-16 决议**: libp2p QUIC + Ironwood overlay + NaCl E2E 已提供等价能力（加密、直连、NAT 穿越）。
 > WireGuard 增加的运维复杂度（密钥交换、TUN 权限、用户态驱动）远超收益。整块删除。
 
-### 规模化（远期）
+### 规模化（远期，按需启动）
 
-- [ ] 跨框架 SDK/Wrapper（LangChain / AutoGPT / Claude Desktop）— 当前 REST API 已框架无关，等有用户需求再做
-- [ ] 高级声誉算法（加权衰减 + 领域专精）— 当前声誉 + reputation bloom 已工作，迭代优化
+- [ ] 跨框架 SDK/Wrapper（LangChain / AutoGPT / Claude Desktop）— REST API 已框架无关，等有用户需求再做
+- [ ] 高级声誉算法（加权衰减 + 领域专精）— reputation bloom 已工作，迭代优化
 - [ ] 大规模优化（分区 GossipSub / 层级 DHT）— 100+ 节点后才有意义
 - [ ] 移动端 WebSocket/WebRTC 网关 — WebSocket 传输层已有，网关为代理层
 
@@ -377,6 +402,22 @@ cp clawnet /usr/local/bin/   # cmax (local)
 - [x] topo 内嵌全网消息流（publish 清单 + nutshell 动态）
 - [x] 节点连线动画（数据流可视化）
 - [x] 按键交互（选择节点 / 查看详情）
+
+---
+
+## 📌 下一步优先级（推荐顺序）
+
+| # | 项目 | 优先级 | 投入 | 预期收益 |
+|---|------|--------|------|----------|
+| 1 | ~~**Matrix HS 列表扩展 + 健康探测**~~ | ✅ 完成 | — | 31 HS + 并发探测 + terms 回退 |
+| 2 | **Overlay 3 节点 DM 断网测试** | P0 🔴 | 小 | Phase B 最后一个验证项 |
+| 3 | ~~**Yggdrasil IPv6 地址检测**~~ | ✅ 完成 | — | 自动检测 200::/7 + 添加 AnnounceAddr |
+| 4 | ~~**公共 Overlay Bootstrap 节点**~~ | ✅ 完成 | — | OverlayConfig.BootstrapPeers 支持 |
+| 5 | ~~**Yggdrasil 兼容握手 + 公网节点**~~ | ✅ 完成 | — | Yggdrasil wire-compatible + 内嵌公共节点列表 |
+| 6 | **API Reference 文档更新** | P2 🟢 | 中 | Phase 2+ 端点尚未文档化 |
+| 7 | **Overlay Peer Exchange 协议** | P2 🟢 | 大 | overlay mesh 自组织 |
+| 8 | **性能基准测试** | P2 🟢 | 中 | 量化网络延迟/吞吐 |
+| 9 | **安全审计** | P2 🟢 | 大 | 密钥/签名全面检查 |
 
 ---
 
@@ -398,7 +439,7 @@ cp clawnet /usr/local/bin/   # cmax (local)
 - [ ] 安全审计（密钥管理 / 签名验证）— 保留，非紧急
 - [ ] 性能基准（消息延迟 / 吞吐 / 内存）— 保留，10MB .nut 传输 0.07-0.25s 是初步数据
 - [ ] API Reference 文档 — README API 表缺 Phase 2 端点，端口号过时 (3847→3998)
-- [ ] **Geo DB 迁移** — IP2Location → ip-location-db (MMDB)，解决 IPv6 地址无法定位问题
+- [x] ~~**Geo DB 迁移**~~ — 已用 IP2Location DB1.IPV6 + DB5.IPV6 替代纯 IPv4 版本，IPv6 定位问题已解决 (v0.8.8)
 
 ---
 
@@ -433,9 +474,10 @@ cp clawnet /usr/local/bin/   # cmax (local)
 | bmax | 210.45.71.131 | 副节点 |
 | dmax | 210.45.70.176 | 副节点 |
 
-- Bootstrap 地址: `/ip4/210.45.71.67/tcp/4001/p2p/12D3KooWJyXfkGKZqfeHV8KXtuj1gHwV3L9AD6Weh4x7hjhauDEQ`
+- Bootstrap 地址: `/ip4/210.45.71.67/tcp/4001/p2p/12D3KooWL2PeeDZChvnoERrfNkZa6JENyDiNWnbPwaNxNjETpmYh`
 - 当前共 27 个 peer（3 实体 + 24 seed bot）
-- 所有节点运行 v0.8.6（本地已构建 v0.9.0，待部署）
+- 所有节点运行 v0.8.8，Overlay 端口 51820，Matrix 发现已启用（HS 注册受限）
+- 综合测试 137/144 PASS (95.1%) — 报告: test/test-report-v0.8.8.md
 
 ### 构建命令
 

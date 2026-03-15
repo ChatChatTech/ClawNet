@@ -78,6 +78,9 @@ func (d *Discovery) Run(ctx context.Context, onPeerFound func(peer.AddrInfo)) {
 	// Load cached tokens
 	tokens := d.loadTokens()
 
+	// Probe homeserver health and sort by latency (fastest first)
+	d.homeservers = probeAndSort(ctx, d.homeservers)
+
 	// Connect to each homeserver (best effort, 2-3 is enough)
 	username := UsernamePrefix + d.peerID.String()[:16]
 	password := d.derivePassword()
@@ -374,4 +377,67 @@ func extractDomain(url string) string {
 	s = strings.TrimPrefix(s, "http://")
 	s = strings.TrimRight(s, "/")
 	return s
+}
+
+// probeAndSort concurrently probes all homeservers and returns them sorted
+// by response latency, with unreachable servers moved to the end.
+func probeAndSort(ctx context.Context, servers []string) []string {
+	type probeResult struct {
+		hs      string
+		latency time.Duration
+		ok      bool
+	}
+
+	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	results := make([]probeResult, len(servers))
+	var wg sync.WaitGroup
+	for i, hs := range servers {
+		i, hs := i, hs
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c := NewClient(hs)
+			lat, err := c.CheckHealth(probeCtx)
+			results[i] = probeResult{hs: hs, latency: lat, ok: err == nil}
+		}()
+	}
+	wg.Wait()
+
+	// Separate reachable and unreachable
+	var reachable, unreachable []probeResult
+	for _, r := range results {
+		if r.ok {
+			reachable = append(reachable, r)
+		} else {
+			unreachable = append(unreachable, r)
+		}
+	}
+
+	// Sort reachable by latency
+	for i := 0; i < len(reachable); i++ {
+		for j := i + 1; j < len(reachable); j++ {
+			if reachable[j].latency < reachable[i].latency {
+				reachable[i], reachable[j] = reachable[j], reachable[i]
+			}
+		}
+	}
+
+	out := make([]string, 0, len(servers))
+	for _, r := range reachable {
+		out = append(out, r.hs)
+	}
+	for _, r := range unreachable {
+		out = append(out, r.hs)
+	}
+
+	reachableCount := len(reachable)
+	fmt.Printf("[matrix] probed %d homeservers: %d reachable, %d unreachable\n",
+		len(servers), reachableCount, len(unreachable))
+	if reachableCount > 0 {
+		fmt.Printf("[matrix] fastest: %s (%v)\n", reachable[0].hs, reachable[0].latency.Round(time.Millisecond))
+	}
+
+	return out
 }

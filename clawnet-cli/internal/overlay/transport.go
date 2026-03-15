@@ -5,8 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
-	"io"
-	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,41 +17,40 @@ import (
 )
 
 const (
-	// reconnectInterval is how often we retry static peers.
-	reconnectInterval = 2 * time.Minute
-	// keyExchangeTimeout limits the handshake phase per connection.
-	keyExchangeTimeout = 5 * time.Second
-
 	// MsgTypeDM is the prefix byte for DM messages sent over the overlay.
 	MsgTypeDM byte = 0x01
 )
 
-// Transport manages an Ironwood overlay network as a backup transport.
-// Uses encrypted.PacketConn which provides E2E encrypted datagram
-// messaging over a spanning-tree + DHT + bloom-filter overlay.
+// Transport manages an Ironwood overlay network with link-level connection management.
+// Inspired by Yggdrasil's core.Core: wraps encrypted.PacketConn with a links
+// subsystem that handles TCP/TLS connections, per-link byte counting,
+// exponential backoff, and URI-based peer addressing.
 type Transport struct {
 	pc          *encrypted.PacketConn
 	privKey     ed25519.PrivateKey
-	listener    net.Listener
+	links       links
 	listenPort  int
 	staticPeers []string
+	ctx         context.Context
+	cancel      context.CancelFunc
+
+	// PeerMgr for optional health monitoring and disk persistence
+	PeerMgr *PeerManager
 
 	// onMessage callback for received datagrams
 	onMessage func(from ed25519.PublicKey, data []byte)
 
-	// Track active connections for PeerCount
-	connsMu sync.Mutex
-	conns   map[string]struct{} // hex(pubkey) -> struct{}
-
-	mu     sync.Mutex
-	closed bool
+	mu      sync.Mutex
+	closed  bool
+	molting bool // molt mode: all peers disconnected, traffic paused
 }
 
-// NewTransport creates an Ironwood overlay transport.
+// NewTransport creates an Ironwood overlay transport with link management.
 // priv is the libp2p Ed25519 private key (shared identity).
-// staticPeers are "host:port" TCP addresses of known overlay nodes.
-// opts are optional Ironwood network.Option values (WithPathNotify, WithBloomTransform, etc.).
-func NewTransport(priv crypto.PrivKey, listenPort int, staticPeers []string, opts ...network.Option) (*Transport, error) {
+// staticPeers and bootstrapPeers are peer URIs ("tcp://host:port", "tls://host:port")
+// or legacy "host:port" format (auto-normalized to tcp://).
+// opts are Ironwood network.Option values (WithPathNotify, WithBloomTransform, etc.).
+func NewTransport(priv crypto.PrivKey, listenPort int, staticPeers, bootstrapPeers []string, opts ...network.Option) (*Transport, error) {
 	rawKey, err := priv.Raw()
 	if err != nil {
 		return nil, fmt.Errorf("extract private key: %w", err)
@@ -65,132 +63,90 @@ func NewTransport(priv crypto.PrivKey, listenPort int, staticPeers []string, opt
 		return nil, fmt.Errorf("create overlay packetconn: %w", err)
 	}
 
+	// Merge static, bootstrap, and default Yggdrasil public peers, deduplicating
+	allPeers := mergeUnique(staticPeers, bootstrapPeers)
+	allPeers = mergeUnique(allPeers, DefaultYggdrasilPeers)
+
+	// Normalize: ensure URI scheme present (backward compat with "host:port")
+	for i, p := range allPeers {
+		if !strings.Contains(p, "://") {
+			allPeers[i] = "tcp://" + p
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
 	t := &Transport{
 		pc:          pc,
 		privKey:     edPrivKey,
 		listenPort:  listenPort,
-		staticPeers: staticPeers,
-		conns:       make(map[string]struct{}),
+		staticPeers: allPeers,
+		ctx:         ctx,
+		cancel:      cancel,
 	}
+
+	// Initialize the links subsystem (starts rate-tracking goroutine)
+	t.links.init(t)
 
 	return t, nil
 }
 
-// Run starts the overlay transport. It listens for incoming connections,
-// maintains connections to static peers, and runs the receive loop.
+// mergeUnique combines two string slices, removing duplicates.
+func mergeUnique(a, b []string) []string {
+	seen := make(map[string]struct{}, len(a)+len(b))
+	var out []string
+	for _, s := range a {
+		if _, ok := seen[s]; !ok {
+			seen[s] = struct{}{}
+			out = append(out, s)
+		}
+	}
+	for _, s := range b {
+		if _, ok := seen[s]; !ok {
+			seen[s] = struct{}{}
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// Run starts the overlay transport. It opens a TCP listener, adds all static peers
+// as persistent links (with built-in exponential backoff), and runs the receive loop.
 // Blocks until ctx is cancelled.
 func (t *Transport) Run(ctx context.Context) {
 	pubKey := t.privKey.Public().(ed25519.PublicKey)
 	fmt.Printf("[overlay] public key: %s\n", hex.EncodeToString(pubKey[:8]))
 
-	// Start TCP listener
+	// Start TCP listener via links subsystem
 	if t.listenPort > 0 {
-		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", t.listenPort))
-		if err != nil {
+		listenURI := fmt.Sprintf("tcp://:%d", t.listenPort)
+		if _, err := t.links.listen(listenURI); err != nil {
 			fmt.Printf("[overlay] listen on :%d failed: %v\n", t.listenPort, err)
 		} else {
-			t.listener = ln
 			fmt.Printf("[overlay] listening on :%d\n", t.listenPort)
-			go t.acceptLoop(ctx, ln)
 		}
 	}
 
-	// Connect to static peers
-	for _, addr := range t.staticPeers {
-		addr := addr
-		go t.connectLoop(ctx, addr)
+	// Add all peers as persistent links (links subsystem handles backoff)
+	for _, uri := range t.staticPeers {
+		_ = t.links.add(uri, linkTypePersistent) // errors non-fatal (duplicate, bad URI)
 	}
 
 	// Start receive loop
-	go t.receiveLoop(ctx)
+	go t.receiveLoop()
 
-	<-ctx.Done()
+	select {
+	case <-ctx.Done():
+	case <-t.ctx.Done():
+	}
 	t.Close()
 }
 
-// acceptLoop accepts incoming TCP connections and hands them to ironwood.
-func (t *Transport) acceptLoop(ctx context.Context, ln net.Listener) {
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				fmt.Printf("[overlay] accept error: %v\n", err)
-				time.Sleep(time.Second)
-				continue
-			}
-		}
-		go t.handleConn(conn)
-	}
-}
-
-// connectLoop periodically tries to connect to a static peer.
-func (t *Transport) connectLoop(ctx context.Context, addr string) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
-		if err != nil {
-			time.Sleep(reconnectInterval)
-			continue
-		}
-		t.handleConn(conn)
-		// handleConn blocks until disconnection; retry after interval
-		time.Sleep(reconnectInterval)
-	}
-}
-
-// handleConn performs a key exchange and hands the connection to ironwood.
-// The protocol: each side sends its ed25519 public key (32 bytes),
-// then reads the remote's key, then calls pc.HandleConn which blocks
-// until the connection closes.
-func (t *Transport) handleConn(conn net.Conn) {
-	defer conn.Close()
-
-	localPub := t.privKey.Public().(ed25519.PublicKey)
-
-	// Send our public key
-	_ = conn.SetDeadline(time.Now().Add(keyExchangeTimeout))
-	if _, err := conn.Write(localPub); err != nil {
-		return
-	}
-
-	// Read remote public key
-	remotePub := make([]byte, ed25519.PublicKeySize)
-	if _, err := io.ReadFull(conn, remotePub); err != nil {
-		return
-	}
-	_ = conn.SetDeadline(time.Time{}) // clear deadline
-
-	remoteKey := ed25519.PublicKey(remotePub)
-	keyHex := hex.EncodeToString(remoteKey[:8])
-
-	t.connsMu.Lock()
-	t.conns[keyHex] = struct{}{}
-	t.connsMu.Unlock()
-
-	// HandleConn blocks until the connection is closed
-	if err := t.pc.HandleConn(remoteKey, conn, 0); err != nil {
-		fmt.Printf("[overlay] peer %s disconnected: %v\n", keyHex, err)
-	}
-
-	t.connsMu.Lock()
-	delete(t.conns, keyHex)
-	t.connsMu.Unlock()
-}
-
 // receiveLoop reads datagrams from the Ironwood overlay network.
-func (t *Transport) receiveLoop(ctx context.Context) {
+func (t *Transport) receiveLoop() {
 	buf := make([]byte, 65535)
 	for {
 		select {
-		case <-ctx.Done():
+		case <-t.ctx.Done():
 			return
 		default:
 		}
@@ -233,11 +189,137 @@ func (t *Transport) Send(ctx context.Context, pid peer.ID, data []byte) error {
 	return err
 }
 
-// PeerCount returns the number of directly connected overlay peers.
+// AddPeer adds a persistent peer by URI. The link auto-reconnects with backoff.
+func (t *Transport) AddPeer(uri string) error {
+	return t.links.add(uri, linkTypePersistent)
+}
+
+// RemovePeer removes a peer by URI and stops reconnection.
+func (t *Transport) RemovePeer(uri string) error {
+	return t.links.remove(uri)
+}
+
+// RetryPeersNow kicks all links to attempt reconnection immediately.
+func (t *Transport) RetryPeersNow() {
+	t.links.RetryPeersNow()
+}
+
+// Molt enters molt mode: disconnect all overlay peers and stop accepting new
+// connections. Useful for identity rotation or network refresh.
+func (t *Transport) Molt() {
+	t.mu.Lock()
+	if t.molting {
+		t.mu.Unlock()
+		return
+	}
+	t.molting = true
+	t.mu.Unlock()
+
+	// Disconnect all peers
+	t.links.mu.Lock()
+	for _, lnk := range t.links._links {
+		if lnk.conn != nil {
+			_ = lnk.conn.Close()
+		}
+		lnk.cancel()
+	}
+	t.links._links = make(map[linkInfo]*link)
+	// Close all listeners
+	for li, cancel := range t.links._listeners {
+		cancel()
+		delete(t.links._listeners, li)
+	}
+	t.links.mu.Unlock()
+
+	fmt.Println("[overlay] entered molt mode — all peers disconnected")
+}
+
+// Unmolt exits molt mode: re-opens the listener and re-adds all static peers.
+func (t *Transport) Unmolt() {
+	t.mu.Lock()
+	if !t.molting {
+		t.mu.Unlock()
+		return
+	}
+	t.molting = false
+	t.mu.Unlock()
+
+	// Re-open listener
+	if t.listenPort > 0 {
+		listenURI := fmt.Sprintf("tcp://:%d", t.listenPort)
+		if _, err := t.links.listen(listenURI); err != nil {
+			fmt.Printf("[overlay] unmolt: listen failed: %v\n", err)
+		} else {
+			fmt.Printf("[overlay] unmolt: listening on :%d\n", t.listenPort)
+		}
+	}
+
+	// Re-add all static peers
+	for _, uri := range t.staticPeers {
+		_ = t.links.add(uri, linkTypePersistent)
+	}
+
+	fmt.Println("[overlay] exited molt mode — peers re-added")
+}
+
+// IsMolting returns whether the transport is in molt mode.
+func (t *Transport) IsMolting() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.molting
+}
+
+// YggdrasilAddress returns the Yggdrasil 200::/7 IPv6 address derived from
+// this node's overlay Ed25519 public key.
+func (t *Transport) YggdrasilAddress() string {
+	return FormatYggdrasilAddress(t.PublicKey())
+}
+
+// YggdrasilSubnet returns the Yggdrasil /64 subnet prefix.
+func (t *Transport) YggdrasilSubnet() string {
+	return FormatYggdrasilSubnet(t.PublicKey())
+}
+
+// PeerCount returns the number of currently connected overlay peers.
 func (t *Transport) PeerCount() int {
-	t.connsMu.Lock()
-	defer t.connsMu.Unlock()
-	return len(t.conns)
+	peers := t.links.GetPeers()
+	count := 0
+	for _, p := range peers {
+		if p.Up {
+			count++
+		}
+	}
+	return count
+}
+
+// ConnectedPeer holds info about a directly connected overlay peer.
+type ConnectedPeer struct {
+	KeyHex     string // first 8 bytes of ed25519 pubkey, hex-encoded
+	RemoteAddr string // TCP "ip:port"
+}
+
+// GetConnectedPeers returns all directly connected overlay peers with TCP addresses.
+func (t *Transport) GetConnectedPeers() []ConnectedPeer {
+	peers := t.links.GetPeers()
+	out := make([]ConnectedPeer, 0)
+	for _, p := range peers {
+		if p.Up && p.Key != "" {
+			keyHex := p.Key
+			if len(keyHex) > 16 {
+				keyHex = keyHex[:16]
+			}
+			out = append(out, ConnectedPeer{
+				KeyHex:     keyHex,
+				RemoteAddr: p.RemoteAddr,
+			})
+		}
+	}
+	return out
+}
+
+// GetPeers returns rich peer info merging link-layer and ironwood stats.
+func (t *Transport) GetPeers() []PeerInfo {
+	return t.links.GetPeers()
 }
 
 // PublicKey returns the node's Ed25519 public key in the overlay network.
@@ -253,19 +335,20 @@ func (t *Transport) Close() {
 		return
 	}
 	t.closed = true
-	if t.listener != nil {
-		t.listener.Close()
-	}
+	t.cancel()
+	t.links.shutdown()
 	t.pc.Close()
 }
 
+// ── Debug/diagnostics ──
+
 // DebugInfo returns detailed overlay network introspection data.
 type DebugInfo struct {
-	Self     DebugSelf       `json:"self"`
-	Peers    []DebugPeer     `json:"peers"`
-	Tree     []DebugTree     `json:"tree"`
-	Paths    []DebugPath     `json:"paths"`
-	Sessions []DebugSession  `json:"sessions"`
+	Self     DebugSelf      `json:"self"`
+	Peers    []DebugPeer    `json:"peers"`
+	Tree     []DebugTree    `json:"tree"`
+	Paths    []DebugPath    `json:"paths"`
+	Sessions []DebugSession `json:"sessions"`
 }
 
 // DebugSelf contains this node's overlay identity.
@@ -275,12 +358,20 @@ type DebugSelf struct {
 }
 
 // DebugPeer contains info about a directly connected overlay peer.
+// Now includes link-layer stats (RX/TX bytes, rate) from linkConn.
 type DebugPeer struct {
 	Key     string        `json:"key"`
 	Root    string        `json:"root"`
 	Port    uint64        `json:"port"`
 	Latency time.Duration `json:"latency_ms"`
 	Prio    uint8         `json:"priority"`
+	// Link-layer fields (new, from linkConn byte counting)
+	URI     string `json:"uri,omitempty"`
+	Up      bool   `json:"up"`
+	RXBytes uint64 `json:"rx_bytes"`
+	TXBytes uint64 `json:"tx_bytes"`
+	RXRate  uint64 `json:"rx_rate"`
+	TXRate  uint64 `json:"tx_rate"`
 }
 
 // DebugTree contains a spanning tree entry.
@@ -316,14 +407,20 @@ func (t *Transport) GetDebugInfo() *DebugInfo {
 		RoutingEntries: int(selfInfo.RoutingEntries),
 	}
 
-	// Connected peers
-	for _, p := range t.pc.PacketConn.Debug.GetPeers() {
+	// Use rich peer info from links (merges link-layer + ironwood stats)
+	for _, p := range t.links.GetPeers() {
 		info.Peers = append(info.Peers, DebugPeer{
-			Key:     hex.EncodeToString(p.Key),
-			Root:    hex.EncodeToString(p.Root),
+			Key:     p.Key,
+			Root:    p.Root,
 			Port:    p.Port,
 			Latency: p.Latency,
 			Prio:    p.Priority,
+			URI:     p.URI,
+			Up:      p.Up,
+			RXBytes: p.RXBytes,
+			TXBytes: p.TXBytes,
+			RXRate:  p.RXRate,
+			TXRate:  p.TXRate,
 		})
 	}
 

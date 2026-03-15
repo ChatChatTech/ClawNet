@@ -47,6 +47,7 @@ const (
 	cBanner    = "\033[1;38;2;230;57;70m"   // Bold Lobster Red — ASCII banner
 	cBannerHL  = "\033[1;38;2;255;220;50m"  // Bright Yellow — highlighted banner
 	cHighlight = "\033[7;38;2;230;57;70m"   // Reverse video — highlight frame
+	cOverlay   = "\033[38;2;0;200;180m"     // Teal — Yggdrasil overlay peers
 	cDim       = "\033[2m"                  // dim attribute
 	cReset     = "\033[0m"
 )
@@ -267,6 +268,10 @@ func Execute() error {
 		return cmdGeoUpgrade()
 	case "chat":
 		return cmdChat()
+	case "molt":
+		return cmdMolt()
+	case "unmolt":
+		return cmdUnmolt()
 	case "v", "version":
 		fmt.Printf("clawnet v%s\n", daemon.Version)
 		return nil
@@ -316,6 +321,8 @@ func printUsage() error {
 	fmt.Println(tidal+"  nutshell "+dim+"(nut)    "+rst + "Manage Nutshell CLI (install/upgrade/uninstall)")
 	fmt.Println(tidal+"  geo-upgrade"+dim+"       "+rst + "Download city-level geo DB (DB5.IPV6, ~34MB)")
 	fmt.Println(tidal+"  chat     "+dim+"         "+rst + "Random chat with an online peer")
+	fmt.Println(tidal+"  molt     "+dim+"         "+rst + "Enter molt mode — disconnect all overlay peers")
+	fmt.Println(tidal+"  unmolt   "+dim+"         "+rst + "Exit molt mode — reconnect overlay peers")
 	fmt.Println(tidal+"  version  "+dim+"(v)      "+rst + "Show version")
 	fmt.Println()
 	if devBuild {
@@ -345,6 +352,8 @@ var cmdHelps = map[string]string{
 	"nutshell":    "clawnet nutshell <subcommand>\n  Manage the Nutshell CLI tool.\n  Subcommands: install, upgrade, uninstall, version, status\n  Alias: nut",
 	"geo-upgrade": "clawnet geo-upgrade\n  Download the city-level geo database (DB5.IPV6, ~34MB).\n  Enables precise city-level geolocation in topo view.\n  Default build embeds DB1.IPV6 (country-level, 2MB).\n  Downloads from the latest GitHub release.",
 	"chat":        "clawnet chat\n  Start a random chat with an online peer.\n  Matches you with a random connected node and opens an interactive conversation.",
+	"molt":        "clawnet molt\n  Enter molt mode — disconnect all overlay peers and stop accepting\n  new connections. Useful for identity rotation or network refresh.",
+	"unmolt":      "clawnet unmolt\n  Exit molt mode — re-add all static peers and resume accepting\n  incoming overlay connections.",
 	"version":     "clawnet version\n  Show version.\n  Alias: v",
 }
 
@@ -733,6 +742,7 @@ func cmdTopo() error {
 	var lastFeedFetch time.Time
 
 	state := &topoState{activePanel: panelGlobe}
+	var overlayPeersCache []peerGeoData
 
 	for {
 		// Process all pending input
@@ -818,6 +828,11 @@ func cmdTopo() error {
 			headerCache = ""
 		case <-ticker.C:
 			peers := fetchGeoPeers(base)
+			// Merge overlay peers (fetched less frequently)
+			if time.Since(lastStatsFetch) > 2*time.Second || len(overlayPeersCache) == 0 {
+				overlayPeersCache = fetchOverlayGeo(base)
+			}
+			peers = append(peers, overlayPeersCache...)
 			// Stable sort by PeerID to prevent flickering
 			sort.Slice(peers, func(i, j int) bool {
 				if peers[i].IsSelf != peers[j].IsSelf {
@@ -873,6 +888,7 @@ type peerGeoData struct {
 	Location       string   `json:"location"`
 	Geo            *geoInfo `json:"geo,omitempty"`
 	IsSelf         bool     `json:"is_self"`
+	IsOverlay      bool     `json:"is_overlay,omitempty"`
 	LatencyMs      int64    `json:"latency_ms"`
 	ConnectedSince int64    `json:"connected_since"`
 	Motto          string   `json:"motto,omitempty"`
@@ -899,6 +915,11 @@ type networkStats struct {
 	Location  string   `json:"location"`
 	StartedAt int64    `json:"started_at"`
 	PeerID    string   `json:"peer_id"`
+	// overlay
+	OverlayPeers     int    `json:"-"`
+	YggdrasilAddress string `json:"-"`
+	YggdrasilSubnet  string `json:"-"`
+	OverlayMolting   bool   `json:"-"`
 }
 
 type creditInfo struct {
@@ -917,6 +938,64 @@ func fetchGeoPeers(base string) []peerGeoData {
 	var data []peerGeoData
 	json.NewDecoder(resp.Body).Decode(&data)
 	return data
+}
+
+// fetchOverlayGeo fetches Yggdrasil overlay peers with geo data and converts
+// them to peerGeoData for unified rendering in the topo globe.
+func fetchOverlayGeo(base string) []peerGeoData {
+	resp, err := http.Get(base + "/api/overlay/peers/geo")
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	type overlayPeer struct {
+		KeyHex    string   `json:"key"`
+		Location  string   `json:"location"`
+		Geo       *geoInfo `json:"geo,omitempty"`
+		LatencyMs int64    `json:"latency_ms"`
+	}
+	var raw []overlayPeer
+	json.NewDecoder(resp.Body).Decode(&raw)
+
+	// Fetch detailed peer stats including RX/TX rates
+	type overlayPeerDetail struct {
+		Key    string `json:"key"`
+		RXRate uint64 `json:"rx_rate"`
+		TXRate uint64 `json:"tx_rate"`
+	}
+	rateMap := make(map[string]overlayPeerDetail)
+	if resp2, err := http.Get(base + "/api/overlay/peers"); err == nil {
+		var details []overlayPeerDetail
+		json.NewDecoder(resp2.Body).Decode(&details)
+		resp2.Body.Close()
+		for _, d := range details {
+			if len(d.Key) >= 8 {
+				rateMap[d.Key[:8]] = d
+			}
+		}
+	}
+
+	out := make([]peerGeoData, 0, len(raw))
+	for _, p := range raw {
+		if p.Geo == nil {
+			continue // skip peers without geo (private IPs)
+		}
+		pg := peerGeoData{
+			PeerID:    p.KeyHex,
+			ShortID:   p.KeyHex[:8],
+			AgentName: "ygg:" + p.KeyHex[:8],
+			Location:  p.Location,
+			Geo:       p.Geo,
+			IsOverlay: true,
+			LatencyMs: p.LatencyMs,
+		}
+		if d, ok := rateMap[p.KeyHex[:8]]; ok {
+			pg.BwIn = int64(d.RXRate)
+			pg.BwOut = int64(d.TXRate)
+		}
+		out = append(out, pg)
+	}
+	return out
 }
 
 func fetchNetworkStats(base string) networkStats {
@@ -946,6 +1025,18 @@ func fetchNetworkStats(base string) networkStats {
 					stats.Topics = append(stats.Topics, s)
 				}
 			}
+		}
+		if v, ok := raw["overlay_peers"].(float64); ok {
+			stats.OverlayPeers = int(v)
+		}
+		if v, ok := raw["yggdrasil_address"].(string); ok {
+			stats.YggdrasilAddress = v
+		}
+		if v, ok := raw["yggdrasil_subnet"].(string); ok {
+			stats.YggdrasilSubnet = v
+		}
+		if v, ok := raw["overlay_molting"].(bool); ok {
+			stats.OverlayMolting = v
 		}
 	}
 	if resp, err := http.Get(base + "/api/credits/balance"); err == nil {
@@ -1193,6 +1284,7 @@ type peerInfo struct {
 	city           string
 	lat, lon       float64
 	isSelf         bool
+	isOverlay      bool
 	visible        bool
 	latencyMs      int64
 	connectedSince int64
@@ -1210,6 +1302,7 @@ func buildPeerInfos(peers []peerGeoData) []peerInfo {
 			agentName:      p.AgentName,
 			location:       p.Location,
 			isSelf:         p.IsSelf,
+			isOverlay:      p.IsOverlay,
 			latencyMs:      p.LatencyMs,
 			connectedSince: p.ConnectedSince,
 			motto:          p.Motto,
@@ -1316,6 +1409,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 		sx, sy     int
 		idx        int
 		isSelf     bool
+		isOverlay  bool
 		reputation float64
 	}
 	var markers []markerPos
@@ -1334,7 +1428,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 				sx := int(cX + rx*rX)
 				sy := int(cY - py*rY)
 				if sx >= 0 && sx < gW && sy >= 0 && sy < gH {
-					markers = append(markers, markerPos{sx: sx, sy: sy, idx: i, isSelf: p.IsSelf, reputation: p.Reputation})
+					markers = append(markers, markerPos{sx: sx, sy: sy, idx: i, isSelf: p.IsSelf, isOverlay: p.IsOverlay, reputation: p.Reputation})
 				}
 			}
 		}
@@ -1383,12 +1477,13 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 	// ── Color map for globe cells: track density-colored markers ──
 	type markerCell struct {
 		isSelf     bool
+		isOverlay  bool
 		density    int
 		reputation float64
 	}
 	globeMarkers := make(map[[2]int]markerCell)
 	for mi, m := range markers {
-		globeMarkers[[2]int{m.sx, m.sy}] = markerCell{isSelf: m.isSelf, density: markerDensity[mi], reputation: m.reputation}
+		globeMarkers[[2]int{m.sx, m.sy}] = markerCell{isSelf: m.isSelf, isOverlay: m.isOverlay, density: markerDensity[mi], reputation: m.reputation}
 	}
 
 	// ── Draw connection lines between self and peers (Bresenham) ──
@@ -1413,7 +1508,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 	}
 	if selfFound {
 		for mi, m := range markers {
-			if m.isSelf {
+			if m.isSelf || m.isOverlay {
 				continue
 			}
 			// Get traffic for this peer
@@ -1521,6 +1616,8 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 					if mc.isSelf {
 						// Use ASCII @ for self marker (orange)
 						sb.WriteString(cSelf + "@" + cReset)
+					} else if mc.isOverlay {
+						sb.WriteString(cOverlay + "+" + cReset)
 					} else {
 						sb.WriteString(repColor(mc.reputation) + "*" + cReset)
 					}
@@ -1642,9 +1739,15 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 	sb.WriteString("┤" + cReset + "\033[K\r\n")
 
 	// ── Help line — ASCII-only symbols to avoid CJK width problems ──
+	overlayCount := 0
+	for _, p := range peers {
+		if p.IsOverlay {
+			overlayCount++
+		}
+	}
 	panelNames := []string{"Self", "Peers", "Globe"}
-	help := fmt.Sprintf(" <>/Tab:Switch [%s]  Enter:Detail  1-9:Peer  q:Quit  @:You(%d)  *:Peer(%d)",
-		panelNames[state.activePanel], 1, stats.Peers)
+	help := fmt.Sprintf(" <>/Tab:Switch [%s]  Enter:Detail  1-9:Peer  q:Quit  @:You(%d)  *:Peer(%d)  +:Ygg(%d)",
+		panelNames[state.activePanel], 1, stats.Peers, overlayCount)
 	emitRow(&sb, cHelp+help+cReset, innerW)
 
 	// ── Bottom frame ──
@@ -1768,6 +1871,16 @@ func renderSelfDetail(pInfos []peerInfo, stats networkStats, w int, now int64) [
 		lines = append(lines, cSelfInfo+" Uptime:     "+cReset+formatDuration(now-stats.StartedAt))
 	}
 	lines = append(lines, cSelfInfo+" Version:    "+cReset+daemon.Version)
+	if stats.YggdrasilAddress != "" {
+		lines = append(lines, cSelfInfo+" Ygg IPv6:   "+cReset+stats.YggdrasilAddress)
+	}
+	if stats.OverlayPeers > 0 {
+		moltTag := ""
+		if stats.OverlayMolting {
+			moltTag = " \033[38;2;230;57;70m(molting)\033[0m"
+		}
+		lines = append(lines, cSelfInfo+" Overlay:    "+cReset+fmt.Sprintf("%d peers%s", stats.OverlayPeers, moltTag))
+	}
 
 	if len(stats.Topics) > 0 {
 		lines = append(lines, "")

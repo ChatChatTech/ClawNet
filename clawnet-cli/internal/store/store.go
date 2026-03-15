@@ -342,12 +342,24 @@ func (s *Store) migrate() error {
 // migratePredictionsCheck recreates the predictions table if its CHECK constraint
 // doesn't include 'pending'. This is a one-time migration for existing databases.
 func (s *Store) migratePredictionsCheck() error {
-	// Try a no-op update with status='pending' on a non-existent row to probe the CHECK.
-	_, err := s.DB.Exec(`UPDATE predictions SET status = 'pending' WHERE id = '__check_probe__'`)
+	// Probe: INSERT a row with status='pending', then delete it.
+	// UPDATE on non-existent rows won't trigger CHECK in SQLite.
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec(`INSERT INTO predictions (id, creator_id, question, resolution_date, status)
+	                   VALUES ('__check_probe__', '__probe__', '__probe__', '', 'pending')`)
 	if err == nil {
+		tx.Exec(`DELETE FROM predictions WHERE id = '__check_probe__'`)
+		tx.Commit()
 		return nil // CHECK already allows 'pending' — nothing to do
 	}
-	// CHECK violation means old schema — recreate
+	tx.Rollback()
+	// CHECK violation means old schema — recreate with FK checks disabled
+	s.DB.Exec(`PRAGMA foreign_keys = OFF`)
+	defer s.DB.Exec(`PRAGMA foreign_keys = ON`)
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS predictions_v2 (
 			id                TEXT PRIMARY KEY,
