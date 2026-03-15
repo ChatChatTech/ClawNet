@@ -17,10 +17,11 @@ import (
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/geo"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/identity"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/p2p"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/pow"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
 )
 
-const Version = "0.8.3"
+const Version = "0.8.4"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
@@ -179,8 +180,17 @@ func Start(foreground bool) error {
 	// Start prediction settlement loop (auto-settle expired pending predictions)
 	go d.predictionSettlementLoop(ctx)
 
-	// Ensure local credit account exists with initial energy (42 E for new nodes)
-	d.Store.EnsureCreditAccount(node.PeerID().String(), 42.0)
+	// Anti-Sybil: require one-time PoW before granting initial credits
+	peerIDStr := node.PeerID().String()
+	proof := pow.LoadProof(dataDir)
+	if proof == nil || proof.PeerID != peerIDStr || !pow.Verify(proof.PeerID, proof.Nonce, pow.DefaultDifficulty) {
+		fmt.Printf("[PoW] Solving proof-of-work (one-time, ~1s)...\n")
+		nonce := pow.Solve(peerIDStr, pow.DefaultDifficulty)
+		proof = &pow.Proof{PeerID: peerIDStr, Nonce: nonce, Difficulty: pow.DefaultDifficulty}
+		pow.SaveProof(dataDir, proof)
+		fmt.Printf("[PoW] Solved! nonce=%d\n", nonce)
+	}
+	d.Store.EnsureCreditAccount(peerIDStr, 42.0)
 
 	// Seed built-in tutorial task (one-time onboarding)
 	d.seedTutorialTask()

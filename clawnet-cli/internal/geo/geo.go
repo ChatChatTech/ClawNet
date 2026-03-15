@@ -30,11 +30,22 @@ type Locator struct {
 }
 
 // newLocator is the shared constructor used by DB-specific init files.
+// It prefers a downloaded DB11 on disk over the embedded database.
 func newLocator(dataDir string, dbZip []byte, dbFileName, dbType string) (*Locator, error) {
 	tmpDir := filepath.Join(dataDir, "data")
 	os.MkdirAll(tmpDir, 0700)
-	dbPath := filepath.Join(tmpDir, dbFileName)
 
+	// Prefer DB11 on disk (downloaded via `clawnet geo-upgrade`)
+	db11Path := filepath.Join(tmpDir, "IP2LOCATION-LITE-DB11.BIN")
+	if _, err := os.Stat(db11Path); err == nil {
+		db, err := ip2location.OpenDB(db11Path)
+		if err == nil {
+			return &Locator{db: db, dbType: "DB11"}, nil
+		}
+	}
+
+	// Fall back to embedded database
+	dbPath := filepath.Join(tmpDir, dbFileName)
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		if err := extractBIN(dbPath, dbZip); err != nil {
 			return nil, fmt.Errorf("extract embedded db: %w", err)

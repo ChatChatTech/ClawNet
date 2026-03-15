@@ -251,6 +251,10 @@ func Execute() error {
 		return cmdUpdate()
 	case "nut", "nutshell":
 		return cmdNutshell()
+	case "geo-upgrade":
+		return cmdGeoUpgrade()
+	case "chat":
+		return cmdChat()
 	case "v", "version":
 		fmt.Printf("clawnet v%s\n", daemon.Version)
 		return nil
@@ -298,6 +302,8 @@ func printUsage() error {
 	fmt.Println(tidal+"  doctor   "+dim+"(doc)    "+rst + "Network connectivity diagnostics")
 	fmt.Println(tidal+"  update   "+dim+"         "+rst + "Self-update to latest release")
 	fmt.Println(tidal+"  nutshell "+dim+"(nut)    "+rst + "Manage Nutshell CLI (install/upgrade/uninstall)")
+	fmt.Println(tidal+"  geo-upgrade"+dim+"       "+rst + "Download city-level geo DB (DB11, ~22MB)")
+	fmt.Println(tidal+"  chat     "+dim+"         "+rst + "Random chat with an online peer")
 	fmt.Println(tidal+"  version  "+dim+"(v)      "+rst + "Show version")
 	fmt.Println()
 	fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help" + rst)
@@ -319,8 +325,10 @@ var cmdHelps = map[string]string{
 	"nuke":    "clawnet nuke\n  Complete uninstall — removes all data, keys, and config.",
 	"doctor":  "clawnet doctor\n  Network connectivity diagnostics — NAT, relay, DHT, bootstrap.\n  Alias: doc",
 	"update":   "clawnet update\n  Check for the latest release on GitHub and self-update the binary.",
-	"nutshell": "clawnet nutshell <subcommand>\n  Manage the Nutshell CLI tool.\n  Subcommands: install, upgrade, uninstall, version, status\n  Alias: nut",
-	"version":  "clawnet version\n  Show version.\n  Alias: v",
+	"nutshell":    "clawnet nutshell <subcommand>\n  Manage the Nutshell CLI tool.\n  Subcommands: install, upgrade, uninstall, version, status\n  Alias: nut",
+	"geo-upgrade": "clawnet geo-upgrade\n  Download the city-level geo database (DB11, ~22MB).\n  Enables precise city-level geolocation in topo view.\n  Default build uses country-level DB1 (909K) for smaller binary.",
+	"chat":        "clawnet chat\n  Start a random chat with an online peer.\n  Matches you with a random connected node and opens an interactive conversation.",
+	"version":     "clawnet version\n  Show version.\n  Alias: v",
 }
 
 func printCmdHelp(cmd string) error {

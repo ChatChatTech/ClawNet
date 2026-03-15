@@ -58,6 +58,9 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 	mux.HandleFunc("GET /api/dm/inbox", d.handleDMInbox)
 	mux.HandleFunc("GET /api/dm/thread/{peer_id}", d.handleDMThread)
 
+	// Chat — random peer matching
+	mux.HandleFunc("GET /api/chat/match", d.handleChatMatch)
+
 	// Phase 1 — Topology SSE stream
 	mux.HandleFunc("GET /api/topology", d.handleTopologyWS)
 
@@ -645,6 +648,28 @@ func (d *Daemon) handleDMThread(w http.ResponseWriter, r *http.Request) {
 	// Mark as read
 	d.Store.MarkDMRead(peerID)
 	writeJSON(w, msgs)
+}
+
+// ── Chat matching ──
+
+func (d *Daemon) handleChatMatch(w http.ResponseWriter, r *http.Request) {
+	peers := d.Node.ConnectedPeers()
+	if len(peers) == 0 {
+		http.Error(w, `{"error":"no peers online"}`, http.StatusServiceUnavailable)
+		return
+	}
+	// Pick a random peer
+	idx := time.Now().UnixNano() % int64(len(peers))
+	chosen := peers[idx]
+	name := chosen.String()[:16]
+	if n, ok := d.PeerAgentNames.Load(chosen); ok {
+		name = n.(string)
+	}
+	info := map[string]string{
+		"peer_id": chosen.String(),
+		"name":    name,
+	}
+	writeJSON(w, info)
 }
 
 // ── Topology WebSocket ──

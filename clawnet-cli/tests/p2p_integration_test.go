@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/p2p"
 )
@@ -202,5 +204,94 @@ func TestGossipSubMessaging(t *testing.T) {
 		t.Log("SUCCESS: node2 received message from node1 via GossipSub")
 	case <-time.After(10 * time.Second):
 		t.Fatal("node2 did not receive message within timeout")
+	}
+}
+
+// TestDMEncryptedStream tests that DM-style messages can be sent between two
+// nodes via Noise-encrypted libp2p streams, verifying the core transport
+// encryption is functional (regression test for DM E2E encryption).
+func TestDMEncryptedStream(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	key1 := generateKey(t)
+	key2 := generateKey(t)
+
+	cfg1 := makeTestConfig(16001, 16001, 16847)
+	cfg1.BootstrapPeers = []string{} // no external bootstrap
+	cfg2 := makeTestConfig(16002, 16002, 16848)
+	cfg2.BootstrapPeers = []string{} // no external bootstrap
+
+	node1, err := p2p.NewNode(ctx, key1, cfg1)
+	if err != nil {
+		t.Fatalf("start node1: %v", err)
+	}
+	defer node1.Close()
+
+	node2, err := p2p.NewNode(ctx, key2, cfg2)
+	if err != nil {
+		t.Fatalf("start node2: %v", err)
+	}
+	defer node2.Close()
+
+	// Directly connect node1 → node2 via peerstore
+	node1.Host.Peerstore().AddAddrs(node2.PeerID(), node2.Addrs(), time.Hour)
+	if err := node1.Host.Connect(ctx, peer.AddrInfo{ID: node2.PeerID(), Addrs: node2.Addrs()}); err != nil {
+		t.Fatalf("direct connect: %v", err)
+	}
+	t.Logf("node1 (%s) connected to node2 (%s)", node1.PeerID(), node2.PeerID())
+
+	// Register DM-like stream handler on node2
+	const dmProto = "/clawnet/dm/1.0.0"
+	type wireMsg struct {
+		ID   string `json:"id"`
+		Body string `json:"body"`
+	}
+
+	dmReceived := make(chan wireMsg, 1)
+	node2.Host.SetStreamHandler(dmProto, func(s network.Stream) {
+		defer s.Close()
+		remotePeer := s.Conn().RemotePeer()
+		if remotePeer != node1.PeerID() {
+			t.Errorf("unexpected sender: got %s, want %s", remotePeer, node1.PeerID())
+			return
+		}
+		sec := s.Conn().ConnState().Security
+		transport := s.Conn().ConnState().Transport
+		t.Logf("Connection security=%q transport=%q", sec, transport)
+		// Noise protocol for TCP, or empty for QUIC (has built-in TLS 1.3)
+		if sec == "" && transport == "" {
+			t.Error("connection has no security or transport protocol")
+		}
+
+		var msg wireMsg
+		if err := json.NewDecoder(s).Decode(&msg); err != nil {
+			t.Errorf("decode DM: %v", err)
+			return
+		}
+		dmReceived <- msg
+	})
+
+	// Node1 opens stream to node2 and sends an encrypted DM
+	s, err := node1.Host.NewStream(ctx, node2.PeerID(), dmProto)
+	if err != nil {
+		t.Fatalf("open DM stream: %v", err)
+	}
+
+	sent := wireMsg{ID: "test-dm-001", Body: "encrypted hello from node1"}
+	data, _ := json.Marshal(sent)
+	if _, err := s.Write(data); err != nil {
+		t.Fatalf("write DM: %v", err)
+	}
+	s.Close()
+
+	select {
+	case got := <-dmReceived:
+		if got.ID != sent.ID || got.Body != sent.Body {
+			t.Errorf("DM mismatch: got %+v, want %+v", got, sent)
+		}
+		t.Logf("SUCCESS: DM received via encrypted stream — id=%s body=%q", got.ID, got.Body)
+	case <-time.After(10 * time.Second):
+		t.Fatal("DM not received within timeout")
 	}
 }

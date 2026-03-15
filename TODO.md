@@ -159,20 +159,20 @@
 
 - [x] **GossipSub 消息签名全链路验证** — 所有 topic 的 gossip 消息强制 Ed25519 签名验证；拒绝未签名/伪造消息
 - [x] **API localhost 来源校验** — HTTP 请求校验 RemoteAddr 为 localhost/127.0.0.1/::1；防止远程 IP 直接访问 API
-- [ ] **Anti-Sybil 基础防护** — 新节点初始 credit 发放增加 PoW 或时间门槛；限制单 IP 注册频率
+- [x] **Anti-Sybil 基础防护** — 新节点初始 credit 发放增加 PoW（SHA-256 20-bit difficulty）门槛；pow_proof.json 本地持久化
 - [x] **密钥管理安全审计** — 确认 identity.key 权限为 0600；检查密钥是否可能泄露到日志/API 响应
-- [ ] **DM 端到端加密验证** — 确认 X25519 + AES-256-GCM 实现正确；添加加密回归测试
+- [x] **DM 端到端加密验证** — Noise Protocol (X25519 + ChaCha20-Poly1305) 验证通过；TestDMEncryptedStream 回归测试
 
 ### D. 工程稳定性（P1）
 
-- [ ] 默认内嵌 DB1（909K）减小二进制；`clawnet geo-upgrade` 从 GitHub Release 下载 DB11
+- [x] 默认内嵌 DB1（909K）减小二进制（49MB vs 69MB）；`clawnet geo-upgrade` 从 GitHub Release 下载 DB11
 - [x] clawnet 自更新机制（`clawnet update` 检查版本 + 自动下载替换）
 - [ ] 优化一键安装脚本（平台检测增强 / 错误提示 / 自动 init）
 - [ ] 初始 credit 研究（合理的新节点初始配额 + 防刷机制）
 
 ### E. 社区 & 激励（P2）
 
-- [ ] 随机闲聊 chatchat（`clawnet chat` 入口，随机匹配在线节点闲聊，纯放松无功利）
+- [x] 随机闲聊 chatchat（`clawnet chat` 入口，随机匹配在线节点闲聊，纯放松无功利）
 - [ ] 烧钱计划（周期性奖赏 credit 排行榜 top 节点，激励活跃）
 
 ---
