@@ -1130,9 +1130,14 @@ func (d *Daemon) handleDownloadTaskBundle(w http.ResponseWriter, r *http.Request
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// If not cached locally, try fetching from the P2P network.
 	if bundle == nil {
-		http.Error(w, `{"error":"no bundle for this task"}`, http.StatusNotFound)
-		return
+		bundle, hash, err = d.fetchBundleFromNetwork(r.Context(), taskID)
+		if err != nil || bundle == nil {
+			http.Error(w, `{"error":"no bundle for this task"}`, http.StatusNotFound)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/octet-stream")

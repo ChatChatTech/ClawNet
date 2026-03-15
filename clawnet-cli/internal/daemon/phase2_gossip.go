@@ -63,6 +63,17 @@ type GossipResumeMsg struct {
 	Resume *store.AgentResume  `json:"resume,omitempty"`
 }
 
+// gossipAuthorOK verifies that the claimed author peer ID in a gossip
+// payload matches the verified sender (msg.GetFrom()). StrictSign ensures
+// the From field is authentic; this guards against payload-level spoofing.
+func gossipAuthorOK(msg *pubsub.Message, claimedPeerID string) bool {
+	if claimedPeerID == "" {
+		return true // no claim to verify
+	}
+	sender := msg.GetFrom()
+	return sender.String() == claimedPeerID
+}
+
 // startPhase2Gossip subscribes to task and swarm GossipSub topics.
 func (d *Daemon) startPhase2Gossip(ctx context.Context) {
 	// Tasks topic
@@ -280,15 +291,15 @@ func (d *Daemon) handleTaskSub(ctx context.Context, sub *pubsub.Subscription) {
 
 		switch gm.Type {
 		case "task":
-			if gm.Task != nil {
+			if gm.Task != nil && gossipAuthorOK(msg, gm.Task.AuthorID) {
 				d.Store.InsertTask(gm.Task)
 			}
 		case "bid":
-			if gm.Bid != nil {
+			if gm.Bid != nil && gossipAuthorOK(msg, gm.Bid.BidderID) {
 				d.Store.InsertTaskBid(gm.Bid)
 			}
 		case "update":
-			if gm.Task != nil {
+			if gm.Task != nil && gossipAuthorOK(msg, gm.Task.AuthorID) {
 				d.Store.InsertTask(gm.Task)
 			}
 		}
@@ -312,15 +323,15 @@ func (d *Daemon) handleSwarmSub(ctx context.Context, sub *pubsub.Subscription) {
 
 		switch gm.Type {
 		case "swarm":
-			if gm.Swarm != nil {
+			if gm.Swarm != nil && gossipAuthorOK(msg, gm.Swarm.CreatorID) {
 				d.Store.InsertSwarm(gm.Swarm)
 			}
 		case "contribution":
-			if gm.Contribution != nil {
+			if gm.Contribution != nil && gossipAuthorOK(msg, gm.Contribution.AuthorID) {
 				d.Store.InsertSwarmContribution(gm.Contribution)
 			}
 		case "synthesis":
-			if gm.Swarm != nil {
+			if gm.Swarm != nil && gossipAuthorOK(msg, gm.Swarm.CreatorID) {
 				d.Store.SynthesizeSwarm(gm.Swarm.ID, gm.Swarm.Synthesis)
 			}
 		}
@@ -537,11 +548,11 @@ func (d *Daemon) handlePredictionSub(ctx context.Context, sub *pubsub.Subscripti
 
 		switch gm.Type {
 		case "prediction":
-			if gm.Prediction != nil {
+			if gm.Prediction != nil && gossipAuthorOK(msg, gm.Prediction.CreatorID) {
 				d.Store.InsertPrediction(gm.Prediction)
 			}
 		case "bet":
-			if gm.Bet != nil {
+			if gm.Bet != nil && gossipAuthorOK(msg, gm.Bet.BettorID) {
 				d.Store.InsertPredictionBet(gm.Bet)
 			}
 		case "resolution":
@@ -658,7 +669,7 @@ func (d *Daemon) handleResumeSub(ctx context.Context, sub *pubsub.Subscription) 
 		if err := json.Unmarshal(msg.Data, &gm); err != nil {
 			continue
 		}
-		if gm.Type == "resume" && gm.Resume != nil {
+		if gm.Type == "resume" && gm.Resume != nil && gossipAuthorOK(msg, gm.Resume.PeerID) {
 			d.Store.UpsertResume(gm.Resume)
 		}
 	}

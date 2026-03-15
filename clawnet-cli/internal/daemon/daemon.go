@@ -20,7 +20,7 @@ import (
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
 )
 
-const Version = "0.8.0"
+const Version = "0.9.0"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
@@ -76,10 +76,15 @@ func Start(foreground bool) error {
 	if len(cfg.AnnounceAddrs) == 0 {
 		if extIP := p2p.DetectExternalIP(); extIP != "" {
 			fmt.Printf("STUN detected external IP: %s\n", extIP)
+			// Determine ip4 vs ip6 protocol based on address format
+			proto := "ip4"
+			if strings.Contains(extIP, ":") {
+				proto = "ip6"
+			}
 			cfg.AnnounceAddrs = []string{
-				fmt.Sprintf("/ip4/%s/tcp/4001", extIP),
-				fmt.Sprintf("/ip4/%s/udp/4001/quic-v1", extIP),
-				fmt.Sprintf("/ip4/%s/tcp/4002/ws", extIP),
+				fmt.Sprintf("/%s/%s/tcp/4001", proto, extIP),
+				fmt.Sprintf("/%s/%s/udp/4001/quic-v1", proto, extIP),
+				fmt.Sprintf("/%s/%s/tcp/4002/ws", proto, extIP),
 			}
 		}
 	}
@@ -179,6 +184,9 @@ func Start(foreground bool) error {
 
 	// Register libp2p stream handler for direct messages
 	d.registerDMHandler()
+
+	// Register P2P bundle transfer stream handler
+	d.registerBundleHandler()
 
 	// Register history sync stream handler and start sync
 	d.registerSyncHandler()

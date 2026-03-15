@@ -247,6 +247,8 @@ func Execute() error {
 		return cmdNuke()
 	case "doc", "doctor":
 		return cmdDoctor()
+	case "update":
+		return cmdUpdate()
 	case "v", "version":
 		fmt.Printf("clawnet v%s\n", daemon.Version)
 		return nil
@@ -292,6 +294,7 @@ func printUsage() error {
 	fmt.Println(tidal+"  import   "+dim+"         "+rst + "Import identity from an export file")
 	fmt.Println(tidal+"  nuke     "+dim+"         "+rst + "Complete uninstall — remove all data")
 	fmt.Println(tidal+"  doctor   "+dim+"(doc)    "+rst + "Network connectivity diagnostics")
+	fmt.Println(tidal+"  update   "+dim+"         "+rst + "Self-update to latest release")
 	fmt.Println(tidal+"  version  "+dim+"(v)      "+rst + "Show version")
 	fmt.Println()
 	fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help" + rst)
@@ -312,6 +315,7 @@ var cmdHelps = map[string]string{
 	"import":  "clawnet import <file>\n  Import identity from an export file.",
 	"nuke":    "clawnet nuke\n  Complete uninstall — removes all data, keys, and config.",
 	"doctor":  "clawnet doctor\n  Network connectivity diagnostics — NAT, relay, DHT, bootstrap.\n  Alias: doc",
+	"update":  "clawnet update\n  Check for the latest release on GitHub and self-update the binary.",
 	"version": "clawnet version\n  Show version.\n  Alias: v",
 }
 
