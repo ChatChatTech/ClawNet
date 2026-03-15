@@ -143,8 +143,8 @@ func (d *Daemon) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	if d.Overlay != nil {
 		status["overlay_peers"] = d.Overlay.PeerCount()
-		status["yggdrasil_address"] = d.Overlay.YggdrasilAddress()
-		status["yggdrasil_subnet"] = d.Overlay.YggdrasilSubnet()
+		status["overlay_ipv6"] = d.Overlay.OverlayAddress()
+		status["overlay_subnet"] = d.Overlay.OverlaySubnet()
 		status["overlay_molting"] = d.Overlay.IsMolting()
 	}
 	writeJSON(w, status)
@@ -976,8 +976,8 @@ func (d *Daemon) handleOverlayStatus(w http.ResponseWriter, r *http.Request) {
 	if d.Overlay != nil {
 		status["peer_count"] = d.Overlay.PeerCount()
 		status["public_key"] = fmt.Sprintf("%x", d.Overlay.PublicKey())
-		status["yggdrasil_address"] = d.Overlay.YggdrasilAddress()
-		status["yggdrasil_subnet"] = d.Overlay.YggdrasilSubnet()
+		status["overlay_ipv6"] = d.Overlay.OverlayAddress()
+		status["overlay_subnet"] = d.Overlay.OverlaySubnet()
 		status["molting"] = d.Overlay.IsMolting()
 		if debugInfo := d.Overlay.GetDebugInfo(); debugInfo != nil {
 			status["routing_entries"] = debugInfo.Self.RoutingEntries

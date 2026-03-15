@@ -1,7 +1,7 @@
 package overlay
 
 // TCP transport for overlay links.
-// Inspired by Yggdrasil's src/core/link_tcp.go.
+// TCP transport for ClawNet overlay links.
 
 import (
 	"context"

@@ -102,12 +102,12 @@ func Start(foreground bool, devLayers []string) error {
 		}
 	}
 
-	// Yggdrasil: detect 200::/7 IPv6 addresses from system interfaces.
-	// If the machine runs Yggdrasil, any peer on the Yggdrasil mesh can
+	// Overlay mesh: detect 200::/7 IPv6 addresses from system interfaces.
+	// If the machine has overlay mesh connectivity, any peer on the mesh can
 	// directly dial us via these addresses — zero configuration needed.
-	if yggAddrs := detectYggdrasilAddrs(); len(yggAddrs) > 0 {
-		for _, addr := range yggAddrs {
-			fmt.Printf("Yggdrasil IPv6 detected: %s\n", addr)
+	if overlayAddrs := detectOverlayAddrs(); len(overlayAddrs) > 0 {
+		for _, addr := range overlayAddrs {
+			fmt.Printf("Overlay IPv6 detected: %s\n", addr)
 			cfg.AnnounceAddrs = append(cfg.AnnounceAddrs,
 				fmt.Sprintf("/ip6/%s/tcp/4001", addr),
 				fmt.Sprintf("/ip6/%s/udp/4001/quic-v1", addr),
@@ -373,10 +373,10 @@ func (d *Daemon) startProfilePublisher(ctx context.Context) {
 	}()
 }
 
-// detectYggdrasilAddrs scans network interfaces for Yggdrasil 200::/7 IPv6 addresses.
-// If the machine runs a Yggdrasil daemon, these addresses are reachable by any
-// peer on the Yggdrasil mesh network, enabling direct connectivity without NAT traversal.
-func detectYggdrasilAddrs() []string {
+// detectOverlayAddrs scans network interfaces for overlay 200::/7 IPv6 addresses.
+// If the machine has overlay mesh connectivity, these addresses are reachable by any
+// peer on the mesh network, enabling direct connectivity without NAT traversal.
+func detectOverlayAddrs() []string {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil
@@ -396,7 +396,7 @@ func detectYggdrasilAddrs() []string {
 				continue
 			}
 			ip := ipNet.IP
-			// Yggdrasil uses the 200::/7 range (0x02xx or 0x03xx first byte)
+			// 200::/7 range (0x02xx or 0x03xx first byte) — overlay addresses
 			if len(ip) == net.IPv6len && (ip[0]&0xFE) == 0x02 {
 				addrs = append(addrs, ip.String())
 			}

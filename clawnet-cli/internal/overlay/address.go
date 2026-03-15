@@ -1,12 +1,11 @@
 package overlay
 
-// Yggdrasil-compatible IPv6 address derivation from Ed25519 public keys.
-// Ported from yggdrasil-go/src/address/address.go — pure cryptographic
-// function, no external dependencies.
+// ClawNet overlay IPv6 address derivation from Ed25519 public keys.
+// Pure cryptographic function, no external dependencies.
 //
-// The 200::/7 address space is a reserved ULA range used exclusively
-// by the Yggdrasil mesh network. The address encodes the public key
-// so that any node can verify address ownership.
+// The 200::/7 address space is used by the overlay mesh network.
+// The address encodes the public key so that any node can verify
+// address ownership.
 
 import (
 	"crypto/ed25519"
@@ -14,11 +13,11 @@ import (
 	"net"
 )
 
-// YggdrasilAddress derives the Yggdrasil 200::/7 IPv6 address from an
+// OverlayAddress derives the ClawNet 200::/7 IPv6 address from an
 // Ed25519 public key. Returns the address as a 16-byte array.
 // Algorithm: bitwise-invert the key, count leading ones → ones byte,
 // then pack remaining bits after the first 0 into the address.
-func YggdrasilAddress(publicKey ed25519.PublicKey) [16]byte {
+func OverlayAddress(publicKey ed25519.PublicKey) [16]byte {
 	if len(publicKey) != ed25519.PublicKeySize {
 		return [16]byte{}
 	}
@@ -55,17 +54,17 @@ func YggdrasilAddress(publicKey ed25519.PublicKey) [16]byte {
 		}
 	}
 
-	// Prefix: 0x02 (Yggdrasil address range 200::/7, node bit = 0)
+	// Prefix: 0x02 (overlay address range 200::/7, node bit = 0)
 	addr[0] = 0x02
 	addr[1] = ones
 	copy(addr[2:], temp)
 	return addr
 }
 
-// YggdrasilSubnet derives the Yggdrasil /64 subnet prefix from an
+// OverlaySubnet derives the overlay /64 subnet prefix from an
 // Ed25519 public key. Returns the first 8 bytes.
-func YggdrasilSubnet(publicKey ed25519.PublicKey) [8]byte {
-	addr := YggdrasilAddress(publicKey)
+func OverlaySubnet(publicKey ed25519.PublicKey) [8]byte {
+	addr := OverlayAddress(publicKey)
 	var subnet [8]byte
 	copy(subnet[:], addr[:8])
 	// Set the subnet bit (last bit of prefix byte)
@@ -73,16 +72,16 @@ func YggdrasilSubnet(publicKey ed25519.PublicKey) [8]byte {
 	return subnet
 }
 
-// FormatYggdrasilAddress formats the derived IPv6 address as a string.
-func FormatYggdrasilAddress(publicKey ed25519.PublicKey) string {
-	addr := YggdrasilAddress(publicKey)
+// FormatOverlayAddress formats the derived IPv6 address as a string.
+func FormatOverlayAddress(publicKey ed25519.PublicKey) string {
+	addr := OverlayAddress(publicKey)
 	ip := net.IP(addr[:])
 	return ip.String()
 }
 
-// FormatYggdrasilSubnet formats the derived /64 subnet prefix as a string.
-func FormatYggdrasilSubnet(publicKey ed25519.PublicKey) string {
-	subnet := YggdrasilSubnet(publicKey)
+// FormatOverlaySubnet formats the derived /64 subnet prefix as a string.
+func FormatOverlaySubnet(publicKey ed25519.PublicKey) string {
+	subnet := OverlaySubnet(publicKey)
 	ip := make(net.IP, 16)
 	copy(ip[:8], subnet[:])
 	return fmt.Sprintf("%s/64", ip.String())

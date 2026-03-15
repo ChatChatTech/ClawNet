@@ -1,8 +1,7 @@
 package overlay
 
-// TLS transport for overlay links.
-// Inspired by Yggdrasil's src/core/link_tls.go.
-// TLS provides transport encryption; the Yggdrasil wire handshake
+// TLS transport for ClawNet overlay links.
+// TLS provides transport encryption; the wire handshake
 // handles identity authentication (ed25519 signature verification).
 
 import (
@@ -23,7 +22,7 @@ func newLinkTLS(l *links) *linkTLS {
 	return &linkTLS{
 		links: l,
 		config: &tls.Config{
-			InsecureSkipVerify: true, // Yggdrasil handshake is the real auth layer
+			InsecureSkipVerify: true, // overlay handshake is the real auth layer
 		},
 	}
 }

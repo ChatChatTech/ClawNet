@@ -1,8 +1,7 @@
 package overlay
 
-// Yggdrasil-compatible wire handshake protocol.
-// Extracted from yggdrasil-go/src/core/version.go to allow ClawNet overlay
-// nodes to peer directly with the global Yggdrasil mesh (~4000 nodes).
+// Overlay wire handshake protocol.
+// ClawNet overlay nodes use this to peer with the global mesh (~4000 nodes).
 //
 // Wire format:
 //   "meta" (4 bytes) + uint16(remaining length) + TLV fields + ed25519 signature
@@ -22,12 +21,12 @@ import (
 )
 
 const (
-	yggProtoMajor uint16 = 0
-	yggProtoMinor uint16 = 5
+	wireProtoMajor uint16 = 0
+	wireProtoMinor uint16 = 5
 	handshakeDeadline     = 6 * time.Second
 )
 
-// TLV type tags (must match Yggdrasil exactly; order is immutable).
+// TLV type tags (wire protocol; order is immutable).
 const (
 	tlvVersionMajor uint16 = iota // uint16
 	tlvVersionMinor               // uint16
@@ -37,10 +36,10 @@ const (
 
 var metaPreamble = [4]byte{'m', 'e', 't', 'a'}
 
-// yggHandshake performs a Yggdrasil-compatible handshake on conn.
+// overlayHandshake performs a wire-compatible handshake on conn.
 // Returns the remote's ed25519 public key and negotiated priority.
 // password should be nil for open peering (standard for public peers).
-func yggHandshake(conn net.Conn, privKey ed25519.PrivateKey, priority uint8, password []byte) (ed25519.PublicKey, uint8, error) {
+func overlayHandshake(conn net.Conn, privKey ed25519.PrivateKey, priority uint8, password []byte) (ed25519.PublicKey, uint8, error) {
 	localPub := privKey.Public().(ed25519.PublicKey)
 
 	// --- Encode our metadata ---
@@ -51,12 +50,12 @@ func yggHandshake(conn net.Conn, privKey ed25519.PrivateKey, priority uint8, pas
 	// TLV: version major
 	bs = binary.BigEndian.AppendUint16(bs, tlvVersionMajor)
 	bs = binary.BigEndian.AppendUint16(bs, 2)
-	bs = binary.BigEndian.AppendUint16(bs, yggProtoMajor)
+	bs = binary.BigEndian.AppendUint16(bs, wireProtoMajor)
 
 	// TLV: version minor
 	bs = binary.BigEndian.AppendUint16(bs, tlvVersionMinor)
 	bs = binary.BigEndian.AppendUint16(bs, 2)
-	bs = binary.BigEndian.AppendUint16(bs, yggProtoMinor)
+	bs = binary.BigEndian.AppendUint16(bs, wireProtoMinor)
 
 	// TLV: public key
 	bs = binary.BigEndian.AppendUint16(bs, tlvPublicKey)
@@ -97,7 +96,7 @@ func yggHandshake(conn net.Conn, privKey ed25519.PrivateKey, priority uint8, pas
 		return nil, 0, fmt.Errorf("read header: %w", err)
 	}
 	if !bytes.Equal(hdr[:4], metaPreamble[:]) {
-		return nil, 0, fmt.Errorf("invalid preamble: not Yggdrasil-compatible")
+		return nil, 0, fmt.Errorf("invalid preamble: not overlay-compatible")
 	}
 	remLen := binary.BigEndian.Uint16(hdr[4:6])
 	if remLen < ed25519.SignatureSize {
@@ -137,9 +136,9 @@ func yggHandshake(conn net.Conn, privKey ed25519.PrivateKey, priority uint8, pas
 	}
 
 	// Verify version
-	if remoteMajor != yggProtoMajor || remoteMinor != yggProtoMinor {
+	if remoteMajor != wireProtoMajor || remoteMinor != wireProtoMinor {
 		return nil, 0, fmt.Errorf("version mismatch: remote %d.%d, expected %d.%d",
-			remoteMajor, remoteMinor, yggProtoMajor, yggProtoMinor)
+			remoteMajor, remoteMinor, wireProtoMajor, wireProtoMinor)
 	}
 	if len(remotePub) != ed25519.PublicKeySize {
 		return nil, 0, fmt.Errorf("missing or invalid remote public key")

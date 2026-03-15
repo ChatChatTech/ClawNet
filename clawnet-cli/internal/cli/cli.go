@@ -47,7 +47,7 @@ const (
 	cBanner    = "\033[1;38;2;230;57;70m"   // Bold Lobster Red — ASCII banner
 	cBannerHL  = "\033[1;38;2;255;220;50m"  // Bright Yellow — highlighted banner
 	cHighlight = "\033[7;38;2;230;57;70m"   // Reverse video — highlight frame
-	cOverlay   = "\033[38;2;0;200;180m"     // Teal — Yggdrasil overlay peers
+	cOverlay   = "\033[38;2;0;200;180m"     // Teal — overlay peers
 	cDim       = "\033[2m"                  // dim attribute
 	cReset     = "\033[0m"
 )
@@ -916,10 +916,10 @@ type networkStats struct {
 	StartedAt int64    `json:"started_at"`
 	PeerID    string   `json:"peer_id"`
 	// overlay
-	OverlayPeers     int    `json:"-"`
-	YggdrasilAddress string `json:"-"`
-	YggdrasilSubnet  string `json:"-"`
-	OverlayMolting   bool   `json:"-"`
+	OverlayPeers    int    `json:"-"`
+	OverlayIPv6     string `json:"-"`
+	OverlaySubnet   string `json:"-"`
+	OverlayMolting  bool   `json:"-"`
 }
 
 type creditInfo struct {
@@ -940,7 +940,7 @@ func fetchGeoPeers(base string) []peerGeoData {
 	return data
 }
 
-// fetchOverlayGeo fetches Yggdrasil overlay peers with geo data and converts
+// fetchOverlayGeo fetches overlay peers with geo data and converts
 // them to peerGeoData for unified rendering in the topo globe.
 func fetchOverlayGeo(base string) []peerGeoData {
 	resp, err := http.Get(base + "/api/overlay/peers/geo")
@@ -983,7 +983,7 @@ func fetchOverlayGeo(base string) []peerGeoData {
 		pg := peerGeoData{
 			PeerID:    p.KeyHex,
 			ShortID:   p.KeyHex[:8],
-			AgentName: "ygg:" + p.KeyHex[:8],
+			AgentName: "claw:" + p.KeyHex[:8],
 			Location:  p.Location,
 			Geo:       p.Geo,
 			IsOverlay: true,
@@ -1029,11 +1029,11 @@ func fetchNetworkStats(base string) networkStats {
 		if v, ok := raw["overlay_peers"].(float64); ok {
 			stats.OverlayPeers = int(v)
 		}
-		if v, ok := raw["yggdrasil_address"].(string); ok {
-			stats.YggdrasilAddress = v
+		if v, ok := raw["overlay_ipv6"].(string); ok {
+			stats.OverlayIPv6 = v
 		}
-		if v, ok := raw["yggdrasil_subnet"].(string); ok {
-			stats.YggdrasilSubnet = v
+		if v, ok := raw["overlay_subnet"].(string); ok {
+			stats.OverlaySubnet = v
 		}
 		if v, ok := raw["overlay_molting"].(bool); ok {
 			stats.OverlayMolting = v
@@ -1871,8 +1871,8 @@ func renderSelfDetail(pInfos []peerInfo, stats networkStats, w int, now int64) [
 		lines = append(lines, cSelfInfo+" Uptime:     "+cReset+formatDuration(now-stats.StartedAt))
 	}
 	lines = append(lines, cSelfInfo+" Version:    "+cReset+daemon.Version)
-	if stats.YggdrasilAddress != "" {
-		lines = append(lines, cSelfInfo+" Ygg IPv6:   "+cReset+stats.YggdrasilAddress)
+	if stats.OverlayIPv6 != "" {
+		lines = append(lines, cSelfInfo+" Claw IPv6:  "+cReset+stats.OverlayIPv6)
 	}
 	if stats.OverlayPeers > 0 {
 		moltTag := ""

@@ -1,14 +1,13 @@
 package overlay
 
-// DefaultYggdrasilPeers contains well-known public Yggdrasil peers
-// that ClawNet can connect to via the Yggdrasil-compatible wire handshake.
+// DefaultOverlayPeers contains well-known public overlay mesh peers
+// that ClawNet connects to via the wire-compatible handshake.
 // URI format: "tcp://host:port" or "tls://host:port"
 // Selected for high uptime (≥97%) and geographic diversity.
-// Source: https://publicpeers.neilalexander.dev/
 //
 // The links subsystem handles per-link exponential backoff automatically.
 // 84 initial peers — typically 30-40 will be online at any time.
-var DefaultYggdrasilPeers = []string{
+var DefaultOverlayPeers = []string{
 	// === Asia-Pacific (closest to ClawNet USTC nodes) ===
 	"tcp://yg-tyo.magicum.net:32334",    // Tokyo, Japan
 	"tcp://yg-hkg.magicum.net:32334",    // Hong Kong
@@ -140,4 +139,17 @@ var DefaultYggdrasilPeers = []string{
 	"tls://ygg-pa.incognet.io:8884",      // Pennsylvania, US
 	"tls://ygg-wa.incognet.io:8884",      // Washington, US
 	"tls://longseason.1200bps.xyz:13122", // US
+
+	// Additional TLS peers (Europe)
+	"tls://supergay.network:9001",        // Germany
+	"tls://de-fsn-1.peer.v4.yggdrasil.chaz6.com:6010", // Germany
+	"tls://pl1.servers.devices.cwinfo.net:58243",       // Poland
+	"tls://athenobios.trwnh.com:3813",    // Luxembourg
+	"tls://54.37.137.221:16920",          // France
+
+	// Additional TLS peers (North America)
+	"tls://ca1.servers.devices.cwinfo.net:58243",       // Canada
+	"tls://102.223.180.74:993",           // Nigeria
+	"tls://lax.yuetau.net:6789",          // Los Angeles, US
+	"tls://supergay.network:9002",        // US
 }

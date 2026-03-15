@@ -253,7 +253,7 @@ func (pm *PeerManager) mergeDefaults() {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	for _, addr := range DefaultYggdrasilPeers {
+	for _, addr := range DefaultOverlayPeers {
 		if _, exists := pm.peers[addr]; !exists {
 			pm.peers[addr] = &PeerState{
 				Address: addr,

@@ -22,9 +22,8 @@ const (
 )
 
 // Transport manages an Ironwood overlay network with link-level connection management.
-// Inspired by Yggdrasil's core.Core: wraps encrypted.PacketConn with a links
-// subsystem that handles TCP/TLS connections, per-link byte counting,
-// exponential backoff, and URI-based peer addressing.
+// Wraps encrypted.PacketConn with a links subsystem that handles TCP/TLS connections,
+// per-link byte counting, exponential backoff, and URI-based peer addressing.
 type Transport struct {
 	pc          *encrypted.PacketConn
 	privKey     ed25519.PrivateKey
@@ -63,9 +62,9 @@ func NewTransport(priv crypto.PrivKey, listenPort int, staticPeers, bootstrapPee
 		return nil, fmt.Errorf("create overlay packetconn: %w", err)
 	}
 
-	// Merge static, bootstrap, and default Yggdrasil public peers, deduplicating
+	// Merge static, bootstrap, and default overlay public peers, deduplicating
 	allPeers := mergeUnique(staticPeers, bootstrapPeers)
-	allPeers = mergeUnique(allPeers, DefaultYggdrasilPeers)
+	allPeers = mergeUnique(allPeers, DefaultOverlayPeers)
 
 	// Normalize: ensure URI scheme present (backward compat with "host:port")
 	for i, p := range allPeers {
@@ -269,15 +268,15 @@ func (t *Transport) IsMolting() bool {
 	return t.molting
 }
 
-// YggdrasilAddress returns the Yggdrasil 200::/7 IPv6 address derived from
+// OverlayAddress returns the ClawNet 200::/7 IPv6 address derived from
 // this node's overlay Ed25519 public key.
-func (t *Transport) YggdrasilAddress() string {
-	return FormatYggdrasilAddress(t.PublicKey())
+func (t *Transport) OverlayAddress() string {
+	return FormatOverlayAddress(t.PublicKey())
 }
 
-// YggdrasilSubnet returns the Yggdrasil /64 subnet prefix.
-func (t *Transport) YggdrasilSubnet() string {
-	return FormatYggdrasilSubnet(t.PublicKey())
+// OverlaySubnet returns the overlay /64 subnet prefix.
+func (t *Transport) OverlaySubnet() string {
+	return FormatOverlaySubnet(t.PublicKey())
 }
 
 // PeerCount returns the number of currently connected overlay peers.
