@@ -134,8 +134,8 @@
 - [x] **STUN 外部 IP 自检** — 启动时 STUN 探测公网 IP，自动设置 AnnounceAddrs；减少手动配置需求
 - [ ] **K8s Headless Service DNS 发现** — 检测 `KUBERNETES_SERVICE_HOST` 环境变量；DNS 查询 `CLAWNET_K8S_SERVICE` 构建 peer 列表；同集群 Pod 无需公网 Bootstrap
 - [ ] **Bootstrap 节点部署到 US / EU** — 至少增加 1 个美国 + 1 个欧洲 Bootstrap/Relay 节点（用户部署，代码侧增加多 Bootstrap 配置支持）
-- [ ] **Relay 节点池扩展** — 当前仅 Bootstrap 节点做 Relay；添加 Relay 节点发现机制（DHT Rendezvous 或静态列表）；支持多 Relay 负载均衡
-- [ ] **Relay 健康检查 + 自动切换** — Relay 心跳探测（30s 周期），主 Relay 无响应时自动切换到备用 Relay；当前单 Relay 宕机 = 所有 NAT 节点全断
+- [x] **Relay 节点池扩展** — DHT Rendezvous `/clawnet/relay-providers` 发现 + 连接节点协议探测；公网节点自动广播为 relay provider
+- [x] **Relay 健康检查 + 自动切换** — `relayHealthLoop` 30s 周期 Ping 所有已知 relay，3 次失败标记 DOWN 并自动切换到 DHT 发现的备用 relay
 - [x] **连接恢复（Reconnect）策略** — 对最近活跃 peer 维护"热列表"，断联后立即指数退避重连，而非等待下次 DHT 轮询（30s）
 - [x] **`clawnet doctor` 诊断命令** — 一行输出连通性全貌：本地地址、公网地址、NAT 类型、Relay 状态、Bootstrap 可达性、DHT 路由表大小；新用户排障第一命令
 
@@ -159,7 +159,7 @@
 
 - [x] **GossipSub 消息签名全链路验证** — 所有 topic 的 gossip 消息强制 Ed25519 签名验证；拒绝未签名/伪造消息
 - [x] **API localhost 来源校验** — HTTP 请求校验 RemoteAddr 为 localhost/127.0.0.1/::1；防止远程 IP 直接访问 API
-- [x] **Anti-Sybil 基础防护** — 新节点初始 credit 发放增加 PoW（SHA-256 20-bit difficulty）门槛；pow_proof.json 本地持久化
+- [x] **Anti-Sybil 基础防护** — PoW SHA-256 24-bit difficulty（~3s），初始 10 credit + tutorial 50 credit = 60 起步；pow_proof.json 本地持久化
 - [x] **密钥管理安全审计** — 确认 identity.key 权限为 0600；检查密钥是否可能泄露到日志/API 响应
 - [x] **DM 端到端加密验证** — Noise Protocol (X25519 + ChaCha20-Poly1305) 验证通过；TestDMEncryptedStream 回归测试
 
@@ -167,8 +167,8 @@
 
 - [x] 默认内嵌 DB1（909K）减小二进制（49MB vs 69MB）；`clawnet geo-upgrade` 从 GitHub Release 下载 DB11
 - [x] clawnet 自更新机制（`clawnet update` 检查版本 + 自动下载替换）
-- [ ] 优化一键安装脚本（平台检测增强 / 错误提示 / 自动 init）
-- [ ] 初始 credit 研究（合理的新节点初始配额 + 防刷机制）
+- [x] 优化一键安装脚本（install.sh：OS/arch 自动检测 + GitHub Release 下载 + 自动 init + 错误提示）
+- [x] 初始 credit 研究（PoW 24-bit ~3s 防刷 + 初始 10 credit + tutorial +50 = 60 起步 + 每日 regen + prestige 衰减）
 
 ### E. 社区 & 激励（P2）
 

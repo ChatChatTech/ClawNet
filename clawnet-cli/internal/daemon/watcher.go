@@ -4,14 +4,18 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	"github.com/multiformats/go-multiaddr"
 )
+
+const relayRendezvous = "/clawnet/relay-providers"
 
 // peerWatcher implements network.Notifiee to watch peer connections,
 // log events, and feed the hot-peer reconnect list.
@@ -190,4 +194,223 @@ func (d *Daemon) pingLoop(ctx context.Context) {
 			}(p)
 		}
 	}
+}
+
+// relayState tracks the health of a known relay peer.
+type relayState struct {
+	id          peer.ID
+	addrs       []multiaddr.Multiaddr
+	alive       bool
+	failCount   int
+	lastPingRTT time.Duration
+	lastCheck   time.Time
+}
+
+const (
+	relayCheckInterval  = 30 * time.Second
+	relayPingTimeout    = 8 * time.Second
+	relayMaxFail        = 3 // mark down after N consecutive failures
+	relayProbeMax       = 5 // max connected peers to probe for relay capability per cycle
+)
+
+// relayHealthLoop periodically checks relay nodes and discovers backups.
+func (d *Daemon) relayHealthLoop(ctx context.Context) {
+	// Give the node time to connect before first check.
+	time.Sleep(15 * time.Second)
+
+	// Seed known relays from bootstrap peers.
+	relays := d.initRelayList()
+	if len(relays) == 0 && !d.Config.RelayEnabled {
+		fmt.Println("[relay-health] no relay peers configured, skipping health loop")
+		return
+	}
+
+	rd := drouting.NewRoutingDiscovery(d.Node.DHT)
+
+	// If this node offers relay (and is not ForcePrivate), advertise.
+	if d.Config.RelayEnabled && !d.Config.ForcePrivate {
+		go func() {
+			for {
+				if _, err := rd.Advertise(ctx, relayRendezvous); err == nil {
+					fmt.Println("[relay-health] advertised as relay provider")
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(10 * time.Minute):
+				}
+			}
+		}()
+	}
+
+	ticker := time.NewTicker(relayCheckInterval)
+	defer ticker.Stop()
+
+	discoverTick := 0 // discover from DHT every 6th cycle (~3 min)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		aliveCount := 0
+		for i := range relays {
+			r := &relays[i]
+			alive, rtt := d.pingRelay(ctx, r.id)
+			r.lastCheck = time.Now()
+			r.lastPingRTT = rtt
+
+			if alive {
+				if !r.alive {
+					fmt.Printf("[relay-health] relay UP: %s (rtt=%s)\n", r.id.String()[:16], rtt)
+				}
+				r.alive = true
+				r.failCount = 0
+				aliveCount++
+			} else {
+				r.failCount++
+				if r.alive && r.failCount >= relayMaxFail {
+					r.alive = false
+					fmt.Printf("[relay-health] relay DOWN: %s (fail=%d)\n", r.id.String()[:16], r.failCount)
+				}
+			}
+		}
+
+		// Periodic DHT relay discovery (every ~3 min) or when all relays down.
+		discoverTick++
+		if aliveCount == 0 || discoverTick >= 6 {
+			discoverTick = 0
+			discovered := d.discoverRelaysDHT(ctx, rd)
+			discovered = append(discovered, d.probeRelayPeers(ctx)...)
+
+			for _, di := range discovered {
+				exists := false
+				for _, r := range relays {
+					if r.id == di.id {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					relays = append(relays, di)
+					fmt.Printf("[relay-health] discovered relay: %s\n", di.id.String()[:16])
+				}
+			}
+		}
+
+		// Ensure we're connected to at least one alive relay.
+		connSet := make(map[peer.ID]bool)
+		for _, p := range d.Node.ConnectedPeers() {
+			connSet[p] = true
+		}
+		for _, r := range relays {
+			if r.alive && !connSet[r.id] {
+				go func(ri relayState) {
+					cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+					defer cancel()
+					if err := d.Node.Host.Connect(cctx, peer.AddrInfo{
+						ID:    ri.id,
+						Addrs: ri.addrs,
+					}); err == nil {
+						fmt.Printf("[relay-health] reconnected to relay %s\n", ri.id.String()[:16])
+					}
+				}(r)
+			}
+		}
+	}
+}
+
+// initRelayList seeds the relay list from bootstrap peers.
+func (d *Daemon) initRelayList() []relayState {
+	var relays []relayState
+	for _, addr := range d.Config.BootstrapPeers {
+		ma, err := multiaddr.NewMultiaddr(addr)
+		if err != nil {
+			continue
+		}
+		pi, err := peer.AddrInfoFromP2pAddr(ma)
+		if err != nil {
+			continue
+		}
+		relays = append(relays, relayState{
+			id:    pi.ID,
+			addrs: pi.Addrs,
+			alive: true, // assume alive at start
+		})
+	}
+	return relays
+}
+
+// pingRelay pings a relay peer and returns (alive, rtt).
+func (d *Daemon) pingRelay(ctx context.Context, pid peer.ID) (bool, time.Duration) {
+	pctx, cancel := context.WithTimeout(ctx, relayPingTimeout)
+	defer cancel()
+	ch := ping.Ping(pctx, d.Node.Host, pid)
+	select {
+	case res := <-ch:
+		if res.Error == nil {
+			return true, res.RTT
+		}
+		return false, 0
+	case <-pctx.Done():
+		return false, 0
+	}
+}
+
+// discoverRelaysDHT finds relay providers registered via DHT rendezvous.
+func (d *Daemon) discoverRelaysDHT(ctx context.Context, rd *drouting.RoutingDiscovery) []relayState {
+	var result []relayState
+	dctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	peerChan, err := rd.FindPeers(dctx, relayRendezvous)
+	if err != nil {
+		return nil
+	}
+	selfID := d.Node.PeerID()
+	for p := range peerChan {
+		if p.ID == selfID || len(p.Addrs) == 0 {
+			continue
+		}
+		result = append(result, relayState{
+			id:    p.ID,
+			addrs: p.Addrs,
+			alive: true,
+		})
+		if len(result) >= 10 {
+			break
+		}
+	}
+	return result
+}
+
+// probeRelayPeers checks connected peers for circuit relay v2 support
+// by looking for "circuit" or "relay" in their protocol list.
+func (d *Daemon) probeRelayPeers(ctx context.Context) []relayState {
+	var result []relayState
+	peers := d.Node.ConnectedPeers()
+	probed := 0
+	for _, pid := range peers {
+		if probed >= relayProbeMax {
+			break
+		}
+		protos, err := d.Node.Host.Peerstore().GetProtocols(pid)
+		if err != nil {
+			continue
+		}
+		probed++
+		for _, p := range protos {
+			if strings.Contains(string(p), "circuit") || strings.Contains(string(p), "relay") {
+				addrs := d.Node.Host.Peerstore().Addrs(pid)
+				result = append(result, relayState{
+					id:    pid,
+					addrs: addrs,
+					alive: true,
+				})
+				break
+			}
+		}
+	}
+	return result
 }
