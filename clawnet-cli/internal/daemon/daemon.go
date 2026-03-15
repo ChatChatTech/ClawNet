@@ -134,6 +134,10 @@ func Start(foreground bool) error {
 	// Register libp2p stream handler for direct messages
 	d.registerDMHandler()
 
+	// Register history sync stream handler and start sync
+	d.registerSyncHandler()
+	d.startHistorySync(ctx)
+
 	// Watch for peer connect/disconnect to push topology updates
 	d.watchPeerEvents()
 

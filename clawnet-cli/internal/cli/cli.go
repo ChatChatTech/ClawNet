@@ -669,6 +669,8 @@ type peerGeoData struct {
 	LatencyMs      int64    `json:"latency_ms"`
 	ConnectedSince int64    `json:"connected_since"`
 	Motto          string   `json:"motto,omitempty"`
+	BwIn           int64    `json:"bw_in"`
+	BwOut          int64    `json:"bw_out"`
 }
 
 type geoInfo struct {
@@ -831,6 +833,22 @@ func densityColor(count int) string {
 	}
 }
 
+// trafficColor returns an ANSI color for a connection line based on cumulative bandwidth.
+func trafficColor(totalBytes int64) string {
+	switch {
+	case totalBytes < 1024: // < 1 KB
+		return "\033[2;38;2;80;20;25m" // very dim dark red
+	case totalBytes < 64*1024: // < 64 KB
+		return "\033[38;2;140;30;35m" // dim red
+	case totalBytes < 1024*1024: // < 1 MB
+		return "\033[38;2;230;57;70m" // lobster red
+	case totalBytes < 16*1024*1024: // < 16 MB
+		return "\033[38;2;247;127;0m" // orange
+	default:
+		return "\033[1;38;2;255;220;50m" // bright yellow
+	}
+}
+
 // renderHeader builds the static top line (title + separator).
 func renderHeader(termW int, stats networkStats) string {
 	innerW := termW - 2
@@ -879,6 +897,7 @@ type peerInfo struct {
 	latencyMs      int64
 	connectedSince int64
 	motto          string
+	bwTotal        int64
 }
 
 func buildPeerInfos(peers []peerGeoData) []peerInfo {
@@ -893,6 +912,7 @@ func buildPeerInfos(peers []peerGeoData) []peerInfo {
 			latencyMs:      p.LatencyMs,
 			connectedSince: p.ConnectedSince,
 			motto:          p.Motto,
+			bwTotal:        p.BwIn + p.BwOut,
 		}
 		if p.Geo != nil {
 			pi.country = p.Geo.Country
@@ -1067,6 +1087,82 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 		globeMarkers[[2]int{m.sx, m.sy}] = markerCell{isSelf: m.isSelf, density: markerDensity[mi]}
 	}
 
+	// ── Draw connection lines between self and peers (Bresenham) ──
+	type lineCell struct {
+		color string
+	}
+	globeLines := make(map[[2]int]lineCell)
+
+	// Find self marker screen position
+	var selfSX, selfSY int
+	selfFound := false
+	for _, m := range markers {
+		if m.isSelf {
+			selfSX, selfSY = m.sx, m.sy
+			selfFound = true
+			break
+		}
+	}
+	if selfFound {
+		for mi, m := range markers {
+			if m.isSelf {
+				continue
+			}
+			// Get traffic for this peer
+			bw := pInfos[m.idx].bwTotal
+			col := trafficColor(bw)
+
+			// Bresenham line from self to peer
+			x0, y0 := selfSX, selfSY
+			x1, y1 := m.sx, m.sy
+			dx := x1 - x0
+			dy := y1 - y0
+			if dx < 0 {
+				dx = -dx
+			}
+			if dy < 0 {
+				dy = -dy
+			}
+			sx := -1
+			if x0 < x1 {
+				sx = 1
+			}
+			sy := -1
+			if y0 < y1 {
+				sy = 1
+			}
+			err := dx - dy
+			cx, cy := x0, y0
+			for {
+				if cx == x1 && cy == y1 {
+					break
+				}
+				// Skip marker cells and out-of-bounds
+				key := [2]int{cx, cy}
+				if _, isMarker := globeMarkers[key]; !isMarker {
+					if cx >= 0 && cx < gW && cy >= 0 && cy < gH {
+						// Only draw within the globe circle
+						fnx := (float64(cx) - cX) / rX
+						fny := (float64(cy) - cY) / rY
+						if fnx*fnx+fny*fny <= 1.0 {
+							globeLines[key] = lineCell{color: col}
+						}
+					}
+				}
+				e2 := 2 * err
+				if e2 > -dy {
+					err -= dy
+					cx += sx
+				}
+				if e2 < dx {
+					err += dx
+					cy += sy
+				}
+			}
+			_ = mi
+		}
+	}
+
 	// ── Banner overlay: bottom-LEFT ──
 	// Highlight banner when globe panel is selected
 	bannerColor := cBanner
@@ -1117,6 +1213,8 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 					} else {
 						sb.WriteString(densityColor(mc.density) + "*" + cReset)
 					}
+				} else if lc, ok := globeLines[[2]int{globeCol, row}]; ok {
+					sb.WriteString(lc.color + "·" + cReset)
 				} else {
 					ch := globe[row][globeCol]
 					switch ch {

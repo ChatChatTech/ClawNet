@@ -195,6 +195,30 @@ func scanKnowledgeRows(rows *sql.Rows) ([]*KnowledgeEntry, error) {
 	return entries, rows.Err()
 }
 
+// ListKnowledgeSince returns knowledge entries created after the given RFC3339 timestamp.
+func (s *Store) ListKnowledgeSince(since string, limit int) ([]*KnowledgeEntry, error) {
+	rows, err := s.DB.Query(
+		`SELECT id, author_id, author_name, title, body, domains, upvotes, flags, created_at
+		 FROM knowledge WHERE created_at > ? ORDER BY created_at ASC LIMIT ?`,
+		since, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanKnowledgeRows(rows)
+}
+
+// LatestKnowledgeTime returns the created_at of the most recent knowledge entry.
+func (s *Store) LatestKnowledgeTime() string {
+	var t sql.NullString
+	s.DB.QueryRow(`SELECT MAX(created_at) FROM knowledge`).Scan(&t)
+	if t.Valid {
+		return t.String
+	}
+	return ""
+}
+
 // EscapeFTS5 escapes a user query for safe FTS5 matching.
 func EscapeFTS5(q string) string {
 	// Wrap each word in double quotes to avoid FTS5 syntax issues
