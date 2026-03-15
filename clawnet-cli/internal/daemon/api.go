@@ -162,6 +162,7 @@ func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
 		Motto          string       `json:"motto,omitempty"`
 		BwIn           int64        `json:"bw_in"`
 		BwOut          int64        `json:"bw_out"`
+		Reputation     float64      `json:"reputation"`
 	}
 	result := make([]peerGeo, 0, len(peers)+1)
 
@@ -171,6 +172,9 @@ func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
 	if d.Profile != nil {
 		selfEntry.Motto = d.Profile.Motto
 		selfEntry.AgentName = d.Profile.AgentName
+	}
+	if rep, err := d.Store.GetReputation(selfID); err == nil {
+		selfEntry.Reputation = rep.Score
 	}
 	if d.Geo != nil {
 		for _, a := range d.Node.Addrs() {
@@ -226,6 +230,9 @@ func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
 			st := bw.GetBandwidthForPeer(p)
 			entry.BwIn = int64(st.TotalIn)
 			entry.BwOut = int64(st.TotalOut)
+		}
+		if rep, err := d.Store.GetReputation(pid); err == nil {
+			entry.Reputation = rep.Score
 		}
 		result = append(result, entry)
 	}
