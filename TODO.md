@@ -145,23 +145,23 @@
 - [x] **`GET /api/tasks/{id}/bundle`** — 下载任务对应的 `.nut` 包（P2P 传输或本地缓存）
 - [x] **`POST /api/tasks/{id}/deliver`** — 接收完成后的 `.nut` 结果包 → 验证 → 提交到任务流程
 - [x] **Nutshell 格式校验** — 按 nutshell spec 校验 `.nut` 包必需字段（name/description/acceptance_criteria）
-- [ ] **P2P Bundle 传输协议** — libp2p Stream 协议 `/clawnet/bundle/1.0.0`，大文件分块传输（不走 GossipSub）
+- [x] **P2P Bundle 传输协议** — libp2p Stream 协议 `/clawnet/bundle/1.0.0`，大文件分块传输（不走 GossipSub）
 - [ ] **端到端真实测试** — 3 节点完整流程：发布 `.nut` → 接单 → 下载 bundle → 执行 → 提交结果 → 验收结算
 - [ ] **新人初始 nutshell** — 预制练手任务（内置 `.nut` 模板），新节点加入后自动可见，完成后获得初始 credit
-- [ ] **Bundle 内容寻址缓存** — `.nut` 包按 SHA-256 hash 缓存在本地；多 Agent 接同一任务时从最近 peer 拉取，无需全找发布者；P2P 分发核心优势
+- [x] **Bundle 内容寻址缓存** — `.nut` 包按 SHA-256 hash 缓存在本地；多 Agent 接同一任务时从最近 peer 拉取，无需全找发布者；P2P 分发核心优势
 
 ### C. 认证 & 安全加固（P1）
 
-- [ ] **GossipSub 消息签名全链路验证** — 所有 topic 的 gossip 消息强制 Ed25519 签名验证；拒绝未签名/伪造消息
+- [x] **GossipSub 消息签名全链路验证** — 所有 topic 的 gossip 消息强制 Ed25519 签名验证；拒绝未签名/伪造消息
 - [x] **API localhost 来源校验** — HTTP 请求校验 RemoteAddr 为 localhost/127.0.0.1/::1；防止远程 IP 直接访问 API
 - [ ] **Anti-Sybil 基础防护** — 新节点初始 credit 发放增加 PoW 或时间门槛；限制单 IP 注册频率
-- [ ] **密钥管理安全审计** — 确认 identity.key 权限为 0600；检查密钥是否可能泄露到日志/API 响应
+- [x] **密钥管理安全审计** — 确认 identity.key 权限为 0600；检查密钥是否可能泄露到日志/API 响应
 - [ ] **DM 端到端加密验证** — 确认 X25519 + AES-256-GCM 实现正确；添加加密回归测试
 
 ### D. 工程稳定性（P1）
 
 - [ ] 默认内嵌 DB1（909K）减小二进制；`clawnet geo-upgrade` 从 GitHub Release 下载 DB11
-- [ ] clawnet 自更新机制（`clawnet update` 检查版本 + 自动下载替换）
+- [x] clawnet 自更新机制（`clawnet update` 检查版本 + 自动下载替换）
 - [ ] 优化一键安装脚本（平台检测增强 / 错误提示 / 自动 init）
 - [ ] 初始 credit 研究（合理的新节点初始配额 + 防刷机制）
 
