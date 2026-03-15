@@ -671,6 +671,7 @@ type peerGeoData struct {
 	Motto          string   `json:"motto,omitempty"`
 	BwIn           int64    `json:"bw_in"`
 	BwOut          int64    `json:"bw_out"`
+	Reputation     float64  `json:"reputation"`
 }
 
 type geoInfo struct {
@@ -849,6 +850,23 @@ func trafficColor(totalBytes int64) string {
 	}
 }
 
+// repColor returns an ANSI color for a peer marker based on reputation score.
+// Default rep is 50. Higher rep = warmer/brighter color.
+func repColor(score float64) string {
+	switch {
+	case score < 30: // low reputation — dim gray
+		return "\033[38;2;100;100;100m"
+	case score < 50: // below average — dim red
+		return "\033[38;2;140;30;35m"
+	case score < 70: // average — lobster red
+		return "\033[38;2;230;57;70m"
+	case score < 100: // good — orange
+		return "\033[38;2;247;127;0m"
+	default: // excellent — bright gold
+		return "\033[1;38;2;255;220;50m"
+	}
+}
+
 // renderHeader builds the static top line (title + separator).
 func renderHeader(termW int, stats networkStats) string {
 	innerW := termW - 2
@@ -898,6 +916,7 @@ type peerInfo struct {
 	connectedSince int64
 	motto          string
 	bwTotal        int64
+	reputation     float64
 }
 
 func buildPeerInfos(peers []peerGeoData) []peerInfo {
@@ -913,6 +932,7 @@ func buildPeerInfos(peers []peerGeoData) []peerInfo {
 			connectedSince: p.ConnectedSince,
 			motto:          p.Motto,
 			bwTotal:        p.BwIn + p.BwOut,
+			reputation:     p.Reputation,
 		}
 		if p.Geo != nil {
 			pi.country = p.Geo.Country
@@ -1011,9 +1031,10 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 	pInfos := buildPeerInfos(peers)
 
 	type markerPos struct {
-		sx, sy int
-		idx    int
-		isSelf bool
+		sx, sy     int
+		idx        int
+		isSelf     bool
+		reputation float64
 	}
 	var markers []markerPos
 
@@ -1031,7 +1052,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 				sx := int(cX + rx*rX)
 				sy := int(cY - py*rY)
 				if sx >= 0 && sx < gW && sy >= 0 && sy < gH {
-					markers = append(markers, markerPos{sx: sx, sy: sy, idx: i, isSelf: p.IsSelf})
+					markers = append(markers, markerPos{sx: sx, sy: sy, idx: i, isSelf: p.IsSelf, reputation: p.Reputation})
 				}
 			}
 		}
@@ -1079,12 +1100,13 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 
 	// ── Color map for globe cells: track density-colored markers ──
 	type markerCell struct {
-		isSelf  bool
-		density int
+		isSelf     bool
+		density    int
+		reputation float64
 	}
 	globeMarkers := make(map[[2]int]markerCell)
 	for mi, m := range markers {
-		globeMarkers[[2]int{m.sx, m.sy}] = markerCell{isSelf: m.isSelf, density: markerDensity[mi]}
+		globeMarkers[[2]int{m.sx, m.sy}] = markerCell{isSelf: m.isSelf, density: markerDensity[mi], reputation: m.reputation}
 	}
 
 	// ── Draw connection lines between self and peers (Bresenham) ──
@@ -1211,7 +1233,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 						// Use ASCII @ for self marker (orange)
 						sb.WriteString(cSelf + "@" + cReset)
 					} else {
-						sb.WriteString(densityColor(mc.density) + "*" + cReset)
+						sb.WriteString(repColor(mc.reputation) + "*" + cReset)
 					}
 				} else if lc, ok := globeLines[[2]int{globeCol, row}]; ok {
 					sb.WriteString(lc.color + "·" + cReset)
@@ -1673,14 +1695,15 @@ func renderClawNetStats(pInfos []peerInfo, stats networkStats, w int, now int64)
 		}
 	}
 
-	// Density legend
+	// Reputation legend
 	lines = append(lines, "")
-	lines = append(lines, " "+cTitle+"Density Legend"+cReset)
+	lines = append(lines, " "+cTitle+"Reputation"+cReset)
 	lines = append(lines,
-		"   "+densityColor(1)+"*"+cReset+" 1 node  "+
-			densityColor(2)+"*"+cReset+" 2-3 nodes  "+
-			densityColor(5)+"*"+cReset+" 4-6 nodes  "+
-			densityColor(8)+"*"+cReset+" 7+ nodes")
+		"   "+repColor(20)+"*"+cReset+" <30  "+
+			repColor(40)+"*"+cReset+" 30-49  "+
+			repColor(60)+"*"+cReset+" 50-69  "+
+			repColor(80)+"*"+cReset+" 70-99  "+
+			repColor(120)+"*"+cReset+" 100+")
 
 	return lines
 }
