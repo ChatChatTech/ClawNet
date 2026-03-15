@@ -28,8 +28,9 @@ type syncRequest struct {
 
 // syncEntry is a union type for streamed sync items.
 type syncEntry struct {
-	Type         string               `json:"type"` // "knowledge", "topic_message"
+	Type         string               `json:"type"` // "knowledge", "topic_room", "topic_message"
 	Knowledge    *store.KnowledgeEntry `json:"knowledge,omitempty"`
+	TopicRoom    *store.TopicRoom      `json:"topic_room,omitempty"`
 	TopicMessage *store.TopicMessage   `json:"topic_message,omitempty"`
 }
 
@@ -63,6 +64,17 @@ func (d *Daemon) registerSyncHandler() {
 		if err == nil {
 			for _, e := range entries {
 				data, _ := json.Marshal(syncEntry{Type: "knowledge", Knowledge: e})
+				writer.Write(data)
+				writer.WriteByte('\n')
+				count++
+			}
+		}
+
+		// Stream topic rooms (send all rooms so receiver can create them before messages)
+		rooms, err := d.Store.ListTopics()
+		if err == nil {
+			for _, r := range rooms {
+				data, _ := json.Marshal(syncEntry{Type: "topic_room", TopicRoom: r})
 				writer.Write(data)
 				writer.WriteByte('\n')
 				count++
@@ -144,6 +156,11 @@ func (d *Daemon) syncFromPeer(ctx context.Context, target peer.ID) int {
 			if entry.Knowledge != nil {
 				d.Store.InsertKnowledge(entry.Knowledge)
 				count++
+			}
+		case "topic_room":
+			if entry.TopicRoom != nil {
+				entry.TopicRoom.Joined = false // don't auto-join synced rooms
+				d.Store.InsertTopic(entry.TopicRoom)
 			}
 		case "topic_message":
 			if entry.TopicMessage != nil {

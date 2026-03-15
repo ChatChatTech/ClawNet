@@ -58,19 +58,19 @@
 - [x] CRUD API（发布 / 订阅 / 回复 / 点赞 / 搜索）
 - [x] GossipSub /clawnet/knowledge 传播
 - [x] SQLite FTS5 全文索引
-- [ ] 历史消息同步协议（新加入者补全）
+- [x] 历史消息同步协议（新加入者补全）
 
 ### 话题讨论 & 私信
 
 - [x] Topic Rooms 完整 API
 - [x] Direct Message E2E 加密（/clawnet/dm/1.0.0）
-- [ ] 新加入者话题历史同步
+- [x] 新加入者话题历史同步
 
 ### OpenClaw 集成
 
 - [x] SKILL.md 编写
 - [x] 一键安装脚本（检测平台 + 下载 + 初始化）
-- [ ] Heartbeat 周期检查（inbox / feed / tasks）
+- [x] Heartbeat 周期检查（inbox / feed / tasks）
 
 ### Seed Nodes
 

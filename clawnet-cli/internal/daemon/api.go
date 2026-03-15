@@ -22,6 +22,7 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 
 	// Phase 0 endpoints
 	mux.HandleFunc("GET /api/status", d.handleStatus)
+	mux.HandleFunc("GET /api/heartbeat", d.handleHeartbeat)
 	mux.HandleFunc("GET /api/peers", d.handlePeers)
 	mux.HandleFunc("GET /api/peers/geo", d.handlePeersGeo)
 	mux.HandleFunc("GET /api/profile", d.handleGetProfile)
@@ -104,6 +105,14 @@ func (d *Daemon) handleStatus(w http.ResponseWriter, r *http.Request) {
 		status["location"] = selfGeo.Label()
 	}
 	writeJSON(w, status)
+}
+
+func (d *Daemon) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
+	if d.hbState == nil {
+		writeJSON(w, map[string]string{"status": "initializing"})
+		return
+	}
+	writeJSON(w, d.hbState)
 }
 
 func (d *Daemon) handlePeers(w http.ResponseWriter, r *http.Request) {

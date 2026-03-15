@@ -36,6 +36,7 @@ type Daemon struct {
 	rxBytes    atomic.Uint64
 	txBytes    atomic.Uint64
 	nicName    string
+	hbState    *heartbeatState
 }
 
 // getTrafficBytes returns cumulative rx/tx counters from libp2p bandwidth.
@@ -143,6 +144,9 @@ func Start(foreground bool) error {
 
 	// Publish profile to DHT and start periodic refresh
 	d.startProfilePublisher(ctx)
+
+	// Start heartbeat (periodic inbox/feed/tasks check)
+	d.startHeartbeat(ctx)
 
 	fmt.Printf("API server: http://localhost:%d\n", cfg.WebUIPort)
 	fmt.Printf("Node is running. Press Ctrl+C to stop.\n")
