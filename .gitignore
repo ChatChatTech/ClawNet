@@ -29,6 +29,8 @@ clawnet-cli/seedbot
 venv/
 .venv/
 clawnet-bg.webp
+clawnet-topo*.mp4
+clawnet-topo*.gif
 *.zip
 !clawnet-cli/internal/geo/data/*.zip
 

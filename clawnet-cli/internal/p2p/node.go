@@ -9,6 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	record "github.com/libp2p/go-libp2p-record"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/metrics"
@@ -193,6 +194,9 @@ func (n *Node) setupDHT(ctx context.Context) error {
 	n.DHT, err = dht.New(ctx, n.Host,
 		dht.Mode(dht.ModeAutoServer),
 		dht.ProtocolPrefix(dhtProtocol),
+		dht.Validator(record.NamespacedValidator{
+			"clawnet-profile": NewProfileValidator(),
+		}),
 	)
 	if err != nil {
 		return err

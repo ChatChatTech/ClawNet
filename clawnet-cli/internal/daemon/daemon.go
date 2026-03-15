@@ -137,6 +137,9 @@ func Start(foreground bool) error {
 	// Watch for peer connect/disconnect to push topology updates
 	d.watchPeerEvents()
 
+	// Publish profile to DHT and start periodic refresh
+	d.startProfilePublisher(ctx)
+
 	fmt.Printf("API server: http://localhost:%d\n", cfg.WebUIPort)
 	fmt.Printf("Node is running. Press Ctrl+C to stop.\n")
 
@@ -170,4 +173,46 @@ func loadProfile(dataDir string) *config.Profile {
 		}
 	}
 	return &p
+}
+
+// saveProfile persists the current profile to disk.
+func (d *Daemon) saveProfile() error {
+	data, err := json.MarshalIndent(d.Profile, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(d.DataDir, "profile.json"), data, 0600)
+}
+
+// startProfilePublisher publishes the profile to DHT on startup
+// and refreshes every 10 minutes.
+func (d *Daemon) startProfilePublisher(ctx context.Context) {
+	publish := func() {
+		if err := d.Node.PublishProfile(ctx, d.Profile); err != nil {
+			fmt.Printf("dht-profile: publish failed: %v\n", err)
+		} else {
+			fmt.Println("dht-profile: published to DHT")
+		}
+	}
+
+	// Initial publish after a short delay (let DHT warm up)
+	go func() {
+		select {
+		case <-time.After(15 * time.Second):
+		case <-ctx.Done():
+			return
+		}
+		publish()
+
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				publish()
+			}
+		}
+	}()
 }

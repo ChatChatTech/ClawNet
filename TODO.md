@@ -34,7 +34,7 @@
 - [x] config.json 读写 + Profile 定义
 - [x] Docker 镜像 + docker-compose 3 节点测试网
 - [x] 3 节点实网部署运行（cmax / bmax / dmax）
-- [ ] Profile 广播到 DHT
+- [x] Profile 广播到 DHT（签名 + 验证 + 跨节点查询 + 定时刷新）
 - [ ] Bootstrap 节点部署到 US / EU 地区
 
 ---

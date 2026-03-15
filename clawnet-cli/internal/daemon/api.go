@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/libp2p/go-libp2p/core/peer"
+
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/geo"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
@@ -26,6 +28,7 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 	mux.HandleFunc("PUT /api/profile", d.handleUpdateProfile)
 	mux.HandleFunc("PUT /api/motto", d.handleSetMotto)
 	mux.HandleFunc("GET /api/traffic", d.handleTraffic)
+	mux.HandleFunc("GET /api/peers/{id}/profile", d.handleLookupPeerProfile)
 
 	// Phase 1 — Knowledge Mesh
 	mux.HandleFunc("POST /api/knowledge", d.handlePostKnowledge)
@@ -301,7 +304,32 @@ func (d *Daemon) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 			d.Profile.Version = p.Version
 		}
 	}
+	// Persist to disk
+	if err := d.saveProfile(); err != nil {
+		fmt.Printf("warning: failed to save profile: %v\n", err)
+	}
+	// Re-publish to DHT
+	go func() {
+		if err := d.Node.PublishProfile(d.ctx, d.Profile); err != nil {
+			fmt.Printf("dht-profile: re-publish failed: %v\n", err)
+		}
+	}()
 	writeJSON(w, map[string]string{"status": "updated"})
+}
+
+func (d *Daemon) handleLookupPeerProfile(w http.ResponseWriter, r *http.Request) {
+	pidStr := r.PathValue("id")
+	pid, err := peer.Decode(pidStr)
+	if err != nil {
+		http.Error(w, `{"error":"invalid peer ID"}`, http.StatusBadRequest)
+		return
+	}
+	rec, err := d.Node.LookupProfile(r.Context(), pid)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusNotFound)
+		return
+	}
+	writeJSON(w, rec)
 }
 
 // ── Knowledge handlers ──
