@@ -38,3 +38,5 @@ clawnet-topo*.gif
 GITHUB_TOKEN
 CLOUDFLARE_TOKEN
 dist/
+clawnet-cli/clawnet-linux-amd64
+clawnet-cli/clawnet-linux-arm64

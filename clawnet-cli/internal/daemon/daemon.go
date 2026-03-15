@@ -21,7 +21,7 @@ import (
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
 )
 
-const Version = "0.8.4"
+const Version = "0.8.5"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
@@ -184,13 +184,15 @@ func Start(foreground bool) error {
 	peerIDStr := node.PeerID().String()
 	proof := pow.LoadProof(dataDir)
 	if proof == nil || proof.PeerID != peerIDStr || !pow.Verify(proof.PeerID, proof.Nonce, pow.DefaultDifficulty) {
-		fmt.Printf("[PoW] Solving proof-of-work (one-time, ~1s)...\n")
+		fmt.Printf("[PoW] Solving proof-of-work (one-time, ~3s)...\n")
 		nonce := pow.Solve(peerIDStr, pow.DefaultDifficulty)
 		proof = &pow.Proof{PeerID: peerIDStr, Nonce: nonce, Difficulty: pow.DefaultDifficulty}
 		pow.SaveProof(dataDir, proof)
 		fmt.Printf("[PoW] Solved! nonce=%d\n", nonce)
 	}
-	d.Store.EnsureCreditAccount(peerIDStr, 42.0)
+	// Initial grant: 10 credits (just enough to explore).
+	// Complete the tutorial (+50) for a productive starting balance of 60.
+	d.Store.EnsureCreditAccount(peerIDStr, 10.0)
 
 	// Seed built-in tutorial task (one-time onboarding)
 	d.seedTutorialTask()
@@ -210,6 +212,9 @@ func Start(foreground bool) error {
 
 	// Start periodic peer latency measurement
 	go d.pingLoop(ctx)
+
+	// Start relay health monitoring (ping relays, discover backups)
+	go d.relayHealthLoop(ctx)
 
 	// Publish profile to DHT and start periodic refresh
 	d.startProfilePublisher(ctx)
