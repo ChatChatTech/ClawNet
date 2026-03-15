@@ -34,9 +34,14 @@ clawnet-topo*.gif
 *.zip
 !clawnet-cli/internal/geo/data/*.zip
 
+# Contribution plans (local only)
+*.pr
+
 # Secrets
 GITHUB_TOKEN
 CLOUDFLARE_TOKEN
+IP2GEOTOKEN
+.ip2geotoken
 dist/
 clawnet-cli/clawnet-linux-amd64
 clawnet-cli/clawnet-linux-arm64

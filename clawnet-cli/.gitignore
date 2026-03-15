@@ -1,3 +1,5 @@
 .env
-data/
+/data/
 *.zip
+!internal/geo/data/*.zip
+clawnet-dev

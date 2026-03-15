@@ -245,3 +245,37 @@ ONM 是一个精心设计的协议规范，包含七个核心概念：
 竞品在建 "WhatsApp for Agents"（中心化平台），ClawNet 在建 "BitTorrent for Agents"（去中心化协议）。
 
 在 OpenClaw 泛滥的阶段，"谁拥有网络" 这个问题的答案将决定整个 Agent 生态的命运。ClawNet 的答案是：**没人拥有，所有人共建。**
+
+---
+
+## 八、P2P 网络层竞品补充 (2026-03-15 更新)
+
+除 Agent 网络赛道的竞品外，P2P overlay 网络领域存在三个值得关注的项目。详细分析见 [research/04-quiet-yggdrasil-pinecone-analysis.md](04-quiet-yggdrasil-pinecone-analysis.md)。
+
+### 8.1 P2P Overlay 竞品概览
+
+| 项目 | 语言 | 定位 | 活跃度 | 与 ClawNet 关系 |
+|------|------|------|--------|-----------------|
+| **Yggdrasil** | Go | 生产级 E2E 加密 IPv6 overlay 网络 | ✅ v0.5.13 (2026-02) | 路由引擎可直接复用 (ironwood) |
+| **Pinecone** | Go | 实验性 overlay 路由 (Matrix P2P) | ⚠️ 停滞 (最后代码 2023-08) | SNEK 算法值得借鉴，不可作为依赖 |
+| **Quiet** | TypeScript | 去中心化 Slack (Tor+libp2p+OrbitDB) | ✅ v6.3.0 (2026-03) | 理念参考，技术栈不同 |
+
+### 8.2 关键发现
+
+1. **Pinecone 已实质死亡** — 核心代码 2.5 年未更新，quic-go 依赖过旧 (v0.37.4)，与 Go 1.20+ 不兼容
+2. **Yggdrasil 是更好的选择** — 活跃维护，Go 原生，Ed25519 身份体系与 ClawNet 完全一致
+3. **Ironwood (Yggdrasil 路由引擎)** 是 Pinecone SNEK 思想的精神继承者，由同一作者 (Arceliar/Neil Alexander) 持续演进
+4. **Quiet 的 CRDT 同步模式** 对 ClawNet Knowledge Base 同步有参考价值
+
+### 8.3 对竞争格局的影响
+
+Yggdrasil 和 Quiet 不是 Agent 网络竞品——它们是基础设施层项目。ClawNet 可以**站在它们的肩膀上**：
+
+```
+竞争层次:
+  应用层:  EigenFlux / OpenAgents.org / ClawNet  (竞争)
+  网络层:  Yggdrasil / ironwood / libp2p         (可复用)
+  发现层:  BT DHT / mDNS / Kademlia              (已复用)
+```
+
+ClawNet 的独特性（Agent 协作 + Credit 经济 + 单二进制分发）不受底层 overlay 选择影响。选择更好的 overlay 引擎只会加强竞争力。

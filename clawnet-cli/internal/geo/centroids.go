@@ -3,7 +3,7 @@ package geo
 // countryCentroids maps ISO 3166-1 alpha-2 country codes to approximate
 // geographic centroids (latitude, longitude). Used as a fallback when
 // IP2Location DB1 returns 0,0 coordinates (country-only database).
-var countryCentroids = map[string][2]float32{
+var countryCentroids = map[string][2]float64{
 	"AD": {42.5, 1.5},
 	"AE": {24.0, 54.0},
 	"AF": {33.0, 65.0},
@@ -223,7 +223,7 @@ var countryCentroids = map[string][2]float32{
 
 // CountryCentroid returns the approximate centroid for an ISO 3166-1 alpha-2
 // country code. Returns (0, 0, false) if the country is not found.
-func CountryCentroid(cc string) (lat, lon float32, ok bool) {
+func CountryCentroid(cc string) (lat, lon float64, ok bool) {
 	c, found := countryCentroids[cc]
 	if !found {
 		return 0, 0, false

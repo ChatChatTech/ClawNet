@@ -67,6 +67,16 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 	// Diagnostics
 	mux.HandleFunc("GET /api/diagnostics", d.handleDiagnostics)
 
+	// Matrix Discovery status
+	mux.HandleFunc("GET /api/matrix/status", d.handleMatrixStatus)
+
+	// Overlay (Ironwood) transport status
+	mux.HandleFunc("GET /api/overlay/status", d.handleOverlayStatus)
+	mux.HandleFunc("GET /api/overlay/tree", d.handleOverlayTree)
+
+	// E2E crypto status
+	mux.HandleFunc("GET /api/crypto/sessions", d.handleCryptoSessions)
+
 	// Phase 2 routes
 	d.RegisterPhase2Routes(mux)
 
@@ -899,7 +909,98 @@ func (d *Daemon) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 		"bandwidth_in":      bwStats.TotalIn,
 		"bandwidth_out":     bwStats.TotalOut,
 	}
+
+	// Matrix Discovery status
+	if d.Node.MatrixDiscovery != nil {
+		diag["matrix_homeservers"] = d.Node.MatrixDiscovery.ConnectedHomeservers()
+		diag["matrix_rooms"] = d.Node.MatrixDiscovery.JoinedRooms()
+	} else {
+		diag["matrix_homeservers"] = 0
+	}
+
+	// Overlay (Ironwood) transport status
+	if d.Overlay != nil {
+		diag["overlay_peers"] = d.Overlay.PeerCount()
+	} else {
+		diag["overlay_peers"] = 0
+	}
+
+	// E2E crypto status
+	if d.Crypto != nil {
+		diag["crypto_sessions"] = d.Crypto.SessionCount()
+	} else {
+		diag["crypto_sessions"] = 0
+	}
+
 	writeJSON(w, diag)
+}
+
+// handleMatrixStatus returns Matrix Discovery status.
+func (d *Daemon) handleMatrixStatus(w http.ResponseWriter, r *http.Request) {
+	status := map[string]any{
+		"enabled": d.Config.MatrixDiscovery.Enabled,
+	}
+	if d.Node.MatrixDiscovery != nil {
+		status["connected_homeservers"] = d.Node.MatrixDiscovery.ConnectedHomeservers()
+		status["joined_rooms"] = d.Node.MatrixDiscovery.JoinedRooms()
+	} else {
+		status["connected_homeservers"] = 0
+		status["joined_rooms"] = 0
+	}
+	writeJSON(w, status)
+}
+
+// handleOverlayStatus returns Ironwood overlay transport status with full debug info.
+func (d *Daemon) handleOverlayStatus(w http.ResponseWriter, r *http.Request) {
+	status := map[string]any{
+		"enabled": d.Config.Overlay.Enabled,
+	}
+	if d.Overlay != nil {
+		status["peer_count"] = d.Overlay.PeerCount()
+		status["public_key"] = fmt.Sprintf("%x", d.Overlay.PublicKey())
+		if debugInfo := d.Overlay.GetDebugInfo(); debugInfo != nil {
+			status["routing_entries"] = debugInfo.Self.RoutingEntries
+			status["peers"] = debugInfo.Peers
+			status["tree_size"] = len(debugInfo.Tree)
+			status["paths"] = debugInfo.Paths
+			status["sessions"] = debugInfo.Sessions
+		}
+	} else {
+		status["peer_count"] = 0
+	}
+	writeJSON(w, status)
+}
+
+// handleOverlayTree returns the full Ironwood spanning tree for visualization.
+func (d *Daemon) handleOverlayTree(w http.ResponseWriter, r *http.Request) {
+	if d.Overlay == nil {
+		writeJSON(w, map[string]any{"error": "overlay not enabled"})
+		return
+	}
+	debugInfo := d.Overlay.GetDebugInfo()
+	if debugInfo == nil {
+		writeJSON(w, map[string]any{"error": "debug info unavailable"})
+		return
+	}
+	writeJSON(w, map[string]any{
+		"self": debugInfo.Self,
+		"tree": debugInfo.Tree,
+	})
+}
+
+// handleCryptoSessions returns E2E encryption session info.
+func (d *Daemon) handleCryptoSessions(w http.ResponseWriter, r *http.Request) {
+	status := map[string]any{
+		"enabled": d.Crypto != nil,
+	}
+	if d.Crypto != nil {
+		status["session_count"] = d.Crypto.SessionCount()
+		status["sessions"] = d.Crypto.Sessions()
+	} else {
+		status["session_count"] = 0
+		status["sessions"] = []any{}
+	}
+	writeJSON(w, status)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

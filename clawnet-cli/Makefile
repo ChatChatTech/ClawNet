@@ -7,8 +7,8 @@ GOFLAGS := -ldflags="-s -w" -tags fts5
 build:
 	CGO_ENABLED=1 go build $(GOFLAGS) -o $(BINARY) ./cmd/clawnet/
 
-build-db11:
-	CGO_ENABLED=1 go build $(GOFLAGS) -tags fts5,db11 -o $(BINARY) ./cmd/clawnet/
+build-dev:
+	CGO_ENABLED=1 go build -ldflags="-s -w" -tags fts5,dev -o $(BINARY)-dev ./cmd/clawnet/
 
 build-seedbot:
 	CGO_ENABLED=1 go build $(GOFLAGS) -o seedbot ./cmd/seedbot/

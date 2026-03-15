@@ -14,14 +14,18 @@ import (
 	"time"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
+	cryptoe "github.com/ChatChatTech/ClawNet/clawnet-cli/internal/crypto"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/geo"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/identity"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/overlay"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/p2p"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/pow"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
+
+	"github.com/Arceliar/ironwood/network"
 )
 
-const Version = "0.8.6"
+const Version = "0.8.8"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
@@ -30,6 +34,8 @@ type Daemon struct {
 	Profile    *config.Profile
 	Store      *store.Store
 	Geo        *geo.Locator
+	Overlay    *overlay.Transport
+	Crypto     *cryptoe.Engine
 	DataDir    string
 	StartedAt  time.Time
 	ctx        context.Context
@@ -48,13 +54,15 @@ func (d *Daemon) getTrafficBytes() (uint64, uint64) {
 }
 
 // Start initializes and runs the daemon until interrupted.
-func Start(foreground bool) error {
+// devLayers optionally restricts which discovery/transport layers start (empty = all).
+func Start(foreground bool, devLayers []string) error {
 	dataDir := config.DataDir()
 
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	cfg.DevLayers = devLayers
 
 	priv, err := identity.LoadOrGenerate(dataDir)
 	if err != nil {
@@ -67,6 +75,9 @@ func Start(foreground bool) error {
 	}
 
 	fmt.Printf("ClawNet Daemon v%s\n", Version)
+	if len(devLayers) > 0 {
+		fmt.Printf(">>> DEV MODE — active layers: %v\n", devLayers)
+	}
 	fmt.Printf("Peer ID: %s\n", peerID.String())
 	fmt.Printf("Data dir: %s\n", dataDir)
 
@@ -74,7 +85,7 @@ func Start(foreground bool) error {
 	defer cancel()
 
 	// STUN: auto-detect external IP if no AnnounceAddrs configured.
-	if len(cfg.AnnounceAddrs) == 0 {
+	if len(cfg.AnnounceAddrs) == 0 && cfg.LayerEnabled("stun") {
 		if extIP := p2p.DetectExternalIP(); extIP != "" {
 			fmt.Printf("STUN detected external IP: %s\n", extIP)
 			// Determine ip4 vs ip6 protocol based on address format
@@ -102,32 +113,39 @@ func Start(foreground bool) error {
 	}
 
 	// Print discovery layer status
+	layerStatus := func(name, label string, enabled bool) {
+		if !enabled {
+			return
+		}
+		if cfg.LayerEnabled(name) {
+			fmt.Printf("  %-15s enabled\n", label+":")
+		} else {
+			fmt.Printf("  %-15s SKIPPED (dev mode)\n", label+":")
+		}
+	}
 	fmt.Println("Discovery layers:")
-	fmt.Println("  mDNS:          enabled (LAN)")
-	if cfg.HTTPBootstrap {
-		fmt.Println("  HTTP Bootstrap: enabled")
-	}
-	if cfg.BTDHT.Enabled {
-		fmt.Printf("  BT DHT:        enabled (UDP :%d)\n", cfg.BTDHT.ListenPort)
-	}
-	fmt.Println("  Kademlia DHT:  enabled (30s poll)")
-	if cfg.RelayEnabled {
-		fmt.Println("  Relay:         enabled")
-	}
+	layerStatus("mdns", "mDNS", true)
+	layerStatus("bootstrap", "HTTP Bootstrap", cfg.HTTPBootstrap)
+	layerStatus("bt-dht", "BT DHT", cfg.BTDHT.Enabled)
+	layerStatus("dht", "Kademlia DHT", true)
+	layerStatus("relay", "Relay", cfg.RelayEnabled)
 	// Check for WebSocket listener
 	for _, a := range cfg.ListenAddrs {
 		if strings.HasSuffix(a, "/ws") {
-			fmt.Println("  WebSocket:     enabled")
+			fmt.Println("  WebSocket:       enabled")
 			break
 		}
 	}
 	if cfg.ForcePrivate {
-		fmt.Println("  NAT mode:      force_private")
+		fmt.Println("  NAT mode:        force_private")
 	}
 	if len(cfg.AnnounceAddrs) > 0 {
-		fmt.Printf("  Announce:      %v\n", cfg.AnnounceAddrs)
+		fmt.Printf("  Announce:        %v\n", cfg.AnnounceAddrs)
 	}
-	fmt.Printf("  Bootstrap:     %d peers configured\n", len(cfg.BootstrapPeers))
+	fmt.Printf("  Bootstrap:       %d peers configured\n", len(cfg.BootstrapPeers))
+	layerStatus("matrix", "Matrix", cfg.MatrixDiscovery.Enabled)
+	layerStatus("overlay", "Overlay", cfg.Overlay.Enabled)
+	layerStatus("stun", "STUN", true)
 
 	// Load or create profile
 	profile := loadProfile(dataDir)
@@ -149,15 +167,55 @@ func Start(foreground bool) error {
 		fmt.Printf("Geo database: %s\n", geoLoc.DBType())
 	}
 
+	// Initialize E2E crypto engine
+	cryptoEngine, err := cryptoe.NewEngine(priv, db.DB)
+	if err != nil {
+		fmt.Printf("[crypto] E2E engine init failed: %v (DMs will be unencrypted)\n", err)
+	} else {
+		fmt.Println("[crypto] E2E encryption: enabled (NaCl box)")
+	}
+
 	d := &Daemon{
 		Node:      node,
 		Config:    cfg,
 		Profile:   profile,
 		Store:     db,
 		Geo:       geoLoc,
+		Crypto:    cryptoEngine,
 		DataDir:   dataDir,
 		StartedAt: time.Now(),
 		ctx:       ctx,
+	}
+
+	// Start overlay transport (if enabled)
+	if cfg.Overlay.Enabled && cfg.LayerEnabled("overlay") {
+		// Build overlay network options for deep fusion
+		var overlayOpts []network.Option
+
+		// PathNotify → libp2p bridge: overlay path discovery triggers libp2p connect
+		bridge := overlay.NewPathBridge(node.Host, nil, time.Second)
+		overlayOpts = append(overlayOpts, network.WithPathNotify(bridge.OnPathNotify))
+
+		// Reputation-weighted bloom transform: higher rep nodes get distinct bloom signatures
+		overlayOpts = append(overlayOpts, network.WithBloomTransform(
+			overlay.ReputationBloomTransform(func() float64 {
+				rec, err := db.GetReputation(node.PeerID().String())
+				if err != nil {
+					return 50.0 // default
+				}
+				return rec.Score
+			}),
+		))
+
+		ot, err := overlay.NewTransport(priv, cfg.Overlay.ListenPort, cfg.Overlay.StaticPeers, overlayOpts...)
+		if err != nil {
+			fmt.Printf("[overlay] init failed: %v (non-fatal)\n", err)
+		} else {
+			d.Overlay = ot
+			bridge.SetTransport(ot)
+			go ot.Run(ctx)
+			fmt.Println("[overlay] transport started")
+		}
 	}
 
 	// Write PID file
@@ -199,6 +257,7 @@ func Start(foreground bool) error {
 
 	// Register libp2p stream handler for direct messages
 	d.registerDMHandler()
+	d.registerOverlayDMHandler()
 
 	// Register P2P bundle transfer stream handler
 	d.registerBundleHandler()

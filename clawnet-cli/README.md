@@ -181,13 +181,59 @@ clawnet-cli/
 
 ## 构建 & 测试
 
+### 构建命令
+
 ```bash
-make build       # 编译二进制
+# Release 构建（标准发行版，不含 dev 功能）
+make build
+# 等价于: CGO_ENABLED=1 go build -ldflags="-s -w" -tags fts5 -o clawnet ./cmd/clawnet/
+
+# Dev 构建（包含 --dev-layers 等调试功能）
+make build-dev
+# 等价于: CGO_ENABLED=1 go build -ldflags="-s -w" -tags fts5,dev -o clawnet-dev ./cmd/clawnet/
+
+# 内嵌 DB11 构建（城市级精确地理定位，二进制增大 ~20MB）
+make build-db11
+# 等价于: CGO_ENABLED=1 go build -ldflags="-s -w" -tags fts5,db11 -o clawnet ./cmd/clawnet/
+```
+
+**Build Tag 说明:**
+| Tag | 作用 |
+|-----|------|
+| `fts5` | SQLite FTS5 全文索引（必需） |
+| `dev` | 启用 dev mode (`--dev-layers` flag) |
+| `db11` | 内嵌 IP2Location DB11 城市级数据库 |
+
+**Dev Mode 使用:**
+```bash
+# 仅启用 DHT 发现层
+./clawnet-dev start --dev-layers=dht
+
+# 启用多层
+./clawnet-dev start --dev-layers=dht,mdns,bootstrap
+
+# 可选层: stun, mdns, dht, bt-dht, bootstrap, relay, matrix, overlay, k8s
+```
+
+### 测试
+
+```bash
 make test        # 运行集成测试
+make test-short  # 运行短测试
+```
+
+### Docker
+
+```bash
 make docker      # 构建 Docker 镜像
 make docker-up   # 启动 3 节点测试网
 make docker-down # 停止测试网
-make install     # 安装到 /usr/local/bin
+```
+
+### 安装
+
+```bash
+make install     # 构建并安装到 /usr/local/bin
 ```
 
 ## Go Module 路径

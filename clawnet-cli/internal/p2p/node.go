@@ -27,6 +27,7 @@ import (
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/bootstrap"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/btdht"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/matrix"
 )
 
 const (
@@ -38,15 +39,16 @@ const (
 
 // Node represents a running P2P node.
 type Node struct {
-	Host       host.Host
-	DHT        *dht.IpfsDHT
-	PubSub     *pubsub.PubSub
-	Topics     map[string]*pubsub.Topic
-	Subs       map[string]*pubsub.Subscription
-	Config     *config.Config
-	BwCounter  *metrics.BandwidthCounter
-	BTDHT      *btdht.Discovery
-	cancelFunc context.CancelFunc
+	Host            host.Host
+	DHT             *dht.IpfsDHT
+	PubSub          *pubsub.PubSub
+	Topics          map[string]*pubsub.Topic
+	Subs            map[string]*pubsub.Subscription
+	Config          *config.Config
+	BwCounter       *metrics.BandwidthCounter
+	BTDHT           *btdht.Discovery
+	MatrixDiscovery *matrix.Discovery
+	cancelFunc      context.CancelFunc
 
 	mu sync.RWMutex
 }
@@ -120,7 +122,7 @@ func NewNode(ctx context.Context, priv crypto.PrivKey, cfg *config.Config) (*Nod
 		opts = append(opts, libp2p.ForceReachabilityPrivate())
 	}
 
-	if cfg.RelayEnabled {
+	if cfg.RelayEnabled && cfg.LayerEnabled("relay") {
 		opts = append(opts,
 			libp2p.EnableRelay(),
 			libp2p.EnableRelayService(),
@@ -162,31 +164,55 @@ func NewNode(ctx context.Context, priv crypto.PrivKey, cfg *config.Config) (*Nod
 	}
 
 	// Start mDNS discovery for LAN
-	if err := node.setupMDNS(ctx); err != nil {
-		// mDNS failure is non-fatal — log and continue
-		fmt.Printf("warning: mDNS setup failed: %v\n", err)
+	if cfg.LayerEnabled("mdns") {
+		if err := node.setupMDNS(ctx); err != nil {
+			// mDNS failure is non-fatal — log and continue
+			fmt.Printf("warning: mDNS setup failed: %v\n", err)
+		}
 	}
 
 	// Connect to bootstrap peers
 	node.connectBootstrapPeers(ctx)
 
 	// Start HTTP bootstrap fetch (GitHub Pages) in background
-	if cfg.HTTPBootstrap {
+	if cfg.HTTPBootstrap && cfg.LayerEnabled("bootstrap") {
 		go node.httpBootstrap(ctx)
 	}
 
 	// Start K8s headless-service DNS discovery in background
-	if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
+	if os.Getenv("KUBERNETES_SERVICE_HOST") != "" && cfg.LayerEnabled("k8s") {
 		go node.k8sDiscovery(ctx)
 	}
 
 	// Start BT Mainline DHT discovery in background
-	if cfg.BTDHT.Enabled {
+	if cfg.BTDHT.Enabled && cfg.LayerEnabled("bt-dht") {
 		go node.startBTDHT(ctx, cfg)
 	}
 
 	// Start DHT routing discovery in background
-	go node.discoverPeers(ctx)
+	if cfg.LayerEnabled("dht") {
+		go node.discoverPeers(ctx)
+	}
+
+	// Layer 6: Matrix Discovery
+	if cfg.MatrixDiscovery.Enabled && cfg.LayerEnabled("matrix") {
+		interval := time.Duration(cfg.MatrixDiscovery.AnnounceIntervalSec) * time.Second
+		md, err := matrix.NewDiscovery(priv, cfg.MatrixDiscovery.Homeservers, interval, "clawnet", config.DataDir(), func() []multiaddr.Multiaddr {
+			return h.Addrs()
+		})
+		if err != nil {
+			fmt.Printf("[matrix] discovery init failed: %v (non-fatal)\n", err)
+		} else {
+			node.MatrixDiscovery = md
+			go md.Run(ctx, func(pi peer.AddrInfo) {
+				cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				defer cancel()
+				if err := h.Connect(cctx, pi); err == nil {
+					fmt.Printf("[matrix] discovered and connected to %s\n", pi.ID.String()[:16])
+				}
+			})
+		}
+	}
 
 	// Auto-join configured topics
 	for _, topic := range cfg.TopicsAutoJoin {
