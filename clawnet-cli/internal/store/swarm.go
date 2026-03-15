@@ -9,6 +9,7 @@ type Swarm struct {
 	CreatorName     string `json:"creator_name"`
 	Title           string `json:"title"`
 	Question        string `json:"question"`
+	TemplateType    string `json:"template_type"`    // freeform, investment-analysis, tech-selection
 	Domains         string `json:"domains"`          // JSON array of domain tags
 	MaxParticipants int    `json:"max_participants"` // 0 = unlimited
 	DurationMin     int    `json:"duration_minutes"` // 0 = no time limit
@@ -21,27 +22,93 @@ type Swarm struct {
 
 // SwarmContribution is a single contribution to a Swarm Think session.
 type SwarmContribution struct {
-	ID          string `json:"id"`
-	SwarmID     string `json:"swarm_id"`
-	AuthorID    string `json:"author_id"`
-	AuthorName  string `json:"author_name"`
-	Perspective string `json:"perspective"` // bull, bear, neutral, devil-advocate
-	Body        string `json:"body"`
+	ID          string  `json:"id"`
+	SwarmID     string  `json:"swarm_id"`
+	AuthorID    string  `json:"author_id"`
+	AuthorName  string  `json:"author_name"`
+	Section     string  `json:"section"`     // template section key (e.g. "fundamentals")
+	Perspective string  `json:"perspective"` // bull, bear, neutral, devil-advocate
+	Body        string  `json:"body"`
 	Confidence  float64 `json:"confidence"` // 0.0 - 1.0
-	CreatedAt   string `json:"created_at"`
+	CreatedAt   string  `json:"created_at"`
+}
+
+// ── Swarm Templates ──
+
+// SwarmTemplateSection defines a structured section within a template.
+type SwarmTemplateSection struct {
+	Key         string `json:"key"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+}
+
+// SwarmTemplate is a predefined structure for Swarm Think sessions.
+type SwarmTemplate struct {
+	Type                string                 `json:"type"`
+	Name                string                 `json:"name"`
+	Description         string                 `json:"description"`
+	DefaultDomains      []string               `json:"default_domains"`
+	DefaultDuration     int                    `json:"default_duration_minutes"`
+	Sections            []SwarmTemplateSection  `json:"sections"`
+	Perspectives        []string               `json:"perspectives"`
+}
+
+// SwarmTemplates is the built-in template registry.
+var SwarmTemplates = []SwarmTemplate{
+	{
+		Type:            "investment-analysis",
+		Name:            "Investment Analysis",
+		Description:     "Multi-angle due diligence for investment decisions",
+		DefaultDomains:  []string{"finance", "investment"},
+		DefaultDuration: 30,
+		Sections: []SwarmTemplateSection{
+			{Key: "fundamentals", Title: "Fundamentals", Description: "Revenue, margins, cash flow, balance sheet analysis"},
+			{Key: "technicals", Title: "Technical Analysis", Description: "Price action, volume, momentum indicators, chart patterns"},
+			{Key: "market", Title: "Market & Competition", Description: "TAM/SAM, competitive landscape, moat assessment"},
+			{Key: "risks", Title: "Risk Factors", Description: "Regulatory, macro, execution, concentration risks"},
+			{Key: "catalysts", Title: "Catalysts & Thesis", Description: "Upcoming events, growth drivers, bull/bear thesis"},
+		},
+		Perspectives: []string{"bull", "bear", "neutral"},
+	},
+	{
+		Type:            "tech-selection",
+		Name:            "Technology Selection",
+		Description:     "Structured evaluation for choosing between technology options",
+		DefaultDomains:  []string{"technology", "engineering"},
+		DefaultDuration: 45,
+		Sections: []SwarmTemplateSection{
+			{Key: "requirements", Title: "Requirements Fit", Description: "How well each option meets functional and non-functional requirements"},
+			{Key: "scalability", Title: "Scalability & Performance", Description: "Benchmarks, load handling, horizontal/vertical scaling"},
+			{Key: "ecosystem", Title: "Ecosystem & Community", Description: "Documentation quality, community size, package availability, hiring pool"},
+			{Key: "cost", Title: "Cost Analysis", Description: "Licensing, infrastructure, development time, maintenance burden"},
+			{Key: "risks", Title: "Risks & Migration", Description: "Vendor lock-in, deprecation risk, migration complexity, learning curve"},
+		},
+		Perspectives: []string{"neutral", "devil-advocate"},
+	},
+}
+
+// GetSwarmTemplate returns a template by type, or nil if not found.
+func GetSwarmTemplate(typ string) *SwarmTemplate {
+	for i := range SwarmTemplates {
+		if SwarmTemplates[i].Type == typ {
+			return &SwarmTemplates[i]
+		}
+	}
+	return nil
 }
 
 // InsertSwarm upserts a swarm session.
 func (s *Store) InsertSwarm(sw *Swarm) error {
 	_, err := s.DB.Exec(
-		`INSERT INTO swarms (id, creator_id, creator_name, title, question, domains, max_participants, duration_min, deadline, status)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO swarms (id, creator_id, creator_name, title, question, template_type, domains, max_participants, duration_min, deadline, status)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   title = excluded.title, question = excluded.question,
+		   template_type = excluded.template_type,
 		   status = excluded.status, deadline = excluded.deadline,
 		   updated_at = datetime('now')`,
 		sw.ID, sw.CreatorID, sw.CreatorName, sw.Title, sw.Question,
-		sw.Domains, sw.MaxParticipants, sw.DurationMin, sw.Deadline, sw.Status,
+		sw.TemplateType, sw.Domains, sw.MaxParticipants, sw.DurationMin, sw.Deadline, sw.Status,
 	)
 	return err
 }
@@ -50,6 +117,7 @@ func (s *Store) InsertSwarm(sw *Swarm) error {
 func (s *Store) GetSwarm(id string) (*Swarm, error) {
 	row := s.DB.QueryRow(
 		`SELECT id, creator_id, creator_name, title, question,
+		        COALESCE(template_type,'freeform'),
 		        COALESCE(domains,'[]'), COALESCE(max_participants,0),
 		        COALESCE(duration_min,0), COALESCE(deadline,''),
 		        status, synthesis, created_at, updated_at
@@ -57,7 +125,7 @@ func (s *Store) GetSwarm(id string) (*Swarm, error) {
 	)
 	sw := &Swarm{}
 	err := row.Scan(&sw.ID, &sw.CreatorID, &sw.CreatorName, &sw.Title, &sw.Question,
-		&sw.Domains, &sw.MaxParticipants, &sw.DurationMin, &sw.Deadline,
+		&sw.TemplateType, &sw.Domains, &sw.MaxParticipants, &sw.DurationMin, &sw.Deadline,
 		&sw.Status, &sw.Synthesis, &sw.CreatedAt, &sw.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -70,6 +138,7 @@ func (s *Store) ListSwarms(status string, limit, offset int) ([]*Swarm, error) {
 	var rows *sql.Rows
 	var err error
 	q := `SELECT id, creator_id, creator_name, title, question,
+	             COALESCE(template_type,'freeform'),
 	             COALESCE(domains,'[]'), COALESCE(max_participants,0),
 	             COALESCE(duration_min,0), COALESCE(deadline,''),
 	             status, synthesis, created_at, updated_at
@@ -90,7 +159,7 @@ func (s *Store) ListSwarms(status string, limit, offset int) ([]*Swarm, error) {
 	for rows.Next() {
 		sw := &Swarm{}
 		if err := rows.Scan(&sw.ID, &sw.CreatorID, &sw.CreatorName, &sw.Title, &sw.Question,
-			&sw.Domains, &sw.MaxParticipants, &sw.DurationMin, &sw.Deadline,
+			&sw.TemplateType, &sw.Domains, &sw.MaxParticipants, &sw.DurationMin, &sw.Deadline,
 			&sw.Status, &sw.Synthesis, &sw.CreatedAt, &sw.UpdatedAt); err != nil {
 			return nil, err
 		}
@@ -102,10 +171,10 @@ func (s *Store) ListSwarms(status string, limit, offset int) ([]*Swarm, error) {
 // InsertSwarmContribution inserts a contribution.
 func (s *Store) InsertSwarmContribution(c *SwarmContribution) error {
 	_, err := s.DB.Exec(
-		`INSERT INTO swarm_contributions (id, swarm_id, author_id, author_name, perspective, body, confidence)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO swarm_contributions (id, swarm_id, author_id, author_name, section, perspective, body, confidence)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO NOTHING`,
-		c.ID, c.SwarmID, c.AuthorID, c.AuthorName, c.Perspective, c.Body, c.Confidence,
+		c.ID, c.SwarmID, c.AuthorID, c.AuthorName, c.Section, c.Perspective, c.Body, c.Confidence,
 	)
 	return err
 }
@@ -114,7 +183,7 @@ func (s *Store) InsertSwarmContribution(c *SwarmContribution) error {
 func (s *Store) ListSwarmContributions(swarmID string, limit int) ([]*SwarmContribution, error) {
 	rows, err := s.DB.Query(
 		`SELECT id, swarm_id, author_id, author_name,
-		        COALESCE(perspective,''), body, COALESCE(confidence,0), created_at
+		        COALESCE(section,''), COALESCE(perspective,''), body, COALESCE(confidence,0), created_at
 		 FROM swarm_contributions WHERE swarm_id = ?
 		 ORDER BY created_at ASC LIMIT ?`,
 		swarmID, limit,
@@ -128,7 +197,7 @@ func (s *Store) ListSwarmContributions(swarmID string, limit int) ([]*SwarmContr
 	for rows.Next() {
 		c := &SwarmContribution{}
 		if err := rows.Scan(&c.ID, &c.SwarmID, &c.AuthorID, &c.AuthorName,
-			&c.Perspective, &c.Body, &c.Confidence, &c.CreatedAt); err != nil {
+			&c.Section, &c.Perspective, &c.Body, &c.Confidence, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		contribs = append(contribs, c)

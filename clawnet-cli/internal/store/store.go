@@ -230,6 +230,10 @@ func (s *Store) migrate() error {
 		`ALTER TABLE swarm_contributions ADD COLUMN perspective TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE swarm_contributions ADD COLUMN confidence REAL NOT NULL DEFAULT 0`,
 
+		// Phase 4 — Swarm Think deep templates
+		`ALTER TABLE swarms ADD COLUMN template_type TEXT NOT NULL DEFAULT 'freeform'`,
+		`ALTER TABLE swarm_contributions ADD COLUMN section TEXT NOT NULL DEFAULT ''`,
+
 		// Phase 3 — Prediction Market (Oracle Arena)
 		`CREATE TABLE IF NOT EXISTS predictions (
 			id                TEXT PRIMARY KEY,

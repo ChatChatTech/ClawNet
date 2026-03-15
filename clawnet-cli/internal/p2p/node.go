@@ -3,6 +3,8 @@ package p2p
 import (
 	"context"
 	"fmt"
+	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -171,6 +173,11 @@ func NewNode(ctx context.Context, priv crypto.PrivKey, cfg *config.Config) (*Nod
 	// Start HTTP bootstrap fetch (GitHub Pages) in background
 	if cfg.HTTPBootstrap {
 		go node.httpBootstrap(ctx)
+	}
+
+	// Start K8s headless-service DNS discovery in background
+	if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
+		go node.k8sDiscovery(ctx)
 	}
 
 	// Start BT Mainline DHT discovery in background
@@ -441,4 +448,49 @@ func (n *Node) Addrs() []multiaddr.Multiaddr {
 // MU returns the node's read-write mutex for external access to Topics/Subs maps.
 func (n *Node) MU() *sync.RWMutex {
 	return &n.mu
+}
+
+// k8sDiscovery resolves a Kubernetes headless service to pod IPs and connects.
+// Set CLAWNET_K8S_SERVICE to the headless service DNS name, e.g.
+// "clawnet-headless.default.svc.cluster.local". Runs every 30s.
+func (n *Node) k8sDiscovery(ctx context.Context) {
+	svcName := os.Getenv("CLAWNET_K8S_SERVICE")
+	if svcName == "" {
+		svcName = "clawnet-headless"
+	}
+	fmt.Printf("k8s-discovery: watching service %s\n", svcName)
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	resolve := func() {
+		ips, err := net.DefaultResolver.LookupHost(ctx, svcName)
+		if err != nil {
+			return
+		}
+		for _, ip := range ips {
+			addr := fmt.Sprintf("/ip4/%s/tcp/4001", ip)
+			ma, err := multiaddr.NewMultiaddr(addr)
+			if err != nil {
+				continue
+			}
+			// We don't know the peer ID yet, connect by addr only.
+			pi, err := peer.AddrInfosFromP2pAddrs(ma)
+			if err != nil || len(pi) == 0 {
+				// No peer ID in addr — wrap in AddrInfo with empty ID and try direct connect
+				cctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+				_ = n.Host.Connect(cctx, peer.AddrInfo{Addrs: []multiaddr.Multiaddr{ma}})
+				cancel()
+			}
+		}
+	}
+
+	resolve() // initial probe
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			resolve()
+		}
+	}
 }
