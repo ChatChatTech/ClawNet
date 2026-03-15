@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/p2p"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
 	"github.com/google/uuid"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 const (
@@ -36,13 +38,14 @@ type GossipSwarmMsg struct {
 
 // CreditAuditMsg is broadcast so peers can verify credit settlements.
 type CreditAuditMsg struct {
-	TxnID    string  `json:"txn_id"`
-	TaskID   string  `json:"task_id"`
-	From     string  `json:"from"`
-	To       string  `json:"to"`
-	Amount   float64 `json:"amount"`
-	Reason   string  `json:"reason"`
-	Time     string  `json:"time"`
+	TxnID     string  `json:"txn_id"`
+	TaskID    string  `json:"task_id"`
+	From      string  `json:"from"`
+	To        string  `json:"to"`
+	Amount    float64 `json:"amount"`
+	Reason    string  `json:"reason"`
+	Time      string  `json:"time"`
+	Signature []byte  `json:"signature,omitempty"` // sender's Ed25519 signature over the payload
 }
 
 // GossipPredictionMsg is the wire format for prediction market messages.
@@ -112,6 +115,9 @@ func (d *Daemon) startPhase2Gossip(ctx context.Context) {
 
 	// Prestige decay loop: apply daily 0.998 decay
 	go d.prestigeDecayLoop(ctx)
+
+	// Reputation DHT publish loop: periodically sign and publish own reputation
+	go d.repPublishLoop(ctx)
 }
 
 // swarmExpiryLoop periodically closes expired swarms.
@@ -212,6 +218,46 @@ func (d *Daemon) prestigeDecayLoop(ctx context.Context) {
 			return
 		case <-ticker.C:
 			decay()
+		}
+	}
+}
+
+// repPublishLoop periodically recalculates and publishes own reputation to DHT.
+func (d *Daemon) repPublishLoop(ctx context.Context) {
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(30 * time.Second):
+	}
+
+	publish := func() {
+		myID := d.Node.PeerID().String()
+		rep, err := d.Store.GetReputation(myID)
+		if err != nil {
+			return
+		}
+		snap := p2p.RepSnapshot{
+			PeerID:         myID,
+			Score:          rep.Score,
+			TasksCompleted: rep.TasksCompleted,
+			TasksFailed:    rep.TasksFailed,
+			Contributions:  rep.Contributions,
+			KnowledgeCount: rep.KnowledgeCount,
+		}
+		if err := d.Node.PublishReputation(ctx, snap); err != nil {
+			fmt.Printf("rep-dht: publish error: %v\n", err)
+		}
+	}
+
+	publish() // initial
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			publish()
 		}
 	}
 }
@@ -418,6 +464,25 @@ func (d *Daemon) handleCreditAuditSub(ctx context.Context, sub *pubsub.Subscript
 			continue
 		}
 
+		// Verify sender signature if present
+		if len(audit.Signature) > 0 {
+			fromPID, err := peer.Decode(audit.From)
+			if err == nil {
+				pubKey, err := fromPID.ExtractPublicKey()
+				if err == nil {
+					// Re-marshal without signature for verification
+					sigCopy := audit.Signature
+					audit.Signature = nil
+					payload, _ := json.Marshal(audit)
+					ok, _ := pubKey.Verify(payload, sigCopy)
+					if !ok {
+						continue // reject unsigned or forged audit
+					}
+					audit.Signature = sigCopy
+				}
+			}
+		}
+
 		// Store the audit record locally for verification
 		d.Store.LogCreditAudit(audit.TxnID, audit.TaskID, audit.From, audit.To, audit.Amount, audit.Reason, audit.Time)
 
@@ -430,7 +495,7 @@ func (d *Daemon) handleCreditAuditSub(ctx context.Context, sub *pubsub.Subscript
 	}
 }
 
-// publishCreditAudit broadcasts a credit transaction for peer supervision.
+// publishCreditAudit broadcasts a signed credit transaction for peer supervision.
 func (d *Daemon) publishCreditAudit(ctx context.Context, txnID, taskID, from, to string, amount float64, reason string) {
 	audit := CreditAuditMsg{
 		TxnID:  txnID,
@@ -440,6 +505,13 @@ func (d *Daemon) publishCreditAudit(ctx context.Context, txnID, taskID, from, to
 		Amount: amount,
 		Reason: reason,
 		Time:   time.Now().UTC().Format(time.RFC3339),
+	}
+	// Sign the audit payload
+	payload, _ := json.Marshal(audit)
+	if priv := d.Node.Host.Peerstore().PrivKey(d.Node.Host.ID()); priv != nil {
+		if sig, err := priv.Sign(payload); err == nil {
+			audit.Signature = sig
+		}
 	}
 	data, _ := json.Marshal(audit)
 	d.Node.Publish(ctx, CreditAudit, data)

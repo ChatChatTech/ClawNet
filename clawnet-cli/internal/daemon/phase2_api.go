@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/p2p"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
 	"github.com/google/uuid"
 )
@@ -137,6 +138,22 @@ func (d *Daemon) handleCreditsTransfer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Sign and publish the transaction to DHT
+	priv := d.Node.Host.Peerstore().PrivKey(d.Node.Host.ID())
+	if priv != nil {
+		rec := p2p.TxnRecord{
+			TxnID:  txnID,
+			From:   fromPeer,
+			To:     body.ToPeer,
+			Amount: body.Amount,
+			Reason: body.Reason,
+		}
+		if data, err := p2p.SignTxn(priv, rec); err == nil {
+			go d.Node.PublishTxn(d.ctx, data, txnID)
+		}
+	}
+
 	writeJSON(w, map[string]string{"status": "transferred", "txn_id": txnID})
 }
 

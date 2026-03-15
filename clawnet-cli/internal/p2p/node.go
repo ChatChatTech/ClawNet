@@ -196,6 +196,8 @@ func (n *Node) setupDHT(ctx context.Context) error {
 		dht.ProtocolPrefix(dhtProtocol),
 		dht.Validator(record.NamespacedValidator{
 			"clawnet-profile": NewProfileValidator(),
+			"clawnet-txn":     NewTxnValidator(),
+			"clawnet-rep":     NewRepValidator(),
 		}),
 	)
 	if err != nil {
