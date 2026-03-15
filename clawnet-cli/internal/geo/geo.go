@@ -18,8 +18,8 @@ type GeoInfo struct {
 	Country   string  `json:"country"`
 	Region    string  `json:"region"`
 	City      string  `json:"city"`
-	Latitude  float32 `json:"latitude"`
-	Longitude float32 `json:"longitude"`
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
 	Timezone  string  `json:"timezone"`
 }
 
@@ -35,7 +35,16 @@ func newLocator(dataDir string, dbZip []byte, dbFileName, dbType string) (*Locat
 	tmpDir := filepath.Join(dataDir, "data")
 	os.MkdirAll(tmpDir, 0700)
 
-	// Prefer DB11 on disk (downloaded via `clawnet geo-upgrade`)
+	// Prefer DB5.IPV6 on disk (downloaded via `clawnet geo-upgrade`)
+	db5Path := filepath.Join(tmpDir, "IP2LOCATION-LITE-DB5.IPV6.BIN")
+	if _, err := os.Stat(db5Path); err == nil {
+		db, err := ip2location.OpenDB(db5Path)
+		if err == nil {
+			return &Locator{db: db, dbType: "DB5"}, nil
+		}
+	}
+
+	// Also check legacy DB11 on disk
 	db11Path := filepath.Join(tmpDir, "IP2LOCATION-LITE-DB11.BIN")
 	if _, err := os.Stat(db11Path); err == nil {
 		db, err := ip2location.OpenDB(db11Path)
@@ -108,8 +117,8 @@ func (l *Locator) Lookup(ipStr string) *GeoInfo {
 		Country:   cleanField(results.Country_short),
 		Region:    cleanField(results.Region),
 		City:      cleanField(results.City),
-		Latitude:  results.Latitude,
-		Longitude: results.Longitude,
+		Latitude:  float64(results.Latitude),
+		Longitude: float64(results.Longitude),
 		Timezone:  cleanField(results.Timezone),
 	}
 	// Fallback: if coordinates are 0,0, use country centroid
@@ -182,7 +191,10 @@ func (gi *GeoInfo) Label() string {
 
 func cleanField(s string) string {
 	s = strings.TrimSpace(s)
-	if s == "This parameter is unavailable for selected data file. Please upgrade the data file." {
+	switch {
+	case s == "This parameter is unavailable for selected data file. Please upgrade the data file.":
+		return ""
+	case strings.Contains(s, "missing in IPv4 BIN"):
 		return ""
 	}
 	return s

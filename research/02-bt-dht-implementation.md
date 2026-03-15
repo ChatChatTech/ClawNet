@@ -699,3 +699,32 @@ clawnet:?network=my-research-group-2026&secret=<optional-psk>
 4. BT DHT（5-30 秒）
 
 **即使我们自己的所有服务器都宕机、GitHub 也挂了，节点仍然能通过 BT DHT 的全球基础设施互发现。** 这是任何竞品都不具备的生存能力。
+
+---
+
+## 附录: Overlay 路由协议与 BT DHT 的协同 (2026-03-15 更新)
+
+在深入调研 Yggdrasil / Pinecone / Quiet 三个项目后（见 [research/04](04-quiet-yggdrasil-pinecone-analysis.md)），BT DHT 在 ClawNet 发现层中的定位更加明确：
+
+### 五层发现 + Overlay 路由
+
+```
+发现层 (谁在网络中？):
+  ① mDNS (局域网, 即时)
+  ② 硬编码 Bootstrap (即时)
+  ③ HTTP / GitHub Pages (1-3s)
+  ④ BT DHT (5-30s, 全球抗审查)
+  ⑤ Matrix Discovery (10-60s, 联邦式)
+
+路由层 (如何到达？):
+  Primary:  libp2p (TCP/QUIC/WS + Kademlia + Relay)
+  Overlay:  Ironwood (Spanning Tree + DHT + Bloom Gossip)  ← 替代 Pinecone
+```
+
+**BT DHT 负责"发现"，Ironwood 负责"路由"** — 两者互补，不重叠：
+- BT DHT: 在全球数千万节点中找到 ClawNet peer 的 IP:Port
+- Ironwood: 在 ClawNet overlay 中建立高效的端到端路径
+
+### Pinecone 弃用说明
+
+原文中提到的 Pinecone 作为备选 overlay 路由的方案已**不再推荐**。Pinecone 项目自 2023-08 起实质停滞，quic-go v0.37.4 与现代 Go 不兼容。推荐迁移到同一作者的活跃项目 **Ironwood** (Yggdrasil 路由引擎)。

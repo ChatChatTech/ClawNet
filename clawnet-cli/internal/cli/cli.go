@@ -26,6 +26,12 @@ import (
 // Verbose controls extra output when -v/--verbose is passed.
 var Verbose bool
 
+// devBuild is set to true via init() in dev.go (build tag: dev).
+var devBuild bool
+
+// devLayers holds the dev mode layer whitelist (empty = all layers).
+var devLayers []string
+
 // 🦞 ClawNet Lobster Theme — ANSI color palette
 const (
 	cBorder    = "\033[38;2;230;57;70m"     // Lobster Red #E63946 — borders
@@ -204,7 +210,13 @@ func Execute() error {
 		case "-h", "--help":
 			showHelp = true
 		default:
-			filtered = append(filtered, a)
+			if devBuild && a == "--dev" {
+				// dev mode marker
+			} else if devBuild && strings.HasPrefix(a, "--dev-layers=") {
+				devLayers = strings.Split(strings.TrimPrefix(a, "--dev-layers="), ",")
+			} else {
+				filtered = append(filtered, a)
+			}
 		}
 	}
 	os.Args = filtered
@@ -302,11 +314,16 @@ func printUsage() error {
 	fmt.Println(tidal+"  doctor   "+dim+"(doc)    "+rst + "Network connectivity diagnostics")
 	fmt.Println(tidal+"  update   "+dim+"         "+rst + "Self-update to latest release")
 	fmt.Println(tidal+"  nutshell "+dim+"(nut)    "+rst + "Manage Nutshell CLI (install/upgrade/uninstall)")
-	fmt.Println(tidal+"  geo-upgrade"+dim+"       "+rst + "Download city-level geo DB (DB11, ~22MB)")
+	fmt.Println(tidal+"  geo-upgrade"+dim+"       "+rst + "Download city-level geo DB (DB5.IPV6, ~34MB)")
 	fmt.Println(tidal+"  chat     "+dim+"         "+rst + "Random chat with an online peer")
 	fmt.Println(tidal+"  version  "+dim+"(v)      "+rst + "Show version")
 	fmt.Println()
-	fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help" + rst)
+	if devBuild {
+		fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help  --dev-layers=layer1,layer2,..." + rst)
+		fmt.Println(dim + "  DEV LAYERS: stun, mdns, dht, bt-dht, bootstrap, relay, matrix, overlay, k8s" + rst)
+	} else {
+		fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help" + rst)
+	}
 	fmt.Println(dim + "  API runs on http://localhost:3998 when daemon is active." + rst)
 	return nil
 }
@@ -326,7 +343,7 @@ var cmdHelps = map[string]string{
 	"doctor":  "clawnet doctor\n  Network connectivity diagnostics — NAT, relay, DHT, bootstrap.\n  Alias: doc",
 	"update":   "clawnet update\n  Check for the latest release on GitHub and self-update the binary.",
 	"nutshell":    "clawnet nutshell <subcommand>\n  Manage the Nutshell CLI tool.\n  Subcommands: install, upgrade, uninstall, version, status\n  Alias: nut",
-	"geo-upgrade": "clawnet geo-upgrade\n  Download the city-level geo database (DB11, ~22MB).\n  Enables precise city-level geolocation in topo view.\n  Default build uses country-level DB1 (909K) for smaller binary.",
+	"geo-upgrade": "clawnet geo-upgrade\n  Download the city-level geo database (DB5.IPV6, ~34MB).\n  Enables precise city-level geolocation in topo view.\n  Default build embeds DB1.IPV6 (country-level, 2MB).\n  Set IP2GEOTOKEN in <dataDir>/.ip2geotoken for direct IP2Location download.",
 	"chat":        "clawnet chat\n  Start a random chat with an online peer.\n  Matches you with a random connected node and opens an interactive conversation.",
 	"version":     "clawnet version\n  Show version.\n  Alias: v",
 }
@@ -404,7 +421,7 @@ func cmdStart() error {
 		fmt.Println("Daemon is already running.")
 		return cmdStatus()
 	}
-	return daemon.Start(true)
+	return daemon.Start(true, devLayers)
 }
 
 func cmdStop() error {
@@ -519,6 +536,25 @@ func cmdDoctor() error {
 			sym = red + "✗" + rst
 		}
 		fmt.Printf("    BT DHT       %s %s\n", sym, bt)
+	}
+	matrixHS := int(getFloat(diag, "matrix_homeservers"))
+	matrixRooms := int(getFloat(diag, "matrix_rooms"))
+	if matrixHS > 0 {
+		fmt.Printf("    Matrix       %s✓%s %d homeserver(s), %d room(s)\n", green, rst, matrixHS, matrixRooms)
+	} else {
+		fmt.Printf("    Matrix       %s– not connected%s\n", dim, rst)
+	}
+	overlayPeers := int(getFloat(diag, "overlay_peers"))
+	if overlayPeers > 0 {
+		fmt.Printf("    Overlay      %s✓%s %d peer(s)\n", green, rst, overlayPeers)
+	} else if _, ok := diag["overlay_peers"]; ok {
+		fmt.Printf("    Overlay      %s– no peers%s\n", dim, rst)
+	}
+	cryptoSessions := int(getFloat(diag, "crypto_sessions"))
+	if cryptoSessions > 0 {
+		fmt.Printf("    E2E Crypto   %s✓%s %d session(s)\n", green, rst, cryptoSessions)
+	} else {
+		fmt.Printf("    E2E Crypto   %s✓%s enabled (NaCl box)\n", green, rst)
 	}
 	fmt.Println()
 
@@ -1703,6 +1739,9 @@ func renderSelfDetail(pInfos []peerInfo, stats networkStats, w int, now int64) [
 		loc := self.location
 		if loc == "" || loc == "Unknown" {
 			loc = self.country
+		}
+		if loc == "" {
+			loc = "Unknown (run: clawnet geo-upgrade)"
 		}
 		lines = append(lines, cSelf+" Location:   "+cReset+loc)
 		if self.city != "" {

@@ -32,6 +32,23 @@ type Config struct {
 	WireGuard      WireGuardConfig `json:"wireguard"`
 	BTDHT          BTDHTConfig     `json:"bt_dht"`
 	HTTPBootstrap  bool            `json:"http_bootstrap"`
+	MatrixDiscovery MatrixDiscoveryConfig `json:"matrix_discovery"`
+	Overlay        OverlayConfig  `json:"overlay"`
+	DevLayers      []string       `json:"-"` // runtime-only: dev mode layer whitelist
+}
+
+// LayerEnabled returns true if the named layer should start.
+// When DevLayers is empty (normal mode), all layers are enabled.
+func (c *Config) LayerEnabled(name string) bool {
+	if len(c.DevLayers) == 0 {
+		return true
+	}
+	for _, l := range c.DevLayers {
+		if l == name {
+			return true
+		}
+	}
+	return false
 }
 
 type WireGuardConfig struct {
@@ -44,6 +61,20 @@ type WireGuardConfig struct {
 type BTDHTConfig struct {
 	Enabled    bool `json:"enabled"`
 	ListenPort int  `json:"listen_port"`
+}
+
+// MatrixDiscoveryConfig controls Matrix-based peer discovery.
+type MatrixDiscoveryConfig struct {
+	Enabled            bool     `json:"enabled"`
+	Homeservers        []string `json:"homeservers,omitempty"`
+	AnnounceIntervalSec int    `json:"announce_interval_sec,omitempty"`
+}
+
+// OverlayConfig controls the Ironwood overlay transport.
+type OverlayConfig struct {
+	Enabled     bool     `json:"enabled"`
+	ListenPort  int      `json:"listen_port,omitempty"`
+	StaticPeers []string `json:"static_peers,omitempty"`
 }
 
 // Profile represents the public node profile broadcast to the network.
@@ -90,6 +121,12 @@ func DefaultConfig() *Config {
 			ListenPort: DefaultBTDHTPort,
 		},
 		HTTPBootstrap: true,
+		MatrixDiscovery: MatrixDiscoveryConfig{
+			Enabled: true,
+		},
+		Overlay: OverlayConfig{
+			Enabled: false,
+		},
 	}
 }
 
@@ -131,6 +168,8 @@ func Load() (*Config, error) {
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, err
 	}
+	// Migrate old "pinecone" config key to "overlay".
+	cfg.migratePineconeKey(data)
 	// Migrate old default port to new default.
 	if cfg.WebUIPort == 3847 {
 		cfg.WebUIPort = DefaultAPIPort
@@ -151,6 +190,25 @@ func (c *Config) migrateWSAddr() {
 	c.ListenAddrs = append(c.ListenAddrs, "/ip4/0.0.0.0/tcp/4002/ws")
 }
 
+// migratePineconeKey reads old "pinecone" config key and applies it to Overlay.
+func (c *Config) migratePineconeKey(data []byte) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return
+	}
+	if _, ok := raw["pinecone"]; !ok {
+		return
+	}
+	// Old config has "pinecone" key — parse it into OverlayConfig
+	var old OverlayConfig
+	if err := json.Unmarshal(raw["pinecone"], &old); err != nil {
+		return
+	}
+	if old.Enabled {
+		c.Overlay = old
+	}
+}
+
 // applyEnvOverrides applies environment variable overrides to config fields.
 func (c *Config) applyEnvOverrides() {
 	if v := os.Getenv("CLAWNET_ANNOUNCE_ADDRS"); v != "" {
@@ -161,6 +219,12 @@ func (c *Config) applyEnvOverrides() {
 	}
 	if v := os.Getenv("CLAWNET_FORCE_PRIVATE"); v == "1" || strings.EqualFold(v, "true") {
 		c.ForcePrivate = true
+	}
+	if v := os.Getenv("CLAWNET_MATRIX_ENABLED"); v == "0" || strings.EqualFold(v, "false") {
+		c.MatrixDiscovery.Enabled = false
+	}
+	if v := os.Getenv("CLAWNET_OVERLAY_ENABLED"); v == "1" || strings.EqualFold(v, "true") {
+		c.Overlay.Enabled = true
 	}
 }
 

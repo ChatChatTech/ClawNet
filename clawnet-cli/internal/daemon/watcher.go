@@ -225,6 +225,11 @@ func (d *Daemon) relayHealthLoop(ctx context.Context) {
 		return
 	}
 
+	if d.Node.DHT == nil {
+		fmt.Println("[relay-health] DHT unavailable, skipping relay discovery")
+		return
+	}
+
 	rd := drouting.NewRoutingDiscovery(d.Node.DHT)
 
 	// If this node offers relay (and is not ForcePrivate), advertise.
