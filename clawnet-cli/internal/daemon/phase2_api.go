@@ -42,6 +42,7 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/tasks/{id}/bundle", d.handleDownloadTaskBundle)
 
 	// Swarm Think
+	mux.HandleFunc("GET /api/swarm/templates", d.handleSwarmTemplates)
 	mux.HandleFunc("POST /api/swarm", d.handleCreateSwarm)
 	mux.HandleFunc("GET /api/swarm", d.handleListSwarms)
 	mux.HandleFunc("GET /api/swarm/{id}", d.handleGetSwarm)
@@ -481,6 +482,10 @@ func (d *Daemon) handleTaskCancel(w http.ResponseWriter, r *http.Request) {
 
 // ── Swarm handlers ──
 
+func (d *Daemon) handleSwarmTemplates(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, store.SwarmTemplates)
+}
+
 func (d *Daemon) handleCreateSwarm(w http.ResponseWriter, r *http.Request) {
 	var sw store.Swarm
 	if err := json.NewDecoder(r.Body).Decode(&sw); err != nil {
@@ -490,6 +495,24 @@ func (d *Daemon) handleCreateSwarm(w http.ResponseWriter, r *http.Request) {
 	if sw.Title == "" || sw.Question == "" {
 		http.Error(w, `{"error":"title and question are required"}`, http.StatusBadRequest)
 		return
+	}
+	// Apply template defaults when template_type is set
+	if sw.TemplateType != "" && sw.TemplateType != "freeform" {
+		tmpl := store.GetSwarmTemplate(sw.TemplateType)
+		if tmpl == nil {
+			http.Error(w, `{"error":"unknown template_type"}`, http.StatusBadRequest)
+			return
+		}
+		if sw.Domains == "" || sw.Domains == "[]" {
+			b, _ := json.Marshal(tmpl.DefaultDomains)
+			sw.Domains = string(b)
+		}
+		if sw.DurationMin == 0 && tmpl.DefaultDuration > 0 {
+			sw.DurationMin = tmpl.DefaultDuration
+		}
+	}
+	if sw.TemplateType == "" {
+		sw.TemplateType = "freeform"
 	}
 	if err := d.publishSwarm(d.ctx, &sw); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -531,6 +554,7 @@ func (d *Daemon) handleSwarmContribute(w http.ResponseWriter, r *http.Request) {
 	swarmID := r.PathValue("id")
 	var body struct {
 		Body        string  `json:"body"`
+		Section     string  `json:"section"`     // template section key
 		Perspective string  `json:"perspective"` // bull, bear, neutral, devil-advocate
 		Confidence  float64 `json:"confidence"`  // 0.0 - 1.0
 	}
@@ -543,7 +567,7 @@ func (d *Daemon) handleSwarmContribute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := &store.SwarmContribution{SwarmID: swarmID, Body: body.Body,
-		Perspective: body.Perspective, Confidence: body.Confidence}
+		Section: body.Section, Perspective: body.Perspective, Confidence: body.Confidence}
 	if err := d.publishSwarmContribution(d.ctx, c); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

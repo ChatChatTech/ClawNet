@@ -628,9 +628,11 @@ func cmdPeers() error {
 // ── Topo command with keyboard navigation ──
 
 type topoState struct {
-	activePanel  int  // panelSelf, panelPeers, panelGlobe
-	detailMode   bool // true = detail view, false = globe view
-	peerScrollOff int // scroll offset in peer detail list
+	activePanel   int  // panelSelf, panelPeers, panelGlobe
+	detailMode    bool // true = detail view, false = globe view
+	peerScrollOff int  // scroll offset in peer detail list
+	selectedPeer  int  // 1-based peer index for number key selection (0 = none)
+	feedScrollOff int  // scroll offset in activity feed
 }
 
 func cmdTopo() error {
@@ -691,6 +693,8 @@ func cmdTopo() error {
 	var lastStatsFetch time.Time
 	var headerCache string
 	var lastTermW int
+	var actFeed []activityEvent
+	var lastFeedFetch time.Time
 
 	state := &topoState{activePanel: panelGlobe}
 
@@ -704,6 +708,7 @@ func cmdTopo() error {
 				case 'q', 'Q':
 					if state.detailMode {
 						state.detailMode = false
+						state.selectedPeer = 0
 						needClear = true
 					} else {
 						return nil
@@ -718,20 +723,40 @@ func cmdTopo() error {
 					if !state.detailMode {
 						state.detailMode = true
 						state.peerScrollOff = 0
+						state.feedScrollOff = 0
+						needClear = true
+					}
+				default:
+					// Number keys 1-9: select peer and enter detail
+					if key >= '1' && key <= '9' {
+						state.selectedPeer = int(key - '0')
+						state.activePanel = panelPeers
+						state.detailMode = true
+						state.peerScrollOff = 0
 						needClear = true
 					}
 				}
 			case esc := <-escCh:
 				switch esc {
 				case "A": // Up
-					if state.detailMode && state.activePanel == panelPeers {
-						if state.peerScrollOff > 0 {
-							state.peerScrollOff--
+					if state.detailMode {
+						if state.activePanel == panelPeers {
+							if state.peerScrollOff > 0 {
+								state.peerScrollOff--
+							}
+						} else if state.activePanel == panelGlobe {
+							if state.feedScrollOff > 0 {
+								state.feedScrollOff--
+							}
 						}
 					}
 				case "B": // Down
-					if state.detailMode && state.activePanel == panelPeers {
-						state.peerScrollOff++
+					if state.detailMode {
+						if state.activePanel == panelPeers {
+							state.peerScrollOff++
+						} else if state.activePanel == panelGlobe {
+							state.feedScrollOff++
+						}
 					}
 				case "C": // Right — next panel
 					if !state.detailMode {
@@ -775,6 +800,10 @@ func cmdTopo() error {
 				lastStatsFetch = time.Now()
 				statsChanged = true
 			}
+			if time.Since(lastFeedFetch) > 5*time.Second {
+				actFeed = fetchActivityFeed(base)
+				lastFeedFetch = time.Now()
+			}
 			if needClear {
 				fmt.Print("\033[2J")
 				needClear = false
@@ -786,7 +815,7 @@ func cmdTopo() error {
 
 			var frame string
 			if state.detailMode {
-				frame = renderDetailView(peers, w, h, headerCache, netStats, state)
+				frame = renderDetailView(peers, w, h, headerCache, netStats, actFeed, state)
 			} else {
 				frame = renderTopoFrame(peers, w, h, angle, headerCache, netStats, state)
 			}
@@ -893,6 +922,68 @@ func fetchNetworkStats(base string) networkStats {
 	return stats
 }
 
+// activityEvent is a unified event for the topo message feed.
+type activityEvent struct {
+	Time   string `json:"time"`
+	Type   string `json:"type"`   // "credit", "knowledge", "task"
+	Detail string `json:"detail"` // one-line summary
+}
+
+func fetchActivityFeed(base string) []activityEvent {
+	var events []activityEvent
+
+	// Credit transactions (last 10)
+	if resp, err := http.Get(base + "/api/credits/transactions?limit=10"); err == nil {
+		var txns []struct {
+			Amount    float64 `json:"amount"`
+			Reason    string  `json:"reason"`
+			CreatedAt string  `json:"created_at"`
+		}
+		json.NewDecoder(resp.Body).Decode(&txns)
+		resp.Body.Close()
+		for _, t := range txns {
+			sign := "+"
+			if t.Amount < 0 {
+				sign = ""
+			}
+			events = append(events, activityEvent{
+				Time:   t.CreatedAt,
+				Type:   "credit",
+				Detail: fmt.Sprintf("%s%.1f  %s", sign, t.Amount, t.Reason),
+			})
+		}
+	}
+
+	// Knowledge entries (last 5)
+	if resp, err := http.Get(base + "/api/knowledge/feed?limit=5"); err == nil {
+		var entries []struct {
+			AuthorName string `json:"author_name"`
+			Domain     string `json:"domain"`
+			Title      string `json:"title"`
+			CreatedAt  string `json:"created_at"`
+		}
+		json.NewDecoder(resp.Body).Decode(&entries)
+		resp.Body.Close()
+		for _, e := range entries {
+			detail := fmt.Sprintf("[%s] %s", e.Domain, e.Title)
+			if e.AuthorName != "" {
+				detail = e.AuthorName + ": " + detail
+			}
+			events = append(events, activityEvent{
+				Time:   e.CreatedAt,
+				Type:   "knowledge",
+				Detail: detail,
+			})
+		}
+	}
+
+	// Sort by time descending (most recent first)
+	sort.Slice(events, func(i, j int) bool {
+		return events[i].Time > events[j].Time
+	})
+	return events
+}
+
 // lookupWorldMap samples the 180x90 equirectangular bitmap.
 func lookupWorldMap(latDeg, lonDeg float64) byte {
 	if latDeg > 89 {
@@ -945,6 +1036,19 @@ func formatDuration(seconds int64) string {
 		return fmt.Sprintf("%dh%dm", h, m)
 	}
 	return fmt.Sprintf("%dm", m)
+}
+
+func formatBytes(b int64) string {
+	switch {
+	case b >= 1024*1024*1024:
+		return fmt.Sprintf("%.1f GB", float64(b)/1073741824)
+	case b >= 1024*1024:
+		return fmt.Sprintf("%.1f MB", float64(b)/1048576)
+	case b >= 1024:
+		return fmt.Sprintf("%.1f KB", float64(b)/1024)
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
 }
 
 func truncStr(s string, maxW int) string {
@@ -1253,9 +1357,13 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 
 	// ── Draw connection lines between self and peers (Bresenham) ──
 	type lineCell struct {
-		color string
+		color  string
+		bright bool // animated pulse highlight
 	}
 	globeLines := make(map[[2]int]lineCell)
+
+	// Animation pulse: travel period of ~20 steps cycling with rotation
+	pulsePhase := int(rotation*10) % 20
 
 	// Find self marker screen position
 	var selfSX, selfSY int
@@ -1297,6 +1405,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 			}
 			err := dx - dy
 			cx, cy := x0, y0
+			step := 0
 			for {
 				if cx == x1 && cy == y1 {
 					break
@@ -1309,7 +1418,8 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 						fnx := (float64(cx) - cX) / rX
 						fny := (float64(cy) - cY) / rY
 						if fnx*fnx+fny*fny <= 1.0 {
-							globeLines[key] = lineCell{color: col}
+							bright := (step % 20) == pulsePhase || ((step+1) % 20) == pulsePhase
+							globeLines[key] = lineCell{color: col, bright: bright}
 						}
 					}
 				}
@@ -1322,6 +1432,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 					err += dx
 					cy += sy
 				}
+				step++
 			}
 			_ = mi
 		}
@@ -1378,7 +1489,11 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 						sb.WriteString(repColor(mc.reputation) + "*" + cReset)
 					}
 				} else if lc, ok := globeLines[[2]int{globeCol, row}]; ok {
-					sb.WriteString(lc.color + "·" + cReset)
+					if lc.bright {
+						sb.WriteString("\033[1;38;2;255;255;200m" + "●" + cReset)
+					} else {
+						sb.WriteString(lc.color + "·" + cReset)
+					}
 				} else {
 					ch := globe[row][globeCol]
 					switch ch {
@@ -1492,7 +1607,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 
 	// ── Help line — ASCII-only symbols to avoid CJK width problems ──
 	panelNames := []string{"Self", "Peers", "Globe"}
-	help := fmt.Sprintf(" <>/Tab:Switch [%s]  Enter:Detail  q:Quit  @:You(%d)  *:Peer(%d)",
+	help := fmt.Sprintf(" <>/Tab:Switch [%s]  Enter:Detail  1-9:Peer  q:Quit  @:You(%d)  *:Peer(%d)",
 		panelNames[state.activePanel], 1, stats.Peers)
 	emitRow(&sb, cHelp+help+cReset, innerW)
 
@@ -1506,7 +1621,7 @@ func renderTopoFrame(peers []peerGeoData, termW, termH int, rotation float64, he
 
 // ── Detail view (entered by pressing Enter) ──
 
-func renderDetailView(peers []peerGeoData, termW, termH int, header string, stats networkStats, state *topoState) string {
+func renderDetailView(peers []peerGeoData, termW, termH int, header string, stats networkStats, feed []activityEvent, state *topoState) string {
 	innerW := termW - 2
 	if innerW < 10 {
 		innerW = 10
@@ -1528,7 +1643,7 @@ func renderDetailView(peers []peerGeoData, termW, termH int, header string, stat
 	case panelPeers:
 		lines = renderPeersDetail(pInfos, innerW, now, state)
 	case panelGlobe:
-		lines = renderClawNetStats(pInfos, stats, innerW, now)
+		lines = renderClawNetStats(pInfos, stats, innerW, now, feed, state)
 	}
 
 	// Emit content lines with proper visible-width padding
@@ -1548,6 +1663,8 @@ func renderDetailView(peers []peerGeoData, termW, termH int, header string, stat
 	// ── Help line ──
 	help := " q:Back"
 	if state.activePanel == panelPeers {
+		help = " Up/Down:Scroll  q:Back"
+	} else if state.activePanel == panelGlobe {
 		help = " Up/Down:Scroll  q:Back"
 	}
 	emitRow(&sb, cHelp+help+cReset, innerW)
@@ -1638,6 +1755,56 @@ func renderPeersDetail(pInfos []peerInfo, w int, now int64, state *topoState) []
 	}
 
 	var lines []string
+
+	// If a specific peer was selected via number key, show that peer's detail
+	if state.selectedPeer > 0 && state.selectedPeer <= len(peerEntries) {
+		p := peerEntries[state.selectedPeer-1]
+		lines = append(lines, cTitle+fmt.Sprintf(" Peer #%d Detail", state.selectedPeer)+cReset)
+		lines = append(lines, "")
+		lines = append(lines, cSelf+" Peer ID:    "+cReset+p.peerID)
+		lines = append(lines, cSelf+" Short ID:   "+cReset+p.shortID)
+		if p.agentName != "" {
+			lines = append(lines, cSelf+" Agent:      "+cReset+p.agentName)
+		}
+		loc := p.city
+		if loc == "" {
+			loc = p.region
+		}
+		if loc == "" {
+			loc = p.country
+		}
+		if loc == "" {
+			loc = "Unknown"
+		}
+		lines = append(lines, cSelf+" Location:   "+cReset+loc)
+		if p.city != "" {
+			lines = append(lines, cSelf+" City:       "+cReset+p.city)
+		}
+		if p.region != "" {
+			lines = append(lines, cSelf+" Region:     "+cReset+p.region)
+		}
+		if p.country != "" {
+			lines = append(lines, cSelf+" Country:    "+cReset+p.country)
+		}
+		if p.lat != 0 || p.lon != 0 {
+			lines = append(lines, cSelf+" Coords:     "+cReset+fmt.Sprintf("%.4f, %.4f", p.lat, p.lon))
+		}
+		if p.latencyMs > 0 {
+			lines = append(lines, cSelf+" Latency:    "+cReset+fmt.Sprintf("%dms", p.latencyMs))
+		}
+		if p.connectedSince > 0 {
+			lines = append(lines, cSelf+" Connected:  "+cReset+formatDuration(now-p.connectedSince))
+		}
+		if p.bwTotal > 0 {
+			lines = append(lines, cSelf+" Traffic:    "+cReset+formatBytes(p.bwTotal))
+		}
+		lines = append(lines, cSelf+" Reputation: "+cReset+fmt.Sprintf("%.1f", p.reputation))
+		if p.motto != "" {
+			lines = append(lines, cSelf+" Motto:      "+cReset+p.motto)
+		}
+		return lines
+	}
+
 	lines = append(lines, cTitle+fmt.Sprintf(" Peers -- %d connected", len(peerEntries))+cReset)
 	lines = append(lines, "")
 
@@ -1702,8 +1869,8 @@ func renderPeersDetail(pInfos []peerInfo, w int, now int64, state *topoState) []
 	return lines
 }
 
-// renderClawNetStats shows a neofetch-style page with ASCII banner + stats + sysinfo
-func renderClawNetStats(pInfos []peerInfo, stats networkStats, w int, now int64) []string {
+// renderClawNetStats shows a neofetch-style page with ASCII banner + stats + sysinfo + activity feed
+func renderClawNetStats(pInfos []peerInfo, stats networkStats, w int, now int64, feed []activityEvent, state *topoState) []string {
 	var lines []string
 
 	// Count peers by location
@@ -1846,6 +2013,38 @@ func renderClawNetStats(pInfos []peerInfo, stats networkStats, w int, now int64)
 			repColor(60)+"*"+cReset+" 50-69  "+
 			repColor(80)+"*"+cReset+" 70-99  "+
 			repColor(120)+"*"+cReset+" 100+")
+
+	// ── Activity Feed ──
+	if len(feed) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, " "+cTitle+"Activity Feed"+cReset+" "+cDim+"(Up/Down to scroll)"+cReset)
+		lines = append(lines, "")
+		var feedLines []string
+		for _, ev := range feed {
+			icon := "·"
+			switch ev.Type {
+			case "credit":
+				icon = "$"
+			case "knowledge":
+				icon = "K"
+			case "task":
+				icon = "T"
+			}
+			ts := ev.Time
+			if len(ts) > 16 {
+				ts = ts[5:16] // trim to "MM-DD HH:MM"
+			}
+			feedLines = append(feedLines,
+				fmt.Sprintf("  %s %s %s", cDim+ts+cReset, cSelf+icon+cReset, truncStr(ev.Detail, w-22)))
+		}
+		if state.feedScrollOff > len(feedLines)-1 {
+			state.feedScrollOff = len(feedLines) - 1
+		}
+		if state.feedScrollOff < 0 {
+			state.feedScrollOff = 0
+		}
+		lines = append(lines, feedLines[state.feedScrollOff:]...)
+	}
 
 	return lines
 }
