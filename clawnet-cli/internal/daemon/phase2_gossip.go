@@ -299,7 +299,8 @@ func (d *Daemon) handleTaskSub(ctx context.Context, sub *pubsub.Subscription) {
 				d.Store.InsertTaskBid(gm.Bid)
 			}
 		case "update":
-			if gm.Task != nil && gossipAuthorOK(msg, gm.Task.AuthorID) {
+			// Allow updates from the author (e.g. assignment) or the assignee (e.g. delivery)
+			if gm.Task != nil && (gossipAuthorOK(msg, gm.Task.AuthorID) || gossipAuthorOK(msg, gm.Task.AssignedTo)) {
 				d.Store.InsertTask(gm.Task)
 			}
 		}

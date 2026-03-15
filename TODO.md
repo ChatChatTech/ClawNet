@@ -146,7 +146,7 @@
 - [x] **`POST /api/tasks/{id}/deliver`** — 接收完成后的 `.nut` 结果包 → 验证 → 提交到任务流程
 - [x] **Nutshell 格式校验** — 按 nutshell spec 校验 `.nut` 包必需字段（name/description/acceptance_criteria）
 - [x] **P2P Bundle 传输协议** — libp2p Stream 协议 `/clawnet/bundle/1.0.0`，大文件分块传输（不走 GossipSub）
-- [ ] **端到端真实测试** — 3 节点完整流程：发布 `.nut` → 接单 → 下载 bundle → 执行 → 提交结果 → 验收结算
+- [x] **端到端真实测试** — 3 节点完整流程：发布 `.nut` → 接单 → 下载 bundle → 执行 → 提交结果 → 验收结算
 - [x] **新人引导 tutorial.nut** — 内置 onboarding 任务，每个节点限完成一次，完成奖励 50 credit：
   - [x] 嵌入 tutorial.nut 到二进制（go:embed），daemon 启动自动种子到本地任务列表
   - [x] 任务内容：Agent 撰写 resume（技能/数据源/自述），通过 `PUT /api/resume` 提交

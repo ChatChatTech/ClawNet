@@ -38,17 +38,19 @@ type TaskBid struct {
 func (s *Store) InsertTask(t *Task) error {
 	_, err := s.DB.Exec(
 		`INSERT INTO tasks (id, author_id, author_name, title, description, tags, deadline, reward, status,
-		                     nutshell_hash, nutshell_id, bundle_type)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                     assigned_to, result, nutshell_hash, nutshell_id, bundle_type)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   title = excluded.title, description = excluded.description,
 		   tags = excluded.tags, deadline = excluded.deadline,
 		   reward = excluded.reward, status = excluded.status,
+		   assigned_to = COALESCE(NULLIF(excluded.assigned_to, ''), tasks.assigned_to),
+		   result = COALESCE(NULLIF(excluded.result, ''), tasks.result),
 		   nutshell_hash = excluded.nutshell_hash, nutshell_id = excluded.nutshell_id,
 		   bundle_type = excluded.bundle_type,
 		   updated_at = datetime('now')`,
 		t.ID, t.AuthorID, t.AuthorName, t.Title, t.Description, t.Tags, t.Deadline, t.Reward, t.Status,
-		t.NutshellHash, t.NutshellID, t.BundleType,
+		t.AssignedTo, t.Result, t.NutshellHash, t.NutshellID, t.BundleType,
 	)
 	return err
 }

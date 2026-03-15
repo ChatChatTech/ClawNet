@@ -1,6 +1,9 @@
 package daemon
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -1351,22 +1354,71 @@ type nutManifest struct {
 }
 
 // parseNutManifest extracts the JSON manifest from a .nut bundle.
-// Format: NUT<version_byte><4-byte LE manifest length><JSON manifest><payload...>
+// Real nutshell format: NUT<version_byte><gzip(tar(nutshell.json + files...))>
+// The nutshell.json inside the tar contains the manifest. Task fields are
+// nested: {"id", "task": {"title", "description", "acceptance_criteria"}}.
 func parseNutManifest(data []byte) (*nutManifest, error) {
 	if len(data) < 8 {
 		return nil, fmt.Errorf("bundle too small")
 	}
-	// Bytes 0-2: "NUT", byte 3: version, bytes 4-7: manifest length (little-endian uint32)
-	mLen := uint32(data[4]) | uint32(data[5])<<8 | uint32(data[6])<<16 | uint32(data[7])<<24
-	if mLen == 0 || int(8+mLen) > len(data) {
-		return nil, fmt.Errorf("manifest length invalid (%d)", mLen)
+
+	// Skip 4-byte header: NUT + version byte
+	gzReader, err := gzip.NewReader(bytes.NewReader(data[4:]))
+	if err != nil {
+		return nil, fmt.Errorf("gzip decompress: %w", err)
 	}
-	var m nutManifest
-	if err := json.Unmarshal(data[8:8+mLen], &m); err != nil {
+	defer gzReader.Close()
+
+	tr := tar.NewReader(gzReader)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("tar read: %w", err)
+		}
+		if hdr.Name == "nutshell.json" {
+			// Limit manifest size to 1 MB
+			mData, err := io.ReadAll(io.LimitReader(tr, 1<<20))
+			if err != nil {
+				return nil, fmt.Errorf("read manifest: %w", err)
+			}
+			return parseNutManifestJSON(mData)
+		}
+	}
+	return nil, fmt.Errorf("nutshell.json not found in bundle")
+}
+
+// parseNutManifestJSON parses the nutshell.json content into a nutManifest.
+func parseNutManifestJSON(data []byte) (*nutManifest, error) {
+	var raw struct {
+		ID   string `json:"id"`
+		Task struct {
+			Title              string `json:"title"`
+			Description        string `json:"description"`
+			AcceptanceCriteria string `json:"acceptance_criteria"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("manifest JSON: %w", err)
 	}
-	if m.Name == "" {
-		return nil, fmt.Errorf("manifest missing required field: name")
+	m := &nutManifest{
+		ID:                 raw.ID,
+		Name:               raw.Task.Title,
+		Description:        raw.Task.Description,
+		AcceptanceCriteria: raw.Task.AcceptanceCriteria,
 	}
-	return &m, nil
+	if m.Name == "" {
+		// Fallback: try top-level name field
+		var fallback struct {
+			Name string `json:"name"`
+		}
+		json.Unmarshal(data, &fallback)
+		m.Name = fallback.Name
+	}
+	if m.Name == "" {
+		return nil, fmt.Errorf("manifest missing required field: task.title or name")
+	}
+	return m, nil
 }
