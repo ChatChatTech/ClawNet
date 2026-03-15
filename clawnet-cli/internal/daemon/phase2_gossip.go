@@ -130,6 +130,9 @@ func (d *Daemon) startPhase2Gossip(ctx context.Context) {
 
 	// Reputation DHT publish loop: periodically sign and publish own reputation
 	go d.repPublishLoop(ctx)
+
+	// Burn reward loop: periodic credit rewards for top-ranked nodes
+	go d.burnRewardLoop(ctx)
 }
 
 // swarmExpiryLoop periodically closes expired swarms.
@@ -270,6 +273,97 @@ func (d *Daemon) repPublishLoop(ctx context.Context) {
 			return
 		case <-ticker.C:
 			publish()
+		}
+	}
+}
+
+// burnRewardLoop distributes periodic credit rewards to top-ranked nodes.
+// Runs every 6 hours; rewards top 10 peers by hybrid rank (energy + reputation).
+// Total pool: 5 credits per cycle (20/day), distributed proportionally.
+func (d *Daemon) burnRewardLoop(ctx context.Context) {
+	// Wait 5 minutes before first check.
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(5 * time.Minute):
+	}
+
+	const (
+		rewardPool  = 5.0 // credits per cycle
+		topN        = 10
+		cyclePeriod = 6 * time.Hour
+	)
+
+	distribute := func() {
+		// Get wealth leaderboard (energy-ranked).
+		wealth, err := d.Store.GetWealthLeaderboard(topN)
+		if err != nil || len(wealth) == 0 {
+			return
+		}
+
+		// Get reputation leaderboard.
+		repList, err := d.Store.ListReputation(topN)
+		if err != nil {
+			repList = nil
+		}
+
+		// Build reputation rank map.
+		repRank := make(map[string]int)
+		for i, r := range repList {
+			repRank[r.PeerID] = i + 1
+		}
+
+		// Compute hybrid rank for each wealth entry.
+		type ranked struct {
+			peerID    string
+			hybridInv float64 // inverse of hybrid rank (higher = better)
+		}
+		var candidates []ranked
+		totalWeight := 0.0
+		for _, w := range wealth {
+			eRank := float64(w.Rank)
+			rRank := float64(topN + 1) // default if not in reputation list
+			if r, ok := repRank[w.PeerID]; ok {
+				rRank = float64(r)
+			}
+			// Hybrid score: inverse of average rank — higher is better.
+			inv := 1.0 / ((eRank + rRank) / 2.0)
+			candidates = append(candidates, ranked{peerID: w.PeerID, hybridInv: inv})
+			totalWeight += inv
+		}
+
+		if totalWeight == 0 {
+			return
+		}
+
+		rewarded := 0
+		for _, c := range candidates {
+			share := rewardPool * (c.hybridInv / totalWeight)
+			if share < 0.001 {
+				continue
+			}
+			txnID := uuid.New().String()
+			if err := d.Store.AddCredits(txnID, c.peerID, share, "burn_reward"); err == nil {
+				rewarded++
+				// Small prestige boost for top performers.
+				d.Store.AddPrestige(c.peerID, 0.5, 50.0)
+			}
+		}
+
+		if rewarded > 0 {
+			fmt.Printf("[burn-reward] distributed %.1f credits to %d top peers\n", rewardPool, rewarded)
+		}
+	}
+
+	distribute() // initial run
+	ticker := time.NewTicker(cyclePeriod)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			distribute()
 		}
 	}
 }
