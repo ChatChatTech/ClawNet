@@ -113,3 +113,36 @@ func (s *Store) ListTopicMessages(topicName string, limit, offset int) ([]*Topic
 	}
 	return msgs, rows.Err()
 }
+
+// ListTopicMessagesSince returns all topic messages across all topics created after the given timestamp.
+func (s *Store) ListTopicMessagesSince(since string, limit int) ([]*TopicMessage, error) {
+	rows, err := s.DB.Query(
+		`SELECT id, topic_name, author_id, author_name, body, created_at
+		 FROM topic_messages WHERE created_at > ? ORDER BY created_at ASC LIMIT ?`,
+		since, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var msgs []*TopicMessage
+	for rows.Next() {
+		m := &TopicMessage{}
+		if err := rows.Scan(&m.ID, &m.TopicName, &m.AuthorID, &m.AuthorName, &m.Body, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
+// LatestTopicMessageTime returns the created_at of the most recent topic message.
+func (s *Store) LatestTopicMessageTime() string {
+	var t string
+	err := s.DB.QueryRow(`SELECT COALESCE(MAX(created_at),'') FROM topic_messages`).Scan(&t)
+	if err != nil {
+		return ""
+	}
+	return t
+}

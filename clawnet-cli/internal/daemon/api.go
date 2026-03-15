@@ -151,6 +151,8 @@ func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
 		LatencyMs      int64        `json:"latency_ms"`
 		ConnectedSince int64        `json:"connected_since"`
 		Motto          string       `json:"motto,omitempty"`
+		BwIn           int64        `json:"bw_in"`
+		BwOut          int64        `json:"bw_out"`
 	}
 	result := make([]peerGeo, 0, len(peers)+1)
 
@@ -210,6 +212,11 @@ func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
 		}
 		if n, ok := d.PeerAgentNames.Load(pid); ok {
 			entry.AgentName = n.(string)
+		}
+		if bw := d.Node.BwCounter; bw != nil {
+			st := bw.GetBandwidthForPeer(p)
+			entry.BwIn = int64(st.TotalIn)
+			entry.BwOut = int64(st.TotalOut)
 		}
 		result = append(result, entry)
 	}

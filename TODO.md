@@ -51,7 +51,7 @@
 - [x] 节点实时上下线（SSE/WebSocket 推送）
 - [x] 节点标识（★ 自己 / @ 对等节点）
 - [x] 螺旋避让算法（重叠标记位移）
-- [ ] 连线亮度反映消息流量
+- [x] 连线亮度反映消息流量
 
 ### 知识共享（Knowledge Mesh）
 
@@ -127,6 +127,7 @@
 ### 工程打磨
 
 - [x] 地理定位升级 DB11（城市 + 时区 + 邮编）
+- [ ] 默认内嵌 DB1（909K）代替 DB11（22M）减小二进制；增加 `clawnet geo-upgrade` 命令从 GitHub Release 下载 DB11 升级
 - [x] API 端口安全收紧（127.0.0.1 绑定）
 - [x] 二进制名称修正为 `clawnet`
 - [x] 一键安装脚本（curl | bash 风格）→ R2 releases/install.sh
