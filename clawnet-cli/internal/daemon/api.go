@@ -7,9 +7,13 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multiaddr"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/geo"
@@ -54,6 +58,9 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 
 	// Phase 1 — Topology SSE stream
 	mux.HandleFunc("GET /api/topology", d.handleTopologyWS)
+
+	// Diagnostics
+	mux.HandleFunc("GET /api/diagnostics", d.handleDiagnostics)
 
 	// Phase 2 routes
 	d.RegisterPhase2Routes(mux)
@@ -745,6 +752,97 @@ func (d *Daemon) topicNames() []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+// handleDiagnostics returns a full network diagnostics report.
+func (d *Daemon) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
+	h := d.Node.Host
+	nw := h.Network()
+
+	// Collect listen addresses
+	listenAddrs := make([]string, 0, len(h.Addrs()))
+	for _, a := range h.Addrs() {
+		listenAddrs = append(listenAddrs, a.String())
+	}
+
+	// Announce addresses from config
+	announceAddrs := d.Config.AnnounceAddrs
+
+	// Classify connections
+	var directCount, relayCount int
+	for _, c := range nw.Conns() {
+		addr := c.RemoteMultiaddr().String()
+		if strings.Contains(addr, "/p2p-circuit/") {
+			relayCount++
+		} else {
+			directCount++
+		}
+	}
+
+	// DHT routing table size
+	dhtSize := 0
+	if d.Node.DHT != nil {
+		dhtSize = d.Node.DHT.RoutingTable().Size()
+	}
+
+	// BT DHT status
+	btdhtStatus := "disabled"
+	if d.Node.BTDHT != nil {
+		btdhtStatus = "running"
+	}
+
+	// NAT status from config
+	natMode := "auto"
+	if d.Config.ForcePrivate {
+		natMode = "force_private"
+	}
+
+	// Relay config
+	relayEnabled := d.Config.RelayEnabled
+
+	// Bootstrap peers
+	bootstrapPeers := d.Config.BootstrapPeers
+
+	// Check bootstrap connectivity
+	bootstrapReachable := make(map[string]bool)
+	for _, bp := range bootstrapPeers {
+		ma, err := multiaddr.NewMultiaddr(bp)
+		if err != nil {
+			continue
+		}
+		pi, err := peer.AddrInfoFromP2pAddr(ma)
+		if err != nil {
+			continue
+		}
+		connected := nw.Connectedness(pi.ID) == network.Connected
+		bootstrapReachable[pi.ID.String()[:16]] = connected
+	}
+
+	// Uptime
+	uptime := time.Since(d.StartedAt).Truncate(time.Second).String()
+
+	// Bandwidth totals
+	bwStats := d.Node.BwCounter.GetBandwidthTotals()
+
+	diag := map[string]any{
+		"peer_id":           h.ID().String(),
+		"version":           Version,
+		"uptime":            uptime,
+		"listen_addrs":      listenAddrs,
+		"announce_addrs":    announceAddrs,
+		"nat_mode":          natMode,
+		"relay_enabled":     relayEnabled,
+		"peers_total":       len(nw.Peers()),
+		"connections_direct": directCount,
+		"connections_relay":  relayCount,
+		"dht_routing_table": dhtSize,
+		"btdht_status":      btdhtStatus,
+		"bootstrap_peers":   bootstrapReachable,
+		"topics":            d.topicNames(),
+		"bandwidth_in":      bwStats.TotalIn,
+		"bandwidth_out":     bwStats.TotalOut,
+	}
+	writeJSON(w, diag)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

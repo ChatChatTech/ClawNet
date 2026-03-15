@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/p2p"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
@@ -59,6 +60,8 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/predictions/{id}", d.handleGetPrediction)
 	mux.HandleFunc("POST /api/predictions/{id}/bet", d.handlePredictionBet)
 	mux.HandleFunc("POST /api/predictions/{id}/resolve", d.handlePredictionResolve)
+	mux.HandleFunc("POST /api/predictions/{id}/appeal", d.handlePredictionAppeal)
+	mux.HandleFunc("GET /api/predictions/{id}/appeals", d.handleListPredictionAppeals)
 
 	// Wealth Leaderboard (Social Energy Model)
 	mux.HandleFunc("GET /api/leaderboard", d.handleWealthLeaderboard)
@@ -802,13 +805,13 @@ func (d *Daemon) handlePredictionResolve(w http.ResponseWriter, r *http.Request)
 	// Check if ≥3 unique resolvers agree on this result
 	count, _ := d.Store.CountResolutions(predID, body.Result)
 	if count >= 3 {
-		// Consensus reached — resolve and settle
-		if err := d.Store.ResolvePrediction(predID, body.Result); err != nil {
+		// Consensus reached — enter appeal period (24h) before final settlement
+		deadline := time.Now().UTC().Add(24 * time.Hour).Format(time.RFC3339)
+		if err := d.Store.SetPendingWithAppeal(predID, body.Result, deadline); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		d.settlePrediction(predID, body.Result)
-		writeJSON(w, map[string]any{"status": "resolved", "result": body.Result, "consensus": count})
+		writeJSON(w, map[string]any{"status": "pending", "result": body.Result, "consensus": count, "appeal_deadline": deadline})
 		return
 	}
 
@@ -859,6 +862,72 @@ func (d *Daemon) settlePrediction(predID, result string) {
 			d.publishCreditAudit(d.ctx, txnID, predID, "prediction_pool", s.PeerID, s.Profit, "prediction_win")
 		}
 	}
+}
+
+// handlePredictionAppeal allows bettors to challenge a pending prediction result.
+func (d *Daemon) handlePredictionAppeal(w http.ResponseWriter, r *http.Request) {
+	predID := r.PathValue("id")
+	var body struct {
+		Reason      string `json:"reason"`
+		EvidenceURL string `json:"evidence_url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.Reason == "" {
+		http.Error(w, `{"error":"reason required"}`, http.StatusBadRequest)
+		return
+	}
+
+	p, err := d.Store.GetPrediction(predID)
+	if err != nil || p == nil {
+		http.Error(w, `{"error":"prediction not found"}`, http.StatusNotFound)
+		return
+	}
+	if p.Status != "pending" {
+		http.Error(w, `{"error":"prediction is not in appeal period"}`, http.StatusBadRequest)
+		return
+	}
+
+	appeal := &store.PredictionAppeal{
+		PredictionID: predID,
+		AppellantID:  d.Node.PeerID().String(),
+		Reason:       body.Reason,
+		EvidenceURL:  body.EvidenceURL,
+	}
+	if err := d.publishPredictionAppeal(d.ctx, appeal); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Check if enough appeals to overturn
+	count, _ := d.Store.CountAppeals(predID)
+	if count >= 2 {
+		// Overturn: revert to open, clear resolutions and appeals
+		if err := d.Store.RevertPredictionToOpen(predID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"status": "overturned", "appeals": count})
+		return
+	}
+
+	writeJSON(w, map[string]any{"status": "appeal_recorded", "appeals": count, "needed": 2})
+}
+
+// handleListPredictionAppeals returns all appeals for a prediction.
+func (d *Daemon) handleListPredictionAppeals(w http.ResponseWriter, r *http.Request) {
+	predID := r.PathValue("id")
+	appeals, err := d.Store.ListPredictionAppeals(predID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if appeals == nil {
+		appeals = []*store.PredictionAppeal{}
+	}
+	writeJSON(w, appeals)
 }
 
 // ── Wealth Leaderboard (Social Energy Model) ──

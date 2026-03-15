@@ -370,3 +370,122 @@ func ValidatePredictionOption(optionsJSON, option string) error {
 	}
 	return fmt.Errorf("invalid option %q", option)
 }
+
+// ── Appeal mechanism ──
+
+// PredictionAppeal represents a bettor's challenge during the appeal window.
+type PredictionAppeal struct {
+	ID           string `json:"id"`
+	PredictionID string `json:"prediction_id"`
+	AppellantID  string `json:"appellant_id"`
+	Reason       string `json:"reason"`
+	EvidenceURL  string `json:"evidence_url"`
+	CreatedAt    string `json:"created_at"`
+}
+
+// SetPendingWithAppeal transitions a prediction to "pending" with an appeal deadline.
+func (s *Store) SetPendingWithAppeal(predictionID, result string, deadline string) error {
+	_, err := s.DB.Exec(
+		`UPDATE predictions SET status = 'pending', result = ?, appeal_deadline = ?, updated_at = datetime('now')
+		 WHERE id = ? AND status = 'open'`,
+		result, deadline, predictionID,
+	)
+	return err
+}
+
+// InsertPredictionAppeal records an appeal against a pending prediction.
+func (s *Store) InsertPredictionAppeal(a *PredictionAppeal) error {
+	_, err := s.DB.Exec(
+		`INSERT INTO prediction_appeals (id, prediction_id, appellant_id, reason, evidence_url)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(id) DO NOTHING`,
+		a.ID, a.PredictionID, a.AppellantID, a.Reason, a.EvidenceURL,
+	)
+	return err
+}
+
+// CountAppeals returns the number of unique appellants for a prediction.
+func (s *Store) CountAppeals(predictionID string) (int, error) {
+	var count int
+	err := s.DB.QueryRow(
+		`SELECT COUNT(DISTINCT appellant_id) FROM prediction_appeals WHERE prediction_id = ?`,
+		predictionID,
+	).Scan(&count)
+	return count, err
+}
+
+// ListPredictionAppeals returns all appeals for a prediction.
+func (s *Store) ListPredictionAppeals(predictionID string) ([]*PredictionAppeal, error) {
+	rows, err := s.DB.Query(
+		`SELECT id, prediction_id, appellant_id, reason, evidence_url, created_at
+		 FROM prediction_appeals WHERE prediction_id = ?
+		 ORDER BY created_at ASC`, predictionID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var appeals []*PredictionAppeal
+	for rows.Next() {
+		a := &PredictionAppeal{}
+		if err := rows.Scan(&a.ID, &a.PredictionID, &a.AppellantID, &a.Reason, &a.EvidenceURL, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		appeals = append(appeals, a)
+	}
+	return appeals, rows.Err()
+}
+
+// RevertPredictionToOpen reverts a pending prediction back to open, clearing result and appeals.
+func (s *Store) RevertPredictionToOpen(predictionID string) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(
+		`UPDATE predictions SET status = 'open', result = '', appeal_deadline = '', updated_at = datetime('now')
+		 WHERE id = ? AND status = 'pending'`, predictionID,
+	)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(`DELETE FROM prediction_resolutions WHERE prediction_id = ?`, predictionID)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(`DELETE FROM prediction_appeals WHERE prediction_id = ?`, predictionID)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// ListExpiredPendingPredictions returns predictions in "pending" status whose appeal_deadline has passed.
+func (s *Store) ListExpiredPendingPredictions() ([]*Prediction, error) {
+	rows, err := s.DB.Query(
+		`SELECT id, creator_id, creator_name, question, options, category,
+		        resolution_date, resolution_source, status, result, total_stake,
+		        created_at, updated_at
+		 FROM predictions
+		 WHERE status = 'pending' AND appeal_deadline != '' AND appeal_deadline <= datetime('now')`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var preds []*Prediction
+	for rows.Next() {
+		p := &Prediction{}
+		if err := rows.Scan(&p.ID, &p.CreatorID, &p.CreatorName, &p.Question, &p.Options,
+			&p.Category, &p.ResolutionDate, &p.ResolutionSource, &p.Status, &p.Result,
+			&p.TotalStake, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		preds = append(preds, p)
+	}
+	return preds, rows.Err()
+}

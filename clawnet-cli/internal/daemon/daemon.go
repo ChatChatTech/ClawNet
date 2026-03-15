@@ -33,6 +33,7 @@ type Daemon struct {
 	ctx        context.Context
 	PeerMottos      sync.Map // peer_id -> string
 	PeerAgentNames  sync.Map // peer_id -> string
+	hotPeers        sync.Map // peer_id -> hotPeer (for reconnect)
 	rxBytes    atomic.Uint64
 	txBytes    atomic.Uint64
 	nicName    string
@@ -81,6 +82,27 @@ func Start(foreground bool) error {
 		fmt.Printf("Listening on: %s/p2p/%s\n", addr, peerID.String())
 	}
 
+	// Print discovery layer status
+	fmt.Println("Discovery layers:")
+	fmt.Println("  mDNS:          enabled (LAN)")
+	if cfg.HTTPBootstrap {
+		fmt.Println("  HTTP Bootstrap: enabled")
+	}
+	if cfg.BTDHT.Enabled {
+		fmt.Printf("  BT DHT:        enabled (UDP :%d)\n", cfg.BTDHT.ListenPort)
+	}
+	fmt.Println("  Kademlia DHT:  enabled (30s poll)")
+	if cfg.RelayEnabled {
+		fmt.Println("  Relay:         enabled")
+	}
+	if cfg.ForcePrivate {
+		fmt.Println("  NAT mode:      force_private")
+	}
+	if len(cfg.AnnounceAddrs) > 0 {
+		fmt.Printf("  Announce:      %v\n", cfg.AnnounceAddrs)
+	}
+	fmt.Printf("  Bootstrap:     %d peers configured\n", len(cfg.BootstrapPeers))
+
 	// Load or create profile
 	profile := loadProfile(dataDir)
 	profile.Version = Version
@@ -128,6 +150,9 @@ func Start(foreground bool) error {
 
 	// Start Phase 2 gossip handlers (tasks, swarm)
 	d.startPhase2Gossip(ctx)
+
+	// Start prediction settlement loop (auto-settle expired pending predictions)
+	go d.predictionSettlementLoop(ctx)
 
 	// Ensure local credit account exists with initial energy (42 E for new nodes)
 	d.Store.EnsureCreditAccount(node.PeerID().String(), 42.0)

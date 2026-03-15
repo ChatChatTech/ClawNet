@@ -245,6 +245,8 @@ func Execute() error {
 		return cmdImport()
 	case "nuke":
 		return cmdNuke()
+	case "doc", "doctor":
+		return cmdDoctor()
 	case "v", "version":
 		fmt.Printf("clawnet v%s\n", daemon.Version)
 		return nil
@@ -289,6 +291,7 @@ func printUsage() error {
 	fmt.Println(tidal+"  export   "+dim+"         "+rst + "Export identity to a transferable file")
 	fmt.Println(tidal+"  import   "+dim+"         "+rst + "Import identity from an export file")
 	fmt.Println(tidal+"  nuke     "+dim+"         "+rst + "Complete uninstall — remove all data")
+	fmt.Println(tidal+"  doctor   "+dim+"(doc)    "+rst + "Network connectivity diagnostics")
 	fmt.Println(tidal+"  version  "+dim+"(v)      "+rst + "Show version")
 	fmt.Println()
 	fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help" + rst)
@@ -308,6 +311,7 @@ var cmdHelps = map[string]string{
 	"export":  "clawnet export [file]\n  Export identity to a transferable file.",
 	"import":  "clawnet import <file>\n  Import identity from an export file.",
 	"nuke":    "clawnet nuke\n  Complete uninstall — removes all data, keys, and config.",
+	"doctor":  "clawnet doctor\n  Network connectivity diagnostics — NAT, relay, DHT, bootstrap.\n  Alias: doc",
 	"version": "clawnet version\n  Show version.\n  Alias: v",
 }
 
@@ -317,6 +321,7 @@ func printCmdHelp(cmd string) error {
 		"i": "init", "up": "start", "down": "stop",
 		"s": "status", "st": "status", "p": "peers",
 		"map": "topo", "pub": "publish", "v": "version",
+		"doc": "doctor",
 	}
 	if canonical, ok := aliases[cmd]; ok {
 		cmd = canonical
@@ -410,6 +415,127 @@ func cmdStop() error {
 
 func cmdStatus() error {
 	return apiGet("/api/status")
+}
+
+func cmdDoctor() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
+	resp, err := http.Get(base + "/api/diagnostics")
+	if err != nil {
+		return fmt.Errorf("cannot connect to daemon (is it running?): %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("daemon does not support diagnostics (upgrade daemon to v0.7.1+)")
+	}
+
+	var diag map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&diag); err != nil {
+		return err
+	}
+
+	red := "\033[38;2;230;57;70m"
+	coral := "\033[38;2;247;127;0m"
+	tidal := "\033[38;2;69;123;157m"
+	green := "\033[32m"
+	dim := "\033[2m"
+	rst := "\033[0m"
+
+	fmt.Println(red + "  🦞 ClawNet Doctor" + rst)
+	fmt.Println()
+
+	// Identity
+	if id, ok := diag["peer_id"].(string); ok {
+		fmt.Printf(tidal+"  Peer ID    "+rst+"%s\n", id[:16]+"…")
+	}
+	if v, ok := diag["version"].(string); ok {
+		fmt.Printf(tidal+"  Version    "+rst+"%s\n", v)
+	}
+	if up, ok := diag["uptime"].(string); ok {
+		fmt.Printf(tidal+"  Uptime     "+rst+"%s\n", up)
+	}
+	fmt.Println()
+
+	// Addresses
+	fmt.Println(coral + "  Addresses" + rst)
+	if addrs, ok := diag["listen_addrs"].([]any); ok {
+		for _, a := range addrs {
+			fmt.Printf("    listen   %s\n", a)
+		}
+	}
+	if addrs, ok := diag["announce_addrs"].([]any); ok && len(addrs) > 0 {
+		for _, a := range addrs {
+			fmt.Printf("    announce %s\n", a)
+		}
+	} else {
+		fmt.Printf("    announce %snone%s\n", dim, rst)
+	}
+	fmt.Println()
+
+	// NAT & Relay
+	fmt.Println(coral + "  NAT & Relay" + rst)
+	if mode, ok := diag["nat_mode"].(string); ok {
+		fmt.Printf("    NAT mode     %s\n", mode)
+	}
+	if relay, ok := diag["relay_enabled"].(bool); ok {
+		if relay {
+			fmt.Printf("    Relay        %s✓ enabled%s\n", green, rst)
+		} else {
+			fmt.Printf("    Relay        %s✗ disabled%s\n", red, rst)
+		}
+	}
+	direct := int(getFloat(diag, "connections_direct"))
+	relayC := int(getFloat(diag, "connections_relay"))
+	fmt.Printf("    Direct conn  %d\n", direct)
+	fmt.Printf("    Relay conn   %d\n", relayC)
+	fmt.Println()
+
+	// Discovery
+	fmt.Println(coral + "  Discovery" + rst)
+	dhtSize := int(getFloat(diag, "dht_routing_table"))
+	fmt.Printf("    DHT table    %d peers\n", dhtSize)
+	if bt, ok := diag["btdht_status"].(string); ok {
+		sym := green + "✓" + rst
+		if bt == "disabled" {
+			sym = red + "✗" + rst
+		}
+		fmt.Printf("    BT DHT       %s %s\n", sym, bt)
+	}
+	fmt.Println()
+
+	// Bootstrap
+	fmt.Println(coral + "  Bootstrap Nodes" + rst)
+	if bs, ok := diag["bootstrap_peers"].(map[string]any); ok {
+		for id, v := range bs {
+			reachable, _ := v.(bool)
+			sym := red + "✗ unreachable" + rst
+			if reachable {
+				sym = green + "✓ connected" + rst
+			}
+			fmt.Printf("    %s  %s\n", id, sym)
+		}
+	}
+	fmt.Println()
+
+	// Summary
+	total := int(getFloat(diag, "peers_total"))
+	if total == 0 {
+		fmt.Printf("%s  ⚠ No peers connected — check bootstrap and NAT config\n%s", red, rst)
+	} else {
+		fmt.Printf("%s  ✓ %d peers connected%s\n", green, total, rst)
+	}
+
+	return nil
+}
+
+func getFloat(m map[string]any, key string) float64 {
+	if v, ok := m[key].(float64); ok {
+		return v
+	}
+	return 0
 }
 
 func cmdPeers() error {

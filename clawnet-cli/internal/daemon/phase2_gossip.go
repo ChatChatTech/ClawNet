@@ -50,10 +50,11 @@ type CreditAuditMsg struct {
 
 // GossipPredictionMsg is the wire format for prediction market messages.
 type GossipPredictionMsg struct {
-	Type       string                    `json:"type"` // "prediction", "bet", "resolution"
-	Prediction *store.Prediction         `json:"prediction,omitempty"`
-	Bet        *store.PredictionBet      `json:"bet,omitempty"`
+	Type       string                      `json:"type"` // "prediction", "bet", "resolution", "appeal"
+	Prediction *store.Prediction           `json:"prediction,omitempty"`
+	Bet        *store.PredictionBet        `json:"bet,omitempty"`
 	Resolution *store.PredictionResolution `json:"resolution,omitempty"`
+	Appeal     *store.PredictionAppeal     `json:"appeal,omitempty"`
 }
 
 // GossipResumeMsg is the wire format for agent resume broadcasts.
@@ -547,6 +548,10 @@ func (d *Daemon) handlePredictionSub(ctx context.Context, sub *pubsub.Subscripti
 			if gm.Resolution != nil {
 				d.Store.InsertPredictionResolution(gm.Resolution)
 			}
+		case "appeal":
+			if gm.Appeal != nil {
+				d.Store.InsertPredictionAppeal(gm.Appeal)
+			}
 		}
 	}
 }
@@ -598,6 +603,43 @@ func (d *Daemon) publishPredictionResolution(ctx context.Context, r *store.Predi
 	msg := GossipPredictionMsg{Type: "resolution", Resolution: r}
 	data, _ := json.Marshal(msg)
 	return d.Node.Publish(ctx, PredictionTopic, data)
+}
+
+// publishPredictionAppeal broadcasts a prediction appeal to the network.
+func (d *Daemon) publishPredictionAppeal(ctx context.Context, a *store.PredictionAppeal) error {
+	if a.ID == "" {
+		a.ID = uuid.New().String()
+	}
+	a.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+
+	if err := d.Store.InsertPredictionAppeal(a); err != nil {
+		return err
+	}
+
+	msg := GossipPredictionMsg{Type: "appeal", Appeal: a}
+	data, _ := json.Marshal(msg)
+	return d.Node.Publish(ctx, PredictionTopic, data)
+}
+
+// predictionSettlementLoop runs periodically to auto-settle predictions
+// whose appeal deadline has expired without being overturned.
+func (d *Daemon) predictionSettlementLoop(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			expired, err := d.Store.ListExpiredPendingPredictions()
+			if err != nil || len(expired) == 0 {
+				continue
+			}
+			for _, p := range expired {
+				d.settlePrediction(p.ID, p.Result)
+			}
+		}
+	}
 }
 
 // ── Agent Resume gossip ──

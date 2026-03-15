@@ -241,8 +241,9 @@ func (s *Store) migrate() error {
 			resolution_date   TEXT NOT NULL,
 			resolution_source TEXT NOT NULL DEFAULT '',
 			status            TEXT NOT NULL DEFAULT 'open'
-			                  CHECK(status IN ('open', 'resolved', 'cancelled')),
+			                  CHECK(status IN ('open', 'pending', 'resolved', 'cancelled')),
 			result            TEXT NOT NULL DEFAULT '',
+			appeal_deadline   TEXT NOT NULL DEFAULT '',
 			total_stake       REAL NOT NULL DEFAULT 0,
 			created_at        TEXT NOT NULL DEFAULT (datetime('now')),
 			updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
@@ -269,6 +270,19 @@ func (s *Store) migrate() error {
 			FOREIGN KEY (prediction_id) REFERENCES predictions(id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_pred_res ON prediction_resolutions(prediction_id, result)`,
+
+		// Phase 3.1 — Prediction appeal mechanism
+		`ALTER TABLE predictions ADD COLUMN appeal_deadline TEXT NOT NULL DEFAULT ''`,
+		`CREATE TABLE IF NOT EXISTS prediction_appeals (
+			id            TEXT PRIMARY KEY,
+			prediction_id TEXT NOT NULL,
+			appellant_id  TEXT NOT NULL,
+			reason        TEXT NOT NULL DEFAULT '',
+			evidence_url  TEXT NOT NULL DEFAULT '',
+			created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (prediction_id) REFERENCES predictions(id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_pred_appeals ON prediction_appeals(prediction_id, appellant_id)`,
 
 		// Phase 4 — Energy & Prestige system (Social Energy Model)
 		`ALTER TABLE credit_accounts ADD COLUMN prestige REAL NOT NULL DEFAULT 0`,
@@ -309,6 +323,56 @@ func (s *Store) migrate() error {
 				continue
 			}
 			return fmt.Errorf("exec %q: %w", m[:60], err)
+		}
+	}
+
+	// Migrate predictions CHECK constraint to allow 'pending' status.
+	// Only needed for DBs created before appeal mechanism was added.
+	if err := s.migratePredictionsCheck(); err != nil {
+		return fmt.Errorf("predictions check migration: %w", err)
+	}
+
+	return nil
+}
+
+// migratePredictionsCheck recreates the predictions table if its CHECK constraint
+// doesn't include 'pending'. This is a one-time migration for existing databases.
+func (s *Store) migratePredictionsCheck() error {
+	// Try a no-op update with status='pending' on a non-existent row to probe the CHECK.
+	_, err := s.DB.Exec(`UPDATE predictions SET status = 'pending' WHERE id = '__check_probe__'`)
+	if err == nil {
+		return nil // CHECK already allows 'pending' — nothing to do
+	}
+	// CHECK violation means old schema — recreate
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS predictions_v2 (
+			id                TEXT PRIMARY KEY,
+			creator_id        TEXT NOT NULL,
+			creator_name      TEXT NOT NULL DEFAULT '',
+			question          TEXT NOT NULL,
+			options           TEXT NOT NULL DEFAULT '[]',
+			category          TEXT NOT NULL DEFAULT 'custom',
+			resolution_date   TEXT NOT NULL,
+			resolution_source TEXT NOT NULL DEFAULT '',
+			status            TEXT NOT NULL DEFAULT 'open'
+			                  CHECK(status IN ('open', 'pending', 'resolved', 'cancelled')),
+			result            TEXT NOT NULL DEFAULT '',
+			appeal_deadline   TEXT NOT NULL DEFAULT '',
+			total_stake       REAL NOT NULL DEFAULT 0,
+			created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`INSERT OR IGNORE INTO predictions_v2
+		   SELECT id, creator_id, creator_name, question, options, category,
+		          resolution_date, resolution_source, status, result,
+		          COALESCE(appeal_deadline, ''), total_stake, created_at, updated_at
+		   FROM predictions`,
+		`DROP TABLE predictions`,
+		`ALTER TABLE predictions_v2 RENAME TO predictions`,
+	}
+	for _, stmt := range stmts {
+		if _, err := s.DB.Exec(stmt); err != nil {
+			return fmt.Errorf("exec migration: %w", err)
 		}
 	}
 	return nil
