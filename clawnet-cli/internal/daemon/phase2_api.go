@@ -73,6 +73,10 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/resume/{peer_id}", d.handleGetPeerResume)
 	mux.HandleFunc("GET /api/tasks/{id}/match", d.handleMatchAgentsForTask)
 	mux.HandleFunc("GET /api/match/tasks", d.handleMatchTasksForAgent)
+
+	// Nutshell E2E integration
+	mux.HandleFunc("POST /api/nutshell/publish", d.handleNutshellPublish)
+	mux.HandleFunc("POST /api/tasks/{id}/deliver", d.handleNutshellDeliver)
 }
 
 // ── Credits handlers ──
@@ -1140,4 +1144,220 @@ func (d *Daemon) handleDownloadTaskBundle(w http.ResponseWriter, r *http.Request
 func sha256hex(data []byte) string {
 	h := sha256.Sum256(data)
 	return fmt.Sprintf("%x", h[:])
+}
+
+// ── Nutshell E2E handlers ──
+
+// handleNutshellPublish accepts a .nut file, validates it, extracts metadata,
+// creates a Task, stores the bundle, and broadcasts via GossipSub.
+//
+// Accepts multipart/form-data with field "bundle" or raw binary body.
+// Optional form fields / JSON: reward, tags, deadline.
+func (d *Daemon) handleNutshellPublish(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 50<<20)
+
+	var bundleData []byte
+	var reward float64
+	var tags, deadline string
+
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "multipart/") {
+		if err := r.ParseMultipartForm(50 << 20); err != nil {
+			http.Error(w, `{"error":"invalid multipart form"}`, http.StatusBadRequest)
+			return
+		}
+		file, _, err := r.FormFile("bundle")
+		if err != nil {
+			http.Error(w, `{"error":"missing bundle field"}`, http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+		bundleData, err = io.ReadAll(file)
+		if err != nil {
+			http.Error(w, `{"error":"read error"}`, http.StatusBadRequest)
+			return
+		}
+		// Optional form fields
+		if v := r.FormValue("reward"); v != "" {
+			fmt.Sscanf(v, "%f", &reward)
+		}
+		tags = r.FormValue("tags")
+		deadline = r.FormValue("deadline")
+	} else {
+		var err error
+		bundleData, err = io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, `{"error":"bundle too large or read error"}`, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Validate NUT magic header
+	if len(bundleData) < 4 || string(bundleData[:3]) != "NUT" {
+		http.Error(w, `{"error":"invalid .nut bundle (bad magic header)"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Extract nutshell manifest from bundle.
+	// Format: NUT<version_byte><4-byte manifest length><JSON manifest><payload...>
+	manifest, err := parseNutManifest(bundleData)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"invalid manifest: %s"}`, err.Error()), http.StatusBadRequest)
+		return
+	}
+
+	// Compute content-addressed hash
+	hash := sha256hex(bundleData)
+
+	// Build task from manifest
+	title := manifest.Name
+	if title == "" {
+		title = "Nutshell Task"
+	}
+	desc := manifest.Description
+	if manifest.AcceptanceCriteria != "" {
+		desc += "\n\nAcceptance Criteria: " + manifest.AcceptanceCriteria
+	}
+
+	t := store.Task{
+		Title:        title,
+		Description:  desc,
+		NutshellHash: hash,
+		NutshellID:   manifest.ID,
+		BundleType:   "request",
+	}
+	if reward > 0 {
+		t.Reward = reward
+	}
+	if tags != "" {
+		t.Tags = tags
+	}
+	if deadline != "" {
+		t.Deadline = deadline
+	}
+
+	// Publish task (assigns ID, broadcasts via GossipSub)
+	if err := d.publishTask(d.ctx, &t); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	// Store the bundle blob
+	if err := d.Store.InsertTaskBundle(t.ID, bundleData, hash); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"store bundle: %s"}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, map[string]any{
+		"task_id":       t.ID,
+		"nutshell_hash": hash,
+		"nutshell_id":   manifest.ID,
+		"title":         t.Title,
+		"bundle_size":   len(bundleData),
+	})
+}
+
+// handleNutshellDeliver accepts a completed .nut result bundle for a task,
+// validates it, stores it, and submits the task.
+func (d *Daemon) handleNutshellDeliver(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("id")
+
+	t, err := d.Store.GetTask(taskID)
+	if err != nil || t == nil {
+		http.Error(w, `{"error":"task not found"}`, http.StatusNotFound)
+		return
+	}
+	if t.Status != "assigned" {
+		http.Error(w, `{"error":"task must be in assigned status to deliver"}`, http.StatusBadRequest)
+		return
+	}
+	// Only the assignee can deliver
+	selfID := d.Node.PeerID().String()
+	if t.AssignedTo != selfID {
+		http.Error(w, `{"error":"only the assigned agent can deliver"}`, http.StatusForbidden)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 50<<20)
+
+	var bundleData []byte
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "multipart/") {
+		if err := r.ParseMultipartForm(50 << 20); err != nil {
+			http.Error(w, `{"error":"invalid multipart form"}`, http.StatusBadRequest)
+			return
+		}
+		file, _, fErr := r.FormFile("bundle")
+		if fErr != nil {
+			http.Error(w, `{"error":"missing bundle field"}`, http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+		bundleData, err = io.ReadAll(file)
+		if err != nil {
+			http.Error(w, `{"error":"read error"}`, http.StatusBadRequest)
+			return
+		}
+	} else {
+		bundleData, err = io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, `{"error":"bundle too large or read error"}`, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Validate NUT magic
+	if len(bundleData) < 4 || string(bundleData[:3]) != "NUT" {
+		http.Error(w, `{"error":"invalid .nut bundle (bad magic header)"}`, http.StatusBadRequest)
+		return
+	}
+
+	hash := sha256hex(bundleData)
+
+	// Store the delivery bundle (overwrite if exists)
+	if err := d.Store.InsertTaskBundle(taskID, bundleData, hash); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"store bundle: %s"}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	// Transition task to submitted status
+	t.Status = "submitted"
+	t.Result = fmt.Sprintf("delivery bundle: sha256:%s (%d bytes)", hash, len(bundleData))
+	d.publishTaskUpdate(d.ctx, t)
+
+	writeJSON(w, map[string]any{
+		"task_id": taskID,
+		"status":  "submitted",
+		"hash":    hash,
+		"size":    len(bundleData),
+	})
+}
+
+// nutManifest represents the parsed metadata from a .nut bundle.
+type nutManifest struct {
+	ID                 string `json:"id"`
+	Name               string `json:"name"`
+	Description        string `json:"description"`
+	AcceptanceCriteria string `json:"acceptance_criteria"`
+}
+
+// parseNutManifest extracts the JSON manifest from a .nut bundle.
+// Format: NUT<version_byte><4-byte LE manifest length><JSON manifest><payload...>
+func parseNutManifest(data []byte) (*nutManifest, error) {
+	if len(data) < 8 {
+		return nil, fmt.Errorf("bundle too small")
+	}
+	// Bytes 0-2: "NUT", byte 3: version, bytes 4-7: manifest length (little-endian uint32)
+	mLen := uint32(data[4]) | uint32(data[5])<<8 | uint32(data[6])<<16 | uint32(data[7])<<24
+	if mLen == 0 || int(8+mLen) > len(data) {
+		return nil, fmt.Errorf("manifest length invalid (%d)", mLen)
+	}
+	var m nutManifest
+	if err := json.Unmarshal(data[8:8+mLen], &m); err != nil {
+		return nil, fmt.Errorf("manifest JSON: %w", err)
+	}
+	if m.Name == "" {
+		return nil, fmt.Errorf("manifest missing required field: name")
+	}
+	return &m, nil
 }

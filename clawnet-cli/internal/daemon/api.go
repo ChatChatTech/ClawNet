@@ -13,6 +13,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/multiformats/go-multiaddr"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
@@ -34,6 +35,7 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 	mux.HandleFunc("PUT /api/motto", d.handleSetMotto)
 	mux.HandleFunc("GET /api/traffic", d.handleTraffic)
 	mux.HandleFunc("GET /api/peers/{id}/profile", d.handleLookupPeerProfile)
+	mux.HandleFunc("GET /api/peers/{id}/ping", d.handlePeerPing)
 
 	// Phase 1 — Knowledge Mesh
 	mux.HandleFunc("POST /api/knowledge", d.handlePostKnowledge)
@@ -65,10 +67,13 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 	// Phase 2 routes
 	d.RegisterPhase2Routes(mux)
 
+	// Wrap mux with localhost access guard.
+	handler := localhostGuard(mux)
+
 	addr := fmt.Sprintf("0.0.0.0:%d", d.Config.WebUIPort)
 	server := &http.Server{
 		Addr:    addr,
-		Handler: mux,
+		Handler: handler,
 	}
 
 	ln, err := net.Listen("tcp", addr)
@@ -360,6 +365,33 @@ func (d *Daemon) handleLookupPeerProfile(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, rec)
+}
+
+func (d *Daemon) handlePeerPing(w http.ResponseWriter, r *http.Request) {
+	pidStr := r.PathValue("id")
+	pid, err := peer.Decode(pidStr)
+	if err != nil {
+		http.Error(w, `{"error":"invalid peer ID"}`, http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	ch := ping.Ping(ctx, d.Node.Host, pid)
+	select {
+	case res := <-ch:
+		if res.Error != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"ping failed: %s"}`, res.Error.Error()), http.StatusBadGateway)
+			return
+		}
+		d.Node.Host.Peerstore().RecordLatency(pid, res.RTT)
+		writeJSON(w, map[string]any{
+			"peer_id":    pidStr,
+			"rtt_ms":     res.RTT.Milliseconds(),
+			"rtt_string": res.RTT.String(),
+		})
+	case <-ctx.Done():
+		http.Error(w, `{"error":"ping timeout"}`, http.StatusGatewayTimeout)
+	}
 }
 
 // ── Knowledge handlers ──
@@ -860,4 +892,21 @@ func queryInt(r *http.Request, key string, defaultVal int) int {
 		return defaultVal
 	}
 	return v
+}
+
+// localhostGuard rejects requests that do not originate from localhost.
+// It inspects the connecting IP (RemoteAddr) rather than trusting headers.
+func localhostGuard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			host = r.RemoteAddr
+		}
+		ip := net.ParseIP(host)
+		if ip != nil && (ip.IsLoopback() || ip.Equal(net.IPv4zero) || ip.Equal(net.IPv6zero)) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		http.Error(w, `{"error":"access denied: API is localhost-only"}`, http.StatusForbidden)
+	})
 }

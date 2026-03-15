@@ -66,6 +66,7 @@ func DefaultConfig() *Config {
 		ListenAddrs: []string{
 			"/ip4/0.0.0.0/tcp/4001",
 			"/ip4/0.0.0.0/udp/4001/quic-v1",
+			"/ip4/0.0.0.0/tcp/4002/ws",
 		},
 		BootstrapPeers: []string{
 			"/ip4/210.45.71.67/tcp/4001/p2p/12D3KooWL2PeeDZChvnoERrfNkZa6JENyDiNWnbPwaNxNjETpmYh",
@@ -134,8 +135,20 @@ func Load() (*Config, error) {
 	if cfg.WebUIPort == 3847 {
 		cfg.WebUIPort = DefaultAPIPort
 	}
+	// Add WebSocket listen address if missing (upgrade from older config).
+	cfg.migrateWSAddr()
 	cfg.applyEnvOverrides()
 	return cfg, nil
+}
+
+// migrateWSAddr ensures a /ws listen address is present for existing configs.
+func (c *Config) migrateWSAddr() {
+	for _, addr := range c.ListenAddrs {
+		if strings.HasSuffix(addr, "/ws") {
+			return
+		}
+	}
+	c.ListenAddrs = append(c.ListenAddrs, "/ip4/0.0.0.0/tcp/4002/ws")
 }
 
 // applyEnvOverrides applies environment variable overrides to config fields.

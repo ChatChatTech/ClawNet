@@ -9,6 +9,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/multiformats/go-multiaddr"
 )
 
@@ -151,5 +152,42 @@ func (d *Daemon) reconnectLoop(ctx context.Context) {
 
 			return true
 		})
+	}
+}
+
+// pingLoop periodically pings all connected peers to update latency stats
+// stored in the peerstore's LatencyEWMA.
+func (d *Daemon) pingLoop(ctx context.Context) {
+	// Wait for connections to establish before starting
+	time.Sleep(30 * time.Second)
+
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+
+	ps := ping.NewPingService(d.Node.Host)
+	_ = ps // registers handler
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		peers := d.Node.ConnectedPeers()
+		for _, p := range peers {
+			go func(pid peer.ID) {
+				pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				defer cancel()
+				ch := ping.Ping(pctx, d.Node.Host, pid)
+				select {
+				case res := <-ch:
+					if res.Error == nil {
+						d.Node.Host.Peerstore().RecordLatency(pid, res.RTT)
+					}
+				case <-pctx.Done():
+				}
+			}(p)
+		}
 	}
 }
