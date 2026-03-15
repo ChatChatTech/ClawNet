@@ -13,7 +13,6 @@ import (
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
 )
 
-const geoUpgradeDBCode = "DB5LITEBINIPV6"
 const geoUpgradeFileName = "IP2LOCATION-LITE-DB5.IPV6.BIN"
 
 func cmdGeoUpgrade() error {
@@ -30,18 +29,7 @@ func cmdGeoUpgrade() error {
 		fmt.Println("Reinstalling with latest version...")
 	}
 
-	// Try IP2Location direct download (token-based)
-	token := loadGeoToken(dataDir)
-	if token != "" {
-		fmt.Println("Downloading DB5.IPV6 from IP2Location (token)...")
-		url := fmt.Sprintf("https://www.ip2location.com/download/?token=%s&file=%s", token, geoUpgradeDBCode)
-		if err := downloadAndExtractGeoDB(url, geoDir, destPath); err == nil {
-			return nil
-		}
-		fmt.Printf("⚠ Token download failed, trying release assets...\n")
-	}
-
-	// Fallback: download from GitHub release
+	// Download from GitHub release
 	fmt.Println("Fetching latest release...")
 	release, err := fetchLatestRelease()
 	if err != nil {
@@ -57,33 +45,19 @@ func cmdGeoUpgrade() error {
 			break
 		}
 	}
-	// Also accept legacy DB11
 	if assetURL == "" {
-		for _, a := range release.Assets {
-			if strings.Contains(a.Name, "DB11") && strings.HasSuffix(a.Name, ".zip") {
-				assetURL = a.BrowserDownloadURL
-				assetSize = a.Size
-				destPath = filepath.Join(geoDir, "IP2LOCATION-LITE-DB11.BIN")
-				break
-			}
-		}
-	}
-	if assetURL == "" {
-		if token == "" {
-			return fmt.Errorf("no geo DB asset found in release %s\nSet IP2GEOTOKEN in %s/.ip2geotoken for direct download",
-				release.TagName, dataDir)
-		}
-		return fmt.Errorf("no geo DB asset found in release %s", release.TagName)
+		return fmt.Errorf("geo DB asset not found in release %s — please check https://github.com/ChatChatTech/ClawNet/releases",
+			release.TagName)
 	}
 
-	fmt.Printf("Downloading (%d bytes)...\n", assetSize)
-	if err := downloadAndExtractGeoDB(assetURL, geoDir, destPath); err != nil {
+	fmt.Printf("Downloading DB5.IPV6 (%d bytes) from %s...\n", assetSize, release.TagName)
+	if err := downloadAndExtractGeoDB(assetURL, destPath); err != nil {
 		return err
 	}
 	return nil
 }
 
-func downloadAndExtractGeoDB(url, geoDir, destPath string) error {
+func downloadAndExtractGeoDB(url, destPath string) error {
 	zipPath := destPath + ".zip.tmp"
 	if err := downloadGeoAsset(url, zipPath); err != nil {
 		os.Remove(zipPath)
@@ -101,16 +75,6 @@ func downloadAndExtractGeoDB(url, geoDir, destPath string) error {
 	fmt.Printf("✅ Geo DB installed: %s (%d bytes)\n", filepath.Base(destPath), info.Size())
 	fmt.Println("Restart the daemon to use city-level geolocation.")
 	return nil
-}
-
-func loadGeoToken(dataDir string) string {
-	// Check <dataDir>/.ip2geotoken
-	tokenPath := filepath.Join(dataDir, ".ip2geotoken")
-	data, err := os.ReadFile(tokenPath)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
 }
 
 func downloadGeoAsset(url, destPath string) error {

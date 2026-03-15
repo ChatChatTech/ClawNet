@@ -343,7 +343,7 @@ var cmdHelps = map[string]string{
 	"doctor":  "clawnet doctor\n  Network connectivity diagnostics — NAT, relay, DHT, bootstrap.\n  Alias: doc",
 	"update":   "clawnet update\n  Check for the latest release on GitHub and self-update the binary.",
 	"nutshell":    "clawnet nutshell <subcommand>\n  Manage the Nutshell CLI tool.\n  Subcommands: install, upgrade, uninstall, version, status\n  Alias: nut",
-	"geo-upgrade": "clawnet geo-upgrade\n  Download the city-level geo database (DB5.IPV6, ~34MB).\n  Enables precise city-level geolocation in topo view.\n  Default build embeds DB1.IPV6 (country-level, 2MB).\n  Set IP2GEOTOKEN in <dataDir>/.ip2geotoken for direct IP2Location download.",
+	"geo-upgrade": "clawnet geo-upgrade\n  Download the city-level geo database (DB5.IPV6, ~34MB).\n  Enables precise city-level geolocation in topo view.\n  Default build embeds DB1.IPV6 (country-level, 2MB).\n  Downloads from the latest GitHub release.",
 	"chat":        "clawnet chat\n  Start a random chat with an online peer.\n  Matches you with a random connected node and opens an interactive conversation.",
 	"version":     "clawnet version\n  Show version.\n  Alias: v",
 }
