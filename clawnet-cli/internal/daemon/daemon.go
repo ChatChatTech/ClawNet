@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -98,6 +99,19 @@ func Start(foreground bool, devLayers []string) error {
 				fmt.Sprintf("/%s/%s/udp/4001/quic-v1", proto, extIP),
 				fmt.Sprintf("/%s/%s/tcp/4002/ws", proto, extIP),
 			}
+		}
+	}
+
+	// Yggdrasil: detect 200::/7 IPv6 addresses from system interfaces.
+	// If the machine runs Yggdrasil, any peer on the Yggdrasil mesh can
+	// directly dial us via these addresses — zero configuration needed.
+	if yggAddrs := detectYggdrasilAddrs(); len(yggAddrs) > 0 {
+		for _, addr := range yggAddrs {
+			fmt.Printf("Yggdrasil IPv6 detected: %s\n", addr)
+			cfg.AnnounceAddrs = append(cfg.AnnounceAddrs,
+				fmt.Sprintf("/ip6/%s/tcp/4001", addr),
+				fmt.Sprintf("/ip6/%s/udp/4001/quic-v1", addr),
+			)
 		}
 	}
 
@@ -207,12 +221,13 @@ func Start(foreground bool, devLayers []string) error {
 			}),
 		))
 
-		ot, err := overlay.NewTransport(priv, cfg.Overlay.ListenPort, cfg.Overlay.StaticPeers, overlayOpts...)
+		ot, err := overlay.NewTransport(priv, cfg.Overlay.ListenPort, cfg.Overlay.StaticPeers, cfg.Overlay.BootstrapPeers, overlayOpts...)
 		if err != nil {
 			fmt.Printf("[overlay] init failed: %v (non-fatal)\n", err)
 		} else {
 			d.Overlay = ot
 			bridge.SetTransport(ot)
+
 			go ot.Run(ctx)
 			fmt.Println("[overlay] transport started")
 		}
@@ -356,4 +371,36 @@ func (d *Daemon) startProfilePublisher(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// detectYggdrasilAddrs scans network interfaces for Yggdrasil 200::/7 IPv6 addresses.
+// If the machine runs a Yggdrasil daemon, these addresses are reachable by any
+// peer on the Yggdrasil mesh network, enabling direct connectivity without NAT traversal.
+func detectYggdrasilAddrs() []string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	var addrs []string
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		ifAddrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range ifAddrs {
+			ipNet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip := ipNet.IP
+			// Yggdrasil uses the 200::/7 range (0x02xx or 0x03xx first byte)
+			if len(ip) == net.IPv6len && (ip[0]&0xFE) == 0x02 {
+				addrs = append(addrs, ip.String())
+			}
+		}
+	}
+	return addrs
 }

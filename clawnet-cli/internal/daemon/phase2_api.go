@@ -144,6 +144,10 @@ func (d *Daemon) handleCreditsTransfer(w http.ResponseWriter, r *http.Request) {
 		body.Reason = "transfer"
 	}
 	fromPeer := d.Node.PeerID().String()
+	if fromPeer == body.ToPeer {
+		http.Error(w, `{"error":"cannot transfer credits to yourself"}`, http.StatusBadRequest)
+		return
+	}
 	txnID := uuid.New().String()
 	if err := d.Store.TransferCredits(txnID, fromPeer, body.ToPeer, body.Amount, body.Reason, ""); err != nil {
 		if err == store.ErrInsufficientCredits {

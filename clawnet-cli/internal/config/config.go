@@ -72,9 +72,11 @@ type MatrixDiscoveryConfig struct {
 
 // OverlayConfig controls the Ironwood overlay transport.
 type OverlayConfig struct {
-	Enabled     bool     `json:"enabled"`
-	ListenPort  int      `json:"listen_port,omitempty"`
-	StaticPeers []string `json:"static_peers,omitempty"`
+	Enabled        bool     `json:"enabled"`
+	ListenPort     int      `json:"listen_port,omitempty"`
+	StaticPeers    []string `json:"static_peers,omitempty"`
+	BootstrapPeers []string `json:"bootstrap_peers,omitempty"`
+	Molted         bool     `json:"molted,omitempty"` // true = L2 firewall (open Ygg), false = L1 (ClawNet-only)
 }
 
 // Profile represents the public node profile broadcast to the network.
@@ -225,6 +227,9 @@ func (c *Config) applyEnvOverrides() {
 	}
 	if v := os.Getenv("CLAWNET_OVERLAY_ENABLED"); v == "1" || strings.EqualFold(v, "true") {
 		c.Overlay.Enabled = true
+	}
+	if v := os.Getenv("CLAWNET_OVERLAY_BOOTSTRAP"); v != "" {
+		c.Overlay.BootstrapPeers = splitComma(v)
 	}
 }
 

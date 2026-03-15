@@ -73,6 +73,18 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 	// Overlay (Ironwood) transport status
 	mux.HandleFunc("GET /api/overlay/status", d.handleOverlayStatus)
 	mux.HandleFunc("GET /api/overlay/tree", d.handleOverlayTree)
+	mux.HandleFunc("GET /api/overlay/peers/geo", d.handleOverlayPeersGeo)
+
+	// Overlay peer management
+	mux.HandleFunc("GET /api/overlay/peers", d.handleOverlayPeersList)
+	mux.HandleFunc("POST /api/overlay/peers/add", d.handleOverlayPeerAdd)
+	mux.HandleFunc("POST /api/overlay/peers/remove", d.handleOverlayPeerRemove)
+	mux.HandleFunc("POST /api/overlay/peers/retry", d.handleOverlayPeersRetry)
+
+	// Overlay molt / unmolt
+	mux.HandleFunc("POST /api/overlay/molt", d.handleOverlayMolt)
+	mux.HandleFunc("POST /api/overlay/unmolt", d.handleOverlayUnmolt)
+	mux.HandleFunc("GET /api/overlay/molt/status", d.handleOverlayMoltStatus)
 
 	// E2E crypto status
 	mux.HandleFunc("GET /api/crypto/sessions", d.handleCryptoSessions)
@@ -128,6 +140,12 @@ func (d *Daemon) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	if selfGeo != nil {
 		status["location"] = selfGeo.Label()
+	}
+	if d.Overlay != nil {
+		status["overlay_peers"] = d.Overlay.PeerCount()
+		status["yggdrasil_address"] = d.Overlay.YggdrasilAddress()
+		status["yggdrasil_subnet"] = d.Overlay.YggdrasilSubnet()
+		status["overlay_molting"] = d.Overlay.IsMolting()
 	}
 	writeJSON(w, status)
 }
@@ -958,6 +976,9 @@ func (d *Daemon) handleOverlayStatus(w http.ResponseWriter, r *http.Request) {
 	if d.Overlay != nil {
 		status["peer_count"] = d.Overlay.PeerCount()
 		status["public_key"] = fmt.Sprintf("%x", d.Overlay.PublicKey())
+		status["yggdrasil_address"] = d.Overlay.YggdrasilAddress()
+		status["yggdrasil_subnet"] = d.Overlay.YggdrasilSubnet()
+		status["molting"] = d.Overlay.IsMolting()
 		if debugInfo := d.Overlay.GetDebugInfo(); debugInfo != nil {
 			status["routing_entries"] = debugInfo.Self.RoutingEntries
 			status["peers"] = debugInfo.Peers
@@ -986,6 +1007,137 @@ func (d *Daemon) handleOverlayTree(w http.ResponseWriter, r *http.Request) {
 		"self": debugInfo.Self,
 		"tree": debugInfo.Tree,
 	})
+}
+
+// handleOverlayPeersGeo returns overlay peers with geo data from their TCP addresses.
+func (d *Daemon) handleOverlayPeersGeo(w http.ResponseWriter, r *http.Request) {
+	if d.Overlay == nil {
+		writeJSON(w, []any{})
+		return
+	}
+	type overlayPeerGeo struct {
+		KeyHex    string       `json:"key"`
+		Location  string       `json:"location"`
+		Geo       *geo.GeoInfo `json:"geo,omitempty"`
+		LatencyMs int64        `json:"latency_ms"`
+	}
+	// Get connected peers with TCP addresses
+	cpeers := d.Overlay.GetConnectedPeers()
+	// Get latency from ironwood debug info
+	latMap := make(map[string]int64)
+	if dbg := d.Overlay.GetDebugInfo(); dbg != nil {
+		for _, p := range dbg.Peers {
+			shortKey := p.Key[:16]
+			latMap[shortKey] = p.Latency.Milliseconds()
+		}
+	}
+	result := make([]overlayPeerGeo, 0, len(cpeers))
+	for _, cp := range cpeers {
+		entry := overlayPeerGeo{KeyHex: cp.KeyHex, Location: "Unknown"}
+		if lat, ok := latMap[cp.KeyHex]; ok {
+			entry.LatencyMs = lat
+		}
+		if d.Geo != nil {
+			// RemoteAddr is "ip:port" or "[ipv6]:port", not a multiaddr
+			host, _, err := net.SplitHostPort(cp.RemoteAddr)
+			if err == nil && host != "" && geo.IsPublicIP(host) {
+				if gi := d.Geo.Lookup(host); gi != nil {
+					entry.Location = gi.Label()
+					entry.Geo = gi
+				}
+			}
+		}
+		result = append(result, entry)
+	}
+	writeJSON(w, result)
+}
+
+// handleOverlayPeersList returns full peer info for all overlay peers.
+func (d *Daemon) handleOverlayPeersList(w http.ResponseWriter, r *http.Request) {
+	if d.Overlay == nil {
+		writeJSON(w, []any{})
+		return
+	}
+	writeJSON(w, d.Overlay.GetPeers())
+}
+
+// handleOverlayPeerAdd adds a new overlay peer by URI.
+func (d *Daemon) handleOverlayPeerAdd(w http.ResponseWriter, r *http.Request) {
+	if d.Overlay == nil {
+		http.Error(w, `{"error":"overlay not enabled"}`, http.StatusServiceUnavailable)
+		return
+	}
+	var req struct {
+		URI string `json:"uri"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URI == "" {
+		http.Error(w, `{"error":"missing or invalid uri"}`, http.StatusBadRequest)
+		return
+	}
+	if err := d.Overlay.AddPeer(req.URI); err != nil {
+		writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "uri": req.URI})
+}
+
+// handleOverlayPeerRemove removes an overlay peer by URI.
+func (d *Daemon) handleOverlayPeerRemove(w http.ResponseWriter, r *http.Request) {
+	if d.Overlay == nil {
+		http.Error(w, `{"error":"overlay not enabled"}`, http.StatusServiceUnavailable)
+		return
+	}
+	var req struct {
+		URI string `json:"uri"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URI == "" {
+		http.Error(w, `{"error":"missing or invalid uri"}`, http.StatusBadRequest)
+		return
+	}
+	if err := d.Overlay.RemovePeer(req.URI); err != nil {
+		writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "uri": req.URI})
+}
+
+// handleOverlayPeersRetry forces all overlay links to retry immediately.
+func (d *Daemon) handleOverlayPeersRetry(w http.ResponseWriter, r *http.Request) {
+	if d.Overlay == nil {
+		http.Error(w, `{"error":"overlay not enabled"}`, http.StatusServiceUnavailable)
+		return
+	}
+	d.Overlay.RetryPeersNow()
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+// handleOverlayMolt enters molt mode: disconnects all overlay peers.
+func (d *Daemon) handleOverlayMolt(w http.ResponseWriter, r *http.Request) {
+	if d.Overlay == nil {
+		http.Error(w, `{"error":"overlay not enabled"}`, http.StatusServiceUnavailable)
+		return
+	}
+	d.Overlay.Molt()
+	writeJSON(w, map[string]any{"ok": true, "molting": true})
+}
+
+// handleOverlayUnmolt exits molt mode: reconnects all overlay peers.
+func (d *Daemon) handleOverlayUnmolt(w http.ResponseWriter, r *http.Request) {
+	if d.Overlay == nil {
+		http.Error(w, `{"error":"overlay not enabled"}`, http.StatusServiceUnavailable)
+		return
+	}
+	d.Overlay.Unmolt()
+	writeJSON(w, map[string]any{"ok": true, "molting": false})
+}
+
+// handleOverlayMoltStatus returns current molt state.
+func (d *Daemon) handleOverlayMoltStatus(w http.ResponseWriter, r *http.Request) {
+	if d.Overlay == nil {
+		writeJSON(w, map[string]any{"molting": false, "enabled": false})
+		return
+	}
+	writeJSON(w, map[string]any{"molting": d.Overlay.IsMolting(), "enabled": true})
 }
 
 // handleCryptoSessions returns E2E encryption session info.

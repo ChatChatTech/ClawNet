@@ -99,6 +99,7 @@ func (c *Client) Login(ctx context.Context, username, password string) error {
 
 // Register creates a new account on the homeserver.
 // Falls back to login if the username is already taken.
+// Supports m.login.dummy (preferred) and m.login.terms (auto-accept) auth flows.
 func (c *Client) Register(ctx context.Context, username, password string) error {
 	body := registerRequest{
 		Username: username,
@@ -117,6 +118,16 @@ func (c *Client) Register(ctx context.Context, username, password string) error 
 		// Already registered — try login instead
 		return c.Login(ctx, username, password)
 	}
+	// If dummy auth was rejected, check if terms acceptance is required
+	if ar.ErrCode == "M_UNAUTHORIZED" || ar.ErrCode == "M_FORBIDDEN" {
+		if session, flows := parseInteractiveAuth(resp); len(flows) > 0 {
+			for _, flow := range flows {
+				if containsStage(flow, "m.login.terms") {
+					return c.registerWithTerms(ctx, username, password, session)
+				}
+			}
+		}
+	}
 	if ar.ErrCode != "" {
 		return fmt.Errorf("register failed: %s: %s", ar.ErrCode, ar.Error)
 	}
@@ -125,6 +136,96 @@ func (c *Client) Register(ctx context.Context, username, password string) error 
 	c.userID = ar.UserID
 	c.mu.Unlock()
 	return nil
+}
+
+// registerWithTerms re-attempts registration with m.login.terms auth.
+func (c *Client) registerWithTerms(ctx context.Context, username, password, session string) error {
+	body := registerRequestTerms{
+		Username: username,
+		Password: password,
+		Auth: authDataTerms{
+			Type:    "m.login.terms",
+			Session: session,
+		},
+	}
+	resp, err := c.doJSON(ctx, "POST", "/_matrix/client/v3/register", body)
+	if err != nil {
+		return fmt.Errorf("register (terms): %w", err)
+	}
+	var ar authResponse
+	if err := json.Unmarshal(resp, &ar); err != nil {
+		return fmt.Errorf("register (terms) decode: %w", err)
+	}
+	if ar.ErrCode == "M_USER_IN_USE" {
+		return c.Login(ctx, username, password)
+	}
+	if ar.ErrCode != "" {
+		return fmt.Errorf("register (terms) failed: %s: %s", ar.ErrCode, ar.Error)
+	}
+	c.mu.Lock()
+	c.accessToken = ar.AccessToken
+	c.userID = ar.UserID
+	c.mu.Unlock()
+	return nil
+}
+
+// registerRequestTerms includes session for interactive auth.
+type registerRequestTerms struct {
+	Username string         `json:"username"`
+	Password string         `json:"password"`
+	Auth     authDataTerms  `json:"auth,omitempty"`
+}
+
+type authDataTerms struct {
+	Type    string `json:"type"`
+	Session string `json:"session,omitempty"`
+}
+
+// parseInteractiveAuth extracts session and flows from a 401 interactive auth response.
+func parseInteractiveAuth(data []byte) (session string, flows [][]string) {
+	var resp struct {
+		Session string `json:"session"`
+		Flows   []struct {
+			Stages []string `json:"stages"`
+		} `json:"flows"`
+	}
+	if json.Unmarshal(data, &resp) != nil {
+		return "", nil
+	}
+	for _, f := range resp.Flows {
+		flows = append(flows, f.Stages)
+	}
+	return resp.Session, flows
+}
+
+func containsStage(stages []string, target string) bool {
+	for _, s := range stages {
+		if s == target {
+			return true
+		}
+	}
+	return false
+}
+
+// CheckHealth probes the homeserver's /_matrix/client/versions endpoint.
+// Returns the response latency or an error if unreachable.
+func (c *Client) CheckHealth(ctx context.Context) (time.Duration, error) {
+	start := time.Now()
+	url := c.homeserver + "/_matrix/client/versions"
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode != 200 {
+		return 0, fmt.Errorf("status %d", resp.StatusCode)
+	}
+	return time.Since(start), nil
 }
 
 // joinResponse represents the room join response.
