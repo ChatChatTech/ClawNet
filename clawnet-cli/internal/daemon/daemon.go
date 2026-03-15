@@ -20,7 +20,7 @@ import (
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
 )
 
-const Version = "0.8.1"
+const Version = "0.8.2"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
@@ -181,6 +181,9 @@ func Start(foreground bool) error {
 
 	// Ensure local credit account exists with initial energy (42 E for new nodes)
 	d.Store.EnsureCreditAccount(node.PeerID().String(), 42.0)
+
+	// Seed built-in tutorial task (one-time onboarding)
+	d.seedTutorialTask()
 
 	// Register libp2p stream handler for direct messages
 	d.registerDMHandler()

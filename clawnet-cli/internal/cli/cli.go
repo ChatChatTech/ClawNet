@@ -249,6 +249,8 @@ func Execute() error {
 		return cmdDoctor()
 	case "update":
 		return cmdUpdate()
+	case "nut", "nutshell":
+		return cmdNutshell()
 	case "v", "version":
 		fmt.Printf("clawnet v%s\n", daemon.Version)
 		return nil
@@ -295,6 +297,7 @@ func printUsage() error {
 	fmt.Println(tidal+"  nuke     "+dim+"         "+rst + "Complete uninstall — remove all data")
 	fmt.Println(tidal+"  doctor   "+dim+"(doc)    "+rst + "Network connectivity diagnostics")
 	fmt.Println(tidal+"  update   "+dim+"         "+rst + "Self-update to latest release")
+	fmt.Println(tidal+"  nutshell "+dim+"(nut)    "+rst + "Manage Nutshell CLI (install/upgrade/uninstall)")
 	fmt.Println(tidal+"  version  "+dim+"(v)      "+rst + "Show version")
 	fmt.Println()
 	fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help" + rst)
@@ -315,8 +318,9 @@ var cmdHelps = map[string]string{
 	"import":  "clawnet import <file>\n  Import identity from an export file.",
 	"nuke":    "clawnet nuke\n  Complete uninstall — removes all data, keys, and config.",
 	"doctor":  "clawnet doctor\n  Network connectivity diagnostics — NAT, relay, DHT, bootstrap.\n  Alias: doc",
-	"update":  "clawnet update\n  Check for the latest release on GitHub and self-update the binary.",
-	"version": "clawnet version\n  Show version.\n  Alias: v",
+	"update":   "clawnet update\n  Check for the latest release on GitHub and self-update the binary.",
+	"nutshell": "clawnet nutshell <subcommand>\n  Manage the Nutshell CLI tool.\n  Subcommands: install, upgrade, uninstall, version, status\n  Alias: nut",
+	"version":  "clawnet version\n  Show version.\n  Alias: v",
 }
 
 func printCmdHelp(cmd string) error {
@@ -325,7 +329,7 @@ func printCmdHelp(cmd string) error {
 		"i": "init", "up": "start", "down": "stop",
 		"s": "status", "st": "status", "p": "peers",
 		"map": "topo", "pub": "publish", "v": "version",
-		"doc": "doctor",
+		"doc": "doctor", "nut": "nutshell",
 	}
 	if canonical, ok := aliases[cmd]; ok {
 		cmd = canonical

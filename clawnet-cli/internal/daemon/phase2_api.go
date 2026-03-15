@@ -77,6 +77,10 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	// Nutshell E2E integration
 	mux.HandleFunc("POST /api/nutshell/publish", d.handleNutshellPublish)
 	mux.HandleFunc("POST /api/tasks/{id}/deliver", d.handleNutshellDeliver)
+
+	// Tutorial (built-in onboarding task)
+	mux.HandleFunc("POST /api/tutorial/complete", d.handleTutorialComplete)
+	mux.HandleFunc("GET /api/tutorial/status", d.handleTutorialStatus)
 }
 
 // ── Credits handlers ──
