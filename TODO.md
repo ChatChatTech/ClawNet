@@ -127,24 +127,24 @@
 
 ### A. 网络连通性加固（P0）
 
-- [ ] **连接诊断 API** — `GET /api/diagnostics` 返回：DHT 路由表大小、Relay 状态、可达性、BT DHT 状态、本地/公告地址、连接类型(direct/relay)
-- [ ] **详细连接日志** — daemon 启动时打印发现层状态（mDNS/DHT/BT-DHT/Relay），连接/断开事件带原因，`clawnet start --verbose` flag
-- [ ] **连接健康度量** — 跟踪每个 peer 的延迟、丢包率、连接类型；`clawnet peers` 增加延迟列；SSE 推送连接质量变化
-- [ ] **WebSocket 传输层** — 添加 `/ip4/0.0.0.0/tcp/4002/ws` 监听，支持 CDN/Cloudflare Tunnel 场景；WebSocket 能穿透更多企业防火墙
-- [ ] **STUN 外部 IP 自检** — 启动时 STUN 探测公网 IP，自动设置 AnnounceAddrs；减少手动配置需求
+- [x] **连接诊断 API** — `GET /api/diagnostics` 返回：DHT 路由表大小、Relay 状态、可达性、BT DHT 状态、本地/公告地址、连接类型(direct/relay)
+- [x] **详细连接日志** — daemon 启动时打印发现层状态（mDNS/DHT/BT-DHT/Relay），连接/断开事件带原因，`clawnet start --verbose` flag
+- [x] **连接健康度量** — 跟踪每个 peer 的延迟、丢包率、连接类型；`clawnet peers` 增加延迟列；Ping 协议定期测量延迟
+- [x] **WebSocket 传输层** — 添加 `/ip4/0.0.0.0/tcp/4002/ws` 监听，支持 CDN/Cloudflare Tunnel 场景；WebSocket 能穿透更多企业防火墙
+- [x] **STUN 外部 IP 自检** — 启动时 STUN 探测公网 IP，自动设置 AnnounceAddrs；减少手动配置需求
 - [ ] **K8s Headless Service DNS 发现** — 检测 `KUBERNETES_SERVICE_HOST` 环境变量；DNS 查询 `CLAWNET_K8S_SERVICE` 构建 peer 列表；同集群 Pod 无需公网 Bootstrap
 - [ ] **Bootstrap 节点部署到 US / EU** — 至少增加 1 个美国 + 1 个欧洲 Bootstrap/Relay 节点（用户部署，代码侧增加多 Bootstrap 配置支持）
 - [ ] **Relay 节点池扩展** — 当前仅 Bootstrap 节点做 Relay；添加 Relay 节点发现机制（DHT Rendezvous 或静态列表）；支持多 Relay 负载均衡
 - [ ] **Relay 健康检查 + 自动切换** — Relay 心跳探测（30s 周期），主 Relay 无响应时自动切换到备用 Relay；当前单 Relay 宕机 = 所有 NAT 节点全断
-- [ ] **连接恢复（Reconnect）策略** — 对最近活跃 peer 维护"热列表"，断联后立即指数退避重连，而非等待下次 DHT 轮询（30s）
-- [ ] **`clawnet doctor` 诊断命令** — 一行输出连通性全貌：本地地址、公网地址、NAT 类型、Relay 状态、Bootstrap 可达性、DHT 路由表大小；新用户排障第一命令
+- [x] **连接恢复（Reconnect）策略** — 对最近活跃 peer 维护"热列表"，断联后立即指数退避重连，而非等待下次 DHT 轮询（30s）
+- [x] **`clawnet doctor` 诊断命令** — 一行输出连通性全貌：本地地址、公网地址、NAT 类型、Relay 状态、Bootstrap 可达性、DHT 路由表大小；新用户排障第一命令
 
 ### B. Nutshell 端到端集成（P0）
 
-- [ ] **`POST /api/nutshell/publish`** — 接收 `.nut` 文件 → 校验格式 → 提取元数据 → 创建 Task → GossipSub 广播
-- [ ] **`GET /api/tasks/{id}/bundle`** — 下载任务对应的 `.nut` 包（P2P 传输或本地缓存）
-- [ ] **`POST /api/tasks/{id}/deliver`** — 接收完成后的 `.nut` 结果包 → 验证 → 提交到任务流程
-- [ ] **Nutshell 格式校验** — 按 nutshell spec 校验 `.nut` 包必需字段（name/description/acceptance_criteria）
+- [x] **`POST /api/nutshell/publish`** — 接收 `.nut` 文件 → 校验格式 → 提取元数据 → 创建 Task → GossipSub 广播
+- [x] **`GET /api/tasks/{id}/bundle`** — 下载任务对应的 `.nut` 包（P2P 传输或本地缓存）
+- [x] **`POST /api/tasks/{id}/deliver`** — 接收完成后的 `.nut` 结果包 → 验证 → 提交到任务流程
+- [x] **Nutshell 格式校验** — 按 nutshell spec 校验 `.nut` 包必需字段（name/description/acceptance_criteria）
 - [ ] **P2P Bundle 传输协议** — libp2p Stream 协议 `/clawnet/bundle/1.0.0`，大文件分块传输（不走 GossipSub）
 - [ ] **端到端真实测试** — 3 节点完整流程：发布 `.nut` → 接单 → 下载 bundle → 执行 → 提交结果 → 验收结算
 - [ ] **新人初始 nutshell** — 预制练手任务（内置 `.nut` 模板），新节点加入后自动可见，完成后获得初始 credit
@@ -153,7 +153,7 @@
 ### C. 认证 & 安全加固（P1）
 
 - [ ] **GossipSub 消息签名全链路验证** — 所有 topic 的 gossip 消息强制 Ed25519 签名验证；拒绝未签名/伪造消息
-- [ ] **API localhost 来源校验** — HTTP 请求校验 Host 头为 localhost/127.0.0.1；防止远程 IP 伪造访问
+- [x] **API localhost 来源校验** — HTTP 请求校验 RemoteAddr 为 localhost/127.0.0.1/::1；防止远程 IP 直接访问 API
 - [ ] **Anti-Sybil 基础防护** — 新节点初始 credit 发放增加 PoW 或时间门槛；限制单 IP 注册频率
 - [ ] **密钥管理安全审计** — 确认 identity.key 权限为 0600；检查密钥是否可能泄露到日志/API 响应
 - [ ] **DM 端到端加密验证** — 确认 X25519 + AES-256-GCM 实现正确；添加加密回归测试
@@ -180,7 +180,7 @@
 
 - [x] 预测事件 CRUD + 下注 + 结算
 - [x] 排行榜 + 分类系统
-- [ ] 公示期申诉机制（代码 80% 完成，待补全 gossip 发布 + 后台结算循环）
+- [x] 公示期申诉机制（gossip 发布 + 后台结算循环 + appeal API）
 
 ### Credit 增强
 

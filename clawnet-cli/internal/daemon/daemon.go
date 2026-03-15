@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -19,7 +20,7 @@ import (
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
 )
 
-const Version = "0.7.1"
+const Version = "0.8.0"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
@@ -71,6 +72,18 @@ func Start(foreground bool) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// STUN: auto-detect external IP if no AnnounceAddrs configured.
+	if len(cfg.AnnounceAddrs) == 0 {
+		if extIP := p2p.DetectExternalIP(); extIP != "" {
+			fmt.Printf("STUN detected external IP: %s\n", extIP)
+			cfg.AnnounceAddrs = []string{
+				fmt.Sprintf("/ip4/%s/tcp/4001", extIP),
+				fmt.Sprintf("/ip4/%s/udp/4001/quic-v1", extIP),
+				fmt.Sprintf("/ip4/%s/tcp/4002/ws", extIP),
+			}
+		}
+	}
+
 	node, err := p2p.NewNode(ctx, priv, cfg)
 	if err != nil {
 		return fmt.Errorf("start p2p node: %w", err)
@@ -94,6 +107,13 @@ func Start(foreground bool) error {
 	fmt.Println("  Kademlia DHT:  enabled (30s poll)")
 	if cfg.RelayEnabled {
 		fmt.Println("  Relay:         enabled")
+	}
+	// Check for WebSocket listener
+	for _, a := range cfg.ListenAddrs {
+		if strings.HasSuffix(a, "/ws") {
+			fmt.Println("  WebSocket:     enabled")
+			break
+		}
 	}
 	if cfg.ForcePrivate {
 		fmt.Println("  NAT mode:      force_private")
@@ -166,6 +186,9 @@ func Start(foreground bool) error {
 
 	// Watch for peer connect/disconnect to push topology updates
 	d.watchPeerEvents()
+
+	// Start periodic peer latency measurement
+	go d.pingLoop(ctx)
 
 	// Publish profile to DHT and start periodic refresh
 	d.startProfilePublisher(ctx)

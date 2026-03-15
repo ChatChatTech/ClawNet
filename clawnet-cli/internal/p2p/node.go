@@ -19,6 +19,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	libp2pws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	"github.com/multiformats/go-multiaddr"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/bootstrap"
@@ -95,6 +96,7 @@ func NewNode(ctx context.Context, priv crypto.PrivKey, cfg *config.Config) (*Nod
 		libp2p.Security(noise.ID, noise.New),
 		libp2p.Transport(tcp.NewTCPTransport),
 		libp2p.Transport(libp2pquic.NewTransport),
+		libp2p.Transport(libp2pws.New),
 		libp2p.ConnectionManager(NewConnManager(cfg.MaxConnections)),
 		libp2p.BandwidthReporter(bwc),
 		libp2p.NATPortMap(),
