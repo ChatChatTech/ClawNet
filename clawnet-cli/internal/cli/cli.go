@@ -321,8 +321,8 @@ func printUsage() error {
 	fmt.Println(tidal+"  nutshell "+dim+"(nut)    "+rst + "Manage Nutshell CLI (install/upgrade/uninstall)")
 	fmt.Println(tidal+"  geo-upgrade"+dim+"       "+rst + "Download city-level geo DB (DB5.IPV6, ~34MB)")
 	fmt.Println(tidal+"  chat     "+dim+"         "+rst + "Random chat with an online peer")
-	fmt.Println(tidal+"  molt     "+dim+"         "+rst + "Enter molt mode — disconnect all overlay peers")
-	fmt.Println(tidal+"  unmolt   "+dim+"         "+rst + "Exit molt mode — reconnect overlay peers")
+	fmt.Println(tidal+"  molt     "+dim+"         "+rst + "Molt — enable full overlay mesh interop via IPv6")
+	fmt.Println(tidal+"  unmolt   "+dim+"         "+rst + "Unmolt — ClawNet-only IPv6 (block external mesh)")
 	fmt.Println(tidal+"  version  "+dim+"(v)      "+rst + "Show version")
 	fmt.Println()
 	if devBuild {
@@ -352,8 +352,8 @@ var cmdHelps = map[string]string{
 	"nutshell":    "clawnet nutshell <subcommand>\n  Manage the Nutshell CLI tool.\n  Subcommands: install, upgrade, uninstall, version, status\n  Alias: nut",
 	"geo-upgrade": "clawnet geo-upgrade\n  Download the city-level geo database (DB5.IPV6, ~34MB).\n  Enables precise city-level geolocation in topo view.\n  Default build embeds DB1.IPV6 (country-level, 2MB).\n  Downloads from the latest GitHub release.",
 	"chat":        "clawnet chat\n  Start a random chat with an online peer.\n  Matches you with a random connected node and opens an interactive conversation.",
-	"molt":        "clawnet molt\n  Enter molt mode — disconnect all overlay peers and stop accepting\n  new connections. Useful for identity rotation or network refresh.",
-	"unmolt":      "clawnet unmolt\n  Exit molt mode — re-add all static peers and resume accepting\n  incoming overlay connections.",
+	"molt":        "clawnet molt\n  Molt — shed shell, enable full overlay mesh interoperability.\n  Any overlay peer (including non-ClawNet clients) can communicate\n  with this node via IPv6 through the TUN device.",
+	"unmolt":      "clawnet unmolt\n  Unmolt — return to ClawNet-only mode.\n  Only known ClawNet peers can communicate via IPv6.\n  External mesh peers are blocked at the TUN filter.",
 	"version":     "clawnet version\n  Show version.\n  Alias: v",
 }
 
@@ -919,7 +919,8 @@ type networkStats struct {
 	OverlayPeers    int    `json:"-"`
 	OverlayIPv6     string `json:"-"`
 	OverlaySubnet   string `json:"-"`
-	OverlayMolting  bool   `json:"-"`
+	OverlayMolted   bool   `json:"-"`
+	OverlayTUN      string `json:"-"`
 }
 
 type creditInfo struct {
@@ -1035,8 +1036,11 @@ func fetchNetworkStats(base string) networkStats {
 		if v, ok := raw["overlay_subnet"].(string); ok {
 			stats.OverlaySubnet = v
 		}
-		if v, ok := raw["overlay_molting"].(bool); ok {
-			stats.OverlayMolting = v
+		if v, ok := raw["overlay_molted"].(bool); ok {
+			stats.OverlayMolted = v
+		}
+		if v, ok := raw["overlay_tun"].(string); ok {
+			stats.OverlayTUN = v
 		}
 	}
 	if resp, err := http.Get(base + "/api/credits/balance"); err == nil {
@@ -1874,12 +1878,15 @@ func renderSelfDetail(pInfos []peerInfo, stats networkStats, w int, now int64) [
 	if stats.OverlayIPv6 != "" {
 		lines = append(lines, cSelfInfo+" Claw IPv6:  "+cReset+stats.OverlayIPv6)
 	}
-	if stats.OverlayPeers > 0 {
-		moltTag := ""
-		if stats.OverlayMolting {
-			moltTag = " \033[38;2;230;57;70m(molting)\033[0m"
+	if stats.OverlayTUN != "" {
+		moltTag := "\033[38;2;42;157;143m(ClawNet-only)\033[0m"
+		if stats.OverlayMolted {
+			moltTag = "\033[38;2;230;57;70m(molted)\033[0m"
 		}
-		lines = append(lines, cSelfInfo+" Overlay:    "+cReset+fmt.Sprintf("%d peers%s", stats.OverlayPeers, moltTag))
+		lines = append(lines, cSelfInfo+" TUN:        "+cReset+stats.OverlayTUN+" "+moltTag)
+	}
+	if stats.OverlayPeers > 0 {
+		lines = append(lines, cSelfInfo+" Overlay:    "+cReset+fmt.Sprintf("%d peers", stats.OverlayPeers))
 	}
 
 	if len(stats.Topics) > 0 {

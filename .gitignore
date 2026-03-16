@@ -37,6 +37,14 @@ clawnet-topo*.gif
 # Contribution plans (local only)
 *.pr
 
+# Development docs (not for public repo)
+TODO.md
+SKILL.md
+bootstrap.json
+docs/phase0-report.md
+docs/archive-v1/
+research/
+
 # Secrets
 GITHUB_TOKEN
 CLOUDFLARE_TOKEN

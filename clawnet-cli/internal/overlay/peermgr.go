@@ -2,10 +2,7 @@ package overlay
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 )
@@ -35,11 +32,11 @@ type PeerState struct {
 	TotalConns  int       `json:"total_conns"`
 }
 
-// peerFile is the on-disk format for persisted peer state.
-type peerFile struct {
-	Version   int                   `json:"version"`
-	UpdatedAt time.Time             `json:"updated_at"`
-	Peers     map[string]*PeerState `json:"peers"`
+// PeerStore is the persistence interface for overlay peer state.
+// Implemented by store.Store (SQLite) via store.PeerStoreAdapter.
+type PeerStore interface {
+	SaveOverlayPeers(peers map[string]*PeerState) error
+	LoadOverlayPeers() (map[string]*PeerState, error)
 }
 
 // PeerManager tracks overlay peer health, applies exponential backoff
@@ -49,20 +46,20 @@ type PeerManager struct {
 	peers map[string]*PeerState // addr → state
 
 	transport *Transport
-	dataDir   string
+	store     PeerStore
 
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
 // NewPeerManager creates a PeerManager that monitors the given transport.
-// dataDir is the ClawNet data directory (e.g. ~/.openclaw/clawnet).
-func NewPeerManager(transport *Transport, dataDir string) *PeerManager {
+// db is the SQLite store for peer state persistence.
+func NewPeerManager(transport *Transport, db PeerStore) *PeerManager {
 	ctx, cancel := context.WithCancel(context.Background())
 	pm := &PeerManager{
 		peers:     make(map[string]*PeerState),
 		transport: transport,
-		dataDir:   dataDir,
+		store:     db,
 		ctx:       ctx,
 		cancel:    cancel,
 	}
@@ -263,66 +260,47 @@ func (pm *PeerManager) mergeDefaults() {
 	}
 }
 
-// peersFilePath returns the path to peers.json in the data directory.
-func (pm *PeerManager) peersFilePath() string {
-	return filepath.Join(pm.dataDir, "peers.json")
-}
-
-// load reads persisted peer state from disk.
+// load reads persisted peer state from the database.
 func (pm *PeerManager) load() {
-	data, err := os.ReadFile(pm.peersFilePath())
-	if err != nil {
-		return // no persisted state, that's fine
-	}
-
-	var pf peerFile
-	if err := json.Unmarshal(data, &pf); err != nil {
-		fmt.Printf("[peermgr] failed to parse peers.json: %v\n", err)
+	if pm.store == nil {
 		return
 	}
-
-	if pf.Version != 1 || pf.Peers == nil {
+	loaded, err := pm.store.LoadOverlayPeers()
+	if err != nil {
+		fmt.Printf("[peermgr] failed to load peers from db: %v\n", err)
+		return
+	}
+	if len(loaded) == 0 {
 		return
 	}
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	for addr, state := range pf.Peers {
+	for addr, state := range loaded {
 		state.Address = addr
 		// Reset alive status — will be re-evaluated by probe
 		state.Alive = false
 		pm.peers[addr] = state
 	}
-	fmt.Printf("[peermgr] loaded %d peers from disk\n", len(pf.Peers))
+	fmt.Printf("[peermgr] loaded %d peers from db\n", len(loaded))
 }
 
-// save writes current peer state to disk.
+// save writes current peer state to the database.
 func (pm *PeerManager) save() {
-	pm.mu.RLock()
-	pf := peerFile{
-		Version:   1,
-		UpdatedAt: time.Now(),
-		Peers:     make(map[string]*PeerState, len(pm.peers)),
+	if pm.store == nil {
+		return
 	}
+	pm.mu.RLock()
+	snapshot := make(map[string]*PeerState, len(pm.peers))
 	for addr, state := range pm.peers {
-		pf.Peers[addr] = state
+		// shallow copy
+		cp := *state
+		snapshot[addr] = &cp
 	}
 	pm.mu.RUnlock()
 
-	data, err := json.MarshalIndent(pf, "", "  ")
-	if err != nil {
-		fmt.Printf("[peermgr] failed to marshal peers: %v\n", err)
-		return
-	}
-
-	path := pm.peersFilePath()
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		fmt.Printf("[peermgr] failed to create dir: %v\n", err)
-		return
-	}
-
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		fmt.Printf("[peermgr] failed to write peers.json: %v\n", err)
+	if err := pm.store.SaveOverlayPeers(snapshot); err != nil {
+		fmt.Printf("[peermgr] failed to save peers to db: %v\n", err)
 	}
 }

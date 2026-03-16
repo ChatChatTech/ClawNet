@@ -2,7 +2,7 @@ package daemon
 
 import (
 	"context"
-	"encoding/json"
+	"crypto/ed25519"
 	"fmt"
 	"net"
 	"os"
@@ -26,7 +26,7 @@ import (
 	"github.com/Arceliar/ironwood/network"
 )
 
-const Version = "0.8.8"
+const Version = "0.9.0"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
@@ -47,6 +47,7 @@ type Daemon struct {
 	txBytes    atomic.Uint64
 	nicName    string
 	hbState    *heartbeatState
+	geoCache   *overlayGeoCache
 }
 
 // getTrafficBytes returns cumulative rx/tx counters from libp2p bandwidth.
@@ -115,10 +116,27 @@ func Start(foreground bool, devLayers []string) error {
 		}
 	}
 
+	// Open local SQLite store (needed before node creation for Matrix token persistence)
+	db, err := store.Open(dataDir)
+	if err != nil {
+		return fmt.Errorf("open store: %w", err)
+	}
+	defer db.Close()
+
+	// Load or create profile (from DB now)
+	profile := loadProfile(db)
+	profile.Version = Version
+
+	// One-time migration: import legacy JSON files into DB
+	migrateJSONFiles(dataDir, db)
+
 	node, err := p2p.NewNode(ctx, priv, cfg)
 	if err != nil {
 		return fmt.Errorf("start p2p node: %w", err)
 	}
+	// Inject DB-backed token store so matrix discovery persists tokens in SQLite
+	node.MatrixTokenStore = &matrixTokenAdapter{db: db}
+	node.StartMatrixDiscovery(ctx, priv)
 	defer node.Close()
 
 	// Print listen addresses
@@ -160,17 +178,6 @@ func Start(foreground bool, devLayers []string) error {
 	layerStatus("matrix", "Matrix", cfg.MatrixDiscovery.Enabled)
 	layerStatus("overlay", "Overlay", cfg.Overlay.Enabled)
 	layerStatus("stun", "STUN", true)
-
-	// Load or create profile
-	profile := loadProfile(dataDir)
-	profile.Version = Version
-
-	// Open local SQLite store
-	db, err := store.Open(dataDir)
-	if err != nil {
-		return fmt.Errorf("open store: %w", err)
-	}
-	defer db.Close()
 
 	// Initialize geo locator
 	geoLoc, err := geo.NewLocator(dataDir)
@@ -228,8 +235,25 @@ func Start(foreground bool, devLayers []string) error {
 			d.Overlay = ot
 			bridge.SetTransport(ot)
 
+			// Setup TUN device for overlay IPv6
+			if err := ot.SetupTUN(); err != nil {
+				fmt.Printf("[tun] setup failed: %v (non-fatal)\n", err)
+			}
+
+			// Set initial molt state from config
+			if cfg.Overlay.Molted {
+				ot.Molt()
+			}
+
 			go ot.Run(ctx)
 			fmt.Println("[overlay] transport started")
+
+			// Start async geo cache for overlay peers
+			d.geoCache = newOverlayGeoCache(ot, geoLoc)
+			go d.geoCache.run(ctx.Done())
+
+			// Periodically sync libp2p peers → clawPeers for TUN filtering
+			go d.syncClawPeers(ctx)
 		}
 	}
 
@@ -255,12 +279,16 @@ func Start(foreground bool, devLayers []string) error {
 
 	// Anti-Sybil: require one-time PoW before granting initial credits
 	peerIDStr := node.PeerID().String()
-	proof := pow.LoadProof(dataDir)
+
+	var proof *pow.Proof
+	if sp, _ := db.LoadPoWProof(peerIDStr); sp != nil {
+		proof = &pow.Proof{PeerID: sp.PeerID, Nonce: sp.Nonce, Difficulty: sp.Difficulty}
+	}
 	if proof == nil || proof.PeerID != peerIDStr || !pow.Verify(proof.PeerID, proof.Nonce, pow.DefaultDifficulty) {
 		fmt.Printf("[PoW] Solving proof-of-work (one-time, ~3s)...\n")
 		nonce := pow.Solve(peerIDStr, pow.DefaultDifficulty)
 		proof = &pow.Proof{PeerID: peerIDStr, Nonce: nonce, Difficulty: pow.DefaultDifficulty}
-		pow.SaveProof(dataDir, proof)
+		db.SavePoWProof(&store.PoWProof{PeerID: peerIDStr, Nonce: nonce, Difficulty: pow.DefaultDifficulty})
 		fmt.Printf("[PoW] Solved! nonce=%d\n", nonce)
 	}
 	// Initial grant: 10 credits (just enough to explore).
@@ -308,10 +336,9 @@ func Start(foreground bool, devLayers []string) error {
 	return nil
 }
 
-func loadProfile(dataDir string) *config.Profile {
-	profilePath := filepath.Join(dataDir, "profile.json")
-	data, err := os.ReadFile(profilePath)
-	if err != nil {
+func loadProfile(db *store.Store) *config.Profile {
+	pe, err := db.LoadProfile()
+	if err != nil || pe == nil {
 		return &config.Profile{
 			AgentName:  "ClawNet Node",
 			Visibility: config.DefaultVisibility,
@@ -319,25 +346,35 @@ func loadProfile(dataDir string) *config.Profile {
 			Capabilities: []string{},
 		}
 	}
-	var p config.Profile
-	if err := json.Unmarshal(data, &p); err != nil {
-		return &config.Profile{
-			AgentName:  "ClawNet Node",
-			Visibility: config.DefaultVisibility,
-			Domains:    []string{},
-			Capabilities: []string{},
-		}
+	return &config.Profile{
+		AgentName:    pe.AgentName,
+		Visibility:   pe.Visibility,
+		Domains:      pe.Domains,
+		Capabilities: pe.Capabilities,
+		Bio:          pe.Bio,
+		Motto:        pe.Motto,
+		GeoCity:      pe.GeoCity,
+		GeoLatFuzzy:  pe.GeoLatFuzzy,
+		GeoLonFuzzy:  pe.GeoLonFuzzy,
+		Version:      pe.Version,
 	}
-	return &p
 }
 
-// saveProfile persists the current profile to disk.
+// saveProfile persists the current profile to the database.
 func (d *Daemon) saveProfile() error {
-	data, err := json.MarshalIndent(d.Profile, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(d.DataDir, "profile.json"), data, 0600)
+	p := d.Profile
+	return d.Store.SaveProfile(&store.ProfileEntry{
+		AgentName:    p.AgentName,
+		Visibility:   p.Visibility,
+		Domains:      p.Domains,
+		Capabilities: p.Capabilities,
+		Bio:          p.Bio,
+		Motto:        p.Motto,
+		GeoCity:      p.GeoCity,
+		GeoLatFuzzy:  p.GeoLatFuzzy,
+		GeoLonFuzzy:  p.GeoLonFuzzy,
+		Version:      p.Version,
+	})
 }
 
 // startProfilePublisher publishes the profile to DHT on startup
@@ -403,4 +440,40 @@ func detectOverlayAddrs() []string {
 		}
 	}
 	return addrs
+}
+
+// syncClawPeers periodically copies libp2p peer keys into the overlay's
+// ClawNet peer set for TUN IPv6 filtering.
+func (d *Daemon) syncClawPeers(ctx context.Context) {
+	if d.Overlay == nil {
+		return
+	}
+	// Initial sync after a short delay
+	time.Sleep(5 * time.Second)
+	d.doSyncClawPeers()
+
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			d.doSyncClawPeers()
+		}
+	}
+}
+
+func (d *Daemon) doSyncClawPeers() {
+	for _, pid := range d.Node.Host.Peerstore().Peers() {
+		pub, err := pid.ExtractPublicKey()
+		if err != nil {
+			continue
+		}
+		raw, err := pub.Raw()
+		if err != nil || len(raw) != ed25519.PublicKeySize {
+			continue
+		}
+		d.Overlay.RegisterClawPeer(ed25519.PublicKey(raw))
+	}
 }

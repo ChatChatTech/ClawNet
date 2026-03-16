@@ -318,6 +318,38 @@ func (s *Store) migrate() error {
 			uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
 			FOREIGN KEY (task_id) REFERENCES tasks(id)
 		)`,
+
+		// Phase 6 — Migrate plaintext JSON files into SQLite
+		// Overlay peer health state (was peers.json)
+		`CREATE TABLE IF NOT EXISTS overlay_peers (
+			address      TEXT PRIMARY KEY,
+			source       TEXT NOT NULL DEFAULT 'discovered',
+			alive        INTEGER NOT NULL DEFAULT 0,
+			last_seen    TEXT NOT NULL DEFAULT '',
+			last_attempt TEXT NOT NULL DEFAULT '',
+			consec_fails INTEGER NOT NULL DEFAULT 0,
+			total_conns  INTEGER NOT NULL DEFAULT 0,
+			updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		// Node profile (was profile.json)
+		`CREATE TABLE IF NOT EXISTS node_profile (
+			key   TEXT PRIMARY KEY,
+			value TEXT NOT NULL DEFAULT ''
+		)`,
+		// PoW proof (was pow_proof.json)
+		`CREATE TABLE IF NOT EXISTS pow_proof (
+			peer_id    TEXT PRIMARY KEY,
+			nonce      INTEGER NOT NULL DEFAULT 0,
+			difficulty INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		// Matrix homeserver tokens (was matrix_tokens.json)
+		`CREATE TABLE IF NOT EXISTS matrix_tokens (
+			homeserver   TEXT PRIMARY KEY,
+			access_token TEXT NOT NULL DEFAULT '',
+			user_id      TEXT NOT NULL DEFAULT '',
+			updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
 	}
 
 	for _, m := range migrations {

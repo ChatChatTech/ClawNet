@@ -466,6 +466,9 @@ func (l *links) handler(lt linkType, options linkOptions, conn *linkConn, onSucc
 	keyHex := hex.EncodeToString(remoteKey[:8])
 	fmt.Printf("[overlay] connected %s: %s@%s\n", dir, keyHex, conn.RemoteAddr())
 
+	// Register as known ClawNet peer (completed our wire handshake)
+	l.transport.RegisterClawPeer(remoteKey)
+
 	if onSuccess != nil {
 		onSuccess()
 	}

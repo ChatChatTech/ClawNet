@@ -76,7 +76,7 @@ type OverlayConfig struct {
 	ListenPort     int      `json:"listen_port,omitempty"`
 	StaticPeers    []string `json:"static_peers,omitempty"`
 	BootstrapPeers []string `json:"bootstrap_peers,omitempty"`
-	Molted         bool     `json:"molted,omitempty"` // true = L2 firewall (open Ygg), false = L1 (ClawNet-only)
+	Molted         bool     `json:"molted,omitempty"` // true = full mesh interop, false = ClawNet-only
 }
 
 // Profile represents the public node profile broadcast to the network.

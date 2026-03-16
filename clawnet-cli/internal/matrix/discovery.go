@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +28,12 @@ type AnnounceMsg struct {
 	TS      int64    `json:"ts"`
 }
 
+// TokenStore is the persistence interface for Matrix auth tokens.
+type TokenStore interface {
+	SaveMatrixTokens(tokens map[string]TokenEntry) error
+	LoadMatrixTokens() (map[string]TokenEntry, error)
+}
+
 // Discovery manages Matrix-based peer discovery across multiple homeservers.
 type Discovery struct {
 	priv        crypto.PrivKey
@@ -38,7 +42,7 @@ type Discovery struct {
 	agent       string
 	homeservers []string
 	interval    time.Duration
-	dataDir     string
+	tokenStore  TokenStore
 
 	clients map[string]*Client // homeserver → client
 	roomIDs map[string]string  // homeserver → room ID
@@ -47,7 +51,7 @@ type Discovery struct {
 
 // NewDiscovery creates a Matrix discovery instance.
 // addrsFunc should return the node's current multiaddrs.
-func NewDiscovery(priv crypto.PrivKey, homeservers []string, interval time.Duration, agent, dataDir string, addrsFunc func() []multiaddr.Multiaddr) (*Discovery, error) {
+func NewDiscovery(priv crypto.PrivKey, homeservers []string, interval time.Duration, agent string, ts TokenStore, addrsFunc func() []multiaddr.Multiaddr) (*Discovery, error) {
 	pid, err := peer.IDFromPrivateKey(priv)
 	if err != nil {
 		return nil, fmt.Errorf("derive peer ID: %w", err)
@@ -65,7 +69,7 @@ func NewDiscovery(priv crypto.PrivKey, homeservers []string, interval time.Durat
 		agent:       agent,
 		homeservers: homeservers,
 		interval:    interval,
-		dataDir:     dataDir,
+		tokenStore:  ts,
 		clients:     make(map[string]*Client),
 		roomIDs:     make(map[string]string),
 	}, nil
@@ -118,7 +122,7 @@ func (d *Discovery) Run(ctx context.Context, onPeerFound func(peer.AddrInfo)) {
 
 		// Cache token
 		token, userID := client.Token()
-		tokens[hs] = tokenEntry{AccessToken: token, UserID: userID}
+		tokens[hs] = TokenEntry{AccessToken: token, UserID: userID}
 
 		fmt.Printf("[matrix] authenticated on %s\n", hs)
 
@@ -327,33 +331,28 @@ func (d *Discovery) derivePassword() string {
 	return hex.EncodeToString(key)
 }
 
-// Token cache
-type tokenEntry struct {
+// TokenEntry stores a Matrix homeserver session.
+type TokenEntry struct {
 	AccessToken string `json:"access_token"`
 	UserID      string `json:"user_id"`
 }
 
-func (d *Discovery) tokensPath() string {
-	return filepath.Join(d.dataDir, "matrix_tokens.json")
-}
-
-func (d *Discovery) loadTokens() map[string]tokenEntry {
-	tokens := make(map[string]tokenEntry)
-	data, err := os.ReadFile(d.tokensPath())
-	if err != nil {
-		return tokens
+func (d *Discovery) loadTokens() map[string]TokenEntry {
+	if d.tokenStore == nil {
+		return make(map[string]TokenEntry)
 	}
-	json.Unmarshal(data, &tokens)
+	tokens, err := d.tokenStore.LoadMatrixTokens()
+	if err != nil {
+		return make(map[string]TokenEntry)
+	}
 	return tokens
 }
 
-func (d *Discovery) saveTokens(tokens map[string]tokenEntry) {
-	data, err := json.MarshalIndent(tokens, "", "  ")
-	if err != nil {
+func (d *Discovery) saveTokens(tokens map[string]TokenEntry) {
+	if d.tokenStore == nil {
 		return
 	}
-	os.MkdirAll(filepath.Dir(d.tokensPath()), 0700)
-	os.WriteFile(d.tokensPath(), data, 0600)
+	d.tokenStore.SaveMatrixTokens(tokens)
 }
 
 // ConnectedHomeservers returns the number of homeservers currently connected.

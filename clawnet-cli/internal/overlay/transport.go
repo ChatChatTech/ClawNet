@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -39,9 +40,16 @@ type Transport struct {
 	// onMessage callback for received datagrams
 	onMessage func(from ed25519.PublicKey, data []byte)
 
+	// TUN device and IPv6 bridge
+	tun     *TUNDevice
+	ipv6rwc *IPv6RWC
+
+	// Known ClawNet peer keys (populated from handshakes + libp2p sync)
+	clawPeers sync.Map // [32]byte → struct{}
+
 	mu      sync.Mutex
 	closed  bool
-	molting bool // molt mode: all peers disconnected, traffic paused
+	molted  bool // true = full mesh interop, false = ClawNet-only (default)
 }
 
 // NewTransport creates an Ironwood overlay transport with link management.
@@ -141,6 +149,8 @@ func (t *Transport) Run(ctx context.Context) {
 }
 
 // receiveLoop reads datagrams from the Ironwood overlay network.
+// Routes IPv6 packets (first nibble = 6) to TUN if active,
+// all other messages to the application handler.
 func (t *Transport) receiveLoop() {
 	buf := make([]byte, 65535)
 	for {
@@ -155,12 +165,25 @@ func (t *Transport) receiveLoop() {
 			continue
 		}
 
+		a, ok := addr.(types.Addr)
+		if !ok {
+			continue
+		}
+		from := ed25519.PublicKey(a)
+
+		// IPv6 packets → TUN device
+		if n > 0 && (buf[0]>>4) == 6 && t.ipv6rwc != nil {
+			data := make([]byte, n)
+			copy(data, buf[:n])
+			t.ipv6rwc.handleOverlayIPv6(from, data)
+			continue
+		}
+
+		// Application messages → handler
 		if t.onMessage != nil {
-			if a, ok := addr.(types.Addr); ok {
-				data := make([]byte, n)
-				copy(data, buf[:n])
-				t.onMessage(ed25519.PublicKey(a), data)
-			}
+			data := make([]byte, n)
+			copy(data, buf[:n])
+			t.onMessage(from, data)
 		}
 	}
 }
@@ -203,69 +226,39 @@ func (t *Transport) RetryPeersNow() {
 	t.links.RetryPeersNow()
 }
 
-// Molt enters molt mode: disconnect all overlay peers and stop accepting new
-// connections. Useful for identity rotation or network refresh.
+// Molt enables full mesh interoperability — any overlay peer (including
+// non-ClawNet clients) can communicate via IPv6 through TUN.
 func (t *Transport) Molt() {
 	t.mu.Lock()
-	if t.molting {
+	if t.molted {
 		t.mu.Unlock()
 		return
 	}
-	t.molting = true
+	t.molted = true
 	t.mu.Unlock()
 
-	// Disconnect all peers
-	t.links.mu.Lock()
-	for _, lnk := range t.links._links {
-		if lnk.conn != nil {
-			_ = lnk.conn.Close()
-		}
-		lnk.cancel()
-	}
-	t.links._links = make(map[linkInfo]*link)
-	// Close all listeners
-	for li, cancel := range t.links._listeners {
-		cancel()
-		delete(t.links._listeners, li)
-	}
-	t.links.mu.Unlock()
-
-	fmt.Println("[overlay] entered molt mode — all peers disconnected")
+	fmt.Println("[overlay] molted — full mesh interoperability enabled")
 }
 
-// Unmolt exits molt mode: re-opens the listener and re-adds all static peers.
+// Unmolt returns to ClawNet-only mode — only known ClawNet peers can
+// communicate via IPv6 through TUN.
 func (t *Transport) Unmolt() {
 	t.mu.Lock()
-	if !t.molting {
+	if !t.molted {
 		t.mu.Unlock()
 		return
 	}
-	t.molting = false
+	t.molted = false
 	t.mu.Unlock()
 
-	// Re-open listener
-	if t.listenPort > 0 {
-		listenURI := fmt.Sprintf("tcp://:%d", t.listenPort)
-		if _, err := t.links.listen(listenURI); err != nil {
-			fmt.Printf("[overlay] unmolt: listen failed: %v\n", err)
-		} else {
-			fmt.Printf("[overlay] unmolt: listening on :%d\n", t.listenPort)
-		}
-	}
-
-	// Re-add all static peers
-	for _, uri := range t.staticPeers {
-		_ = t.links.add(uri, linkTypePersistent)
-	}
-
-	fmt.Println("[overlay] exited molt mode — peers re-added")
+	fmt.Println("[overlay] unmolted — ClawNet-only mode")
 }
 
-// IsMolting returns whether the transport is in molt mode.
-func (t *Transport) IsMolting() bool {
+// IsMolted returns whether the transport allows full mesh interop.
+func (t *Transport) IsMolted() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.molting
+	return t.molted
 }
 
 // OverlayAddress returns the ClawNet 200::/7 IPv6 address derived from
@@ -326,7 +319,7 @@ func (t *Transport) PublicKey() ed25519.PublicKey {
 	return t.privKey.Public().(ed25519.PublicKey)
 }
 
-// Close shuts down the overlay transport.
+// Close shuts down the overlay transport and TUN device.
 func (t *Transport) Close() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -337,6 +330,62 @@ func (t *Transport) Close() {
 	t.cancel()
 	t.links.shutdown()
 	t.pc.Close()
+	if t.tun != nil {
+		t.tun.Close()
+	}
+}
+
+// ── TUN + Molt ──
+
+// SetupTUN creates a TUN device (claw0) with the overlay IPv6 address
+// and starts the TUN→overlay send loop. Requires root.
+func (t *Transport) SetupTUN() error {
+	addr := OverlayAddress(t.PublicKey())
+	ip := net.IP(addr[:])
+
+	tun, err := NewTUNDevice("claw0", ip, 65535)
+	if err != nil {
+		return fmt.Errorf("create TUN: %w", err)
+	}
+
+	t.tun = tun
+	t.ipv6rwc = newIPv6RWC(t, tun)
+
+	// Register own key as ClawNet peer
+	t.RegisterClawPeer(t.PublicKey())
+
+	go t.ipv6rwc.tunReadLoop()
+
+	fmt.Printf("[tun] %s up with %s/7\n", tun.Name(), ip)
+	return nil
+}
+
+// TUNName returns the TUN interface name, or empty if TUN is not active.
+func (t *Transport) TUNName() string {
+	if t.tun != nil {
+		return t.tun.Name()
+	}
+	return ""
+}
+
+// RegisterClawPeer adds a key to the known ClawNet peer set.
+// Called from handshake completion and libp2p peer sync.
+func (t *Transport) RegisterClawPeer(key ed25519.PublicKey) {
+	var k [32]byte
+	copy(k[:], key)
+	t.clawPeers.Store(k, struct{}{})
+	// Also populate keyStore for TUN address resolution
+	if t.ipv6rwc != nil {
+		t.ipv6rwc.keyStore.update(key)
+	}
+}
+
+// IsClawPeer checks if a key belongs to a known ClawNet peer.
+func (t *Transport) IsClawPeer(key ed25519.PublicKey) bool {
+	var k [32]byte
+	copy(k[:], key)
+	_, ok := t.clawPeers.Load(k)
+	return ok
 }
 
 // ── Debug/diagnostics ──

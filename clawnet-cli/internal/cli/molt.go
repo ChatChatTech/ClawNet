@@ -27,7 +27,7 @@ func cmdMolt() error {
 		return fmt.Errorf("molt failed: HTTP %d", resp.StatusCode)
 	}
 
-	fmt.Println("\033[38;2;230;57;70m🦀 Molting...\033[0m overlay peers disconnected")
+	fmt.Println("\033[38;2;230;57;70m� Molted!\033[0m full overlay mesh interop enabled")
 	return nil
 }
 
@@ -50,6 +50,6 @@ func cmdUnmolt() error {
 		return fmt.Errorf("unmolt failed: HTTP %d", resp.StatusCode)
 	}
 
-	fmt.Println("\033[38;2;42;157;143m🦞 Unmolted!\033[0m overlay peers reconnecting")
+	fmt.Println("\033[38;2;42;157;143m🦞 Unmolted!\033[0m ClawNet-only mode — external mesh peers blocked")
 	return nil
 }

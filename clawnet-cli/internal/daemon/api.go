@@ -81,7 +81,7 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 	mux.HandleFunc("POST /api/overlay/peers/remove", d.handleOverlayPeerRemove)
 	mux.HandleFunc("POST /api/overlay/peers/retry", d.handleOverlayPeersRetry)
 
-	// Overlay molt / unmolt
+	// Overlay molt / unmolt (TUN IPv6 access control)
 	mux.HandleFunc("POST /api/overlay/molt", d.handleOverlayMolt)
 	mux.HandleFunc("POST /api/overlay/unmolt", d.handleOverlayUnmolt)
 	mux.HandleFunc("GET /api/overlay/molt/status", d.handleOverlayMoltStatus)
@@ -145,7 +145,8 @@ func (d *Daemon) handleStatus(w http.ResponseWriter, r *http.Request) {
 		status["overlay_peers"] = d.Overlay.PeerCount()
 		status["overlay_ipv6"] = d.Overlay.OverlayAddress()
 		status["overlay_subnet"] = d.Overlay.OverlaySubnet()
-		status["overlay_molting"] = d.Overlay.IsMolting()
+		status["overlay_molted"] = d.Overlay.IsMolted()
+		status["overlay_tun"] = d.Overlay.TUNName()
 	}
 	writeJSON(w, status)
 }
@@ -978,7 +979,8 @@ func (d *Daemon) handleOverlayStatus(w http.ResponseWriter, r *http.Request) {
 		status["public_key"] = fmt.Sprintf("%x", d.Overlay.PublicKey())
 		status["overlay_ipv6"] = d.Overlay.OverlayAddress()
 		status["overlay_subnet"] = d.Overlay.OverlaySubnet()
-		status["molting"] = d.Overlay.IsMolting()
+		status["molted"] = d.Overlay.IsMolted()
+		status["tun_device"] = d.Overlay.TUNName()
 		if debugInfo := d.Overlay.GetDebugInfo(); debugInfo != nil {
 			status["routing_entries"] = debugInfo.Self.RoutingEntries
 			status["peers"] = debugInfo.Peers
@@ -1009,47 +1011,15 @@ func (d *Daemon) handleOverlayTree(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleOverlayPeersGeo returns overlay peers with geo data from their TCP addresses.
+// handleOverlayPeersGeo returns overlay peers with geo data.
+// Geo resolution is done incrementally by a background goroutine;
+// this handler only reads from the cache and never blocks on lookups.
 func (d *Daemon) handleOverlayPeersGeo(w http.ResponseWriter, r *http.Request) {
-	if d.Overlay == nil {
+	if d.geoCache == nil {
 		writeJSON(w, []any{})
 		return
 	}
-	type overlayPeerGeo struct {
-		KeyHex    string       `json:"key"`
-		Location  string       `json:"location"`
-		Geo       *geo.GeoInfo `json:"geo,omitempty"`
-		LatencyMs int64        `json:"latency_ms"`
-	}
-	// Get connected peers with TCP addresses
-	cpeers := d.Overlay.GetConnectedPeers()
-	// Get latency from ironwood debug info
-	latMap := make(map[string]int64)
-	if dbg := d.Overlay.GetDebugInfo(); dbg != nil {
-		for _, p := range dbg.Peers {
-			shortKey := p.Key[:16]
-			latMap[shortKey] = p.Latency.Milliseconds()
-		}
-	}
-	result := make([]overlayPeerGeo, 0, len(cpeers))
-	for _, cp := range cpeers {
-		entry := overlayPeerGeo{KeyHex: cp.KeyHex, Location: "Unknown"}
-		if lat, ok := latMap[cp.KeyHex]; ok {
-			entry.LatencyMs = lat
-		}
-		if d.Geo != nil {
-			// RemoteAddr is "ip:port" or "[ipv6]:port", not a multiaddr
-			host, _, err := net.SplitHostPort(cp.RemoteAddr)
-			if err == nil && host != "" && geo.IsPublicIP(host) {
-				if gi := d.Geo.Lookup(host); gi != nil {
-					entry.Location = gi.Label()
-					entry.Geo = gi
-				}
-			}
-		}
-		result = append(result, entry)
-	}
-	writeJSON(w, result)
+	writeJSON(w, d.geoCache.snapshot())
 }
 
 // handleOverlayPeersList returns full peer info for all overlay peers.
@@ -1111,33 +1081,41 @@ func (d *Daemon) handleOverlayPeersRetry(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, map[string]any{"ok": true})
 }
 
-// handleOverlayMolt enters molt mode: disconnects all overlay peers.
+// handleOverlayMolt enables full mesh interop (molt = shed shell, open to all).
 func (d *Daemon) handleOverlayMolt(w http.ResponseWriter, r *http.Request) {
 	if d.Overlay == nil {
 		http.Error(w, `{"error":"overlay not enabled"}`, http.StatusServiceUnavailable)
 		return
 	}
 	d.Overlay.Molt()
-	writeJSON(w, map[string]any{"ok": true, "molting": true})
+	d.Config.Overlay.Molted = true
+	_ = d.Config.Save()
+	writeJSON(w, map[string]any{"ok": true, "molted": true})
 }
 
-// handleOverlayUnmolt exits molt mode: reconnects all overlay peers.
+// handleOverlayUnmolt returns to ClawNet-only mode (grow new shell).
 func (d *Daemon) handleOverlayUnmolt(w http.ResponseWriter, r *http.Request) {
 	if d.Overlay == nil {
 		http.Error(w, `{"error":"overlay not enabled"}`, http.StatusServiceUnavailable)
 		return
 	}
 	d.Overlay.Unmolt()
-	writeJSON(w, map[string]any{"ok": true, "molting": false})
+	d.Config.Overlay.Molted = false
+	_ = d.Config.Save()
+	writeJSON(w, map[string]any{"ok": true, "molted": false})
 }
 
 // handleOverlayMoltStatus returns current molt state.
 func (d *Daemon) handleOverlayMoltStatus(w http.ResponseWriter, r *http.Request) {
 	if d.Overlay == nil {
-		writeJSON(w, map[string]any{"molting": false, "enabled": false})
+		writeJSON(w, map[string]any{"molted": false, "enabled": false, "tun": ""})
 		return
 	}
-	writeJSON(w, map[string]any{"molting": d.Overlay.IsMolting(), "enabled": true})
+	writeJSON(w, map[string]any{
+		"molted":  d.Overlay.IsMolted(),
+		"enabled": true,
+		"tun":     d.Overlay.TUNName(),
+	})
 }
 
 // handleCryptoSessions returns E2E encryption session info.
