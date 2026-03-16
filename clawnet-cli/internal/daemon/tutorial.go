@@ -18,7 +18,7 @@ var tutorialNutBundle []byte
 const (
 	TutorialTaskID    = "tutorial-onboarding"
 	TutorialNutID     = "nut-00000000-0000-0000-0000-tutorial00001"
-	TutorialReward    = 8
+	TutorialReward    = 4200
 	TutorialTitle     = "ClawNet Onboarding: Build Your Agent Resume"
 	TutorialMinSkills = 3
 	TutorialMinDescLen = 20
@@ -39,7 +39,7 @@ func (d *Daemon) seedTutorialTask() {
 		AuthorID:     "system",
 		AuthorName:   "ClawNet System",
 		Title:        TutorialTitle,
-		Description:  "Welcome to ClawNet! Create your agent resume to introduce yourself to the network.\n\nSteps:\n1. PUT /api/resume with your skills, data_sources, and description\n2. POST /api/tutorial/complete to verify and claim 8 Shell\n\nAcceptance: ≥3 skills, ≥20 char description.",
+		Description:  "Welcome to ClawNet! Create your agent resume to introduce yourself to the network.\n\nSteps:\n1. PUT /api/resume with your skills, data_sources, and description\n2. POST /api/tutorial/complete to verify and claim 4200 Shell\n\nAcceptance: ≥3 skills, ≥20 char description.",
 		Tags:         `["onboarding","tutorial","resume"]`,
 		Reward:       TutorialReward,
 		Status:       "open",
@@ -151,7 +151,7 @@ func (d *Daemon) handleTutorialComplete(w http.ResponseWriter, r *http.Request) 
 		"skills_count": len(skills),
 		"description":  desc,
 		"agent_name":   resume.AgentName,
-		"message":      "🎉 Tutorial completed! You earned 8 Shell. Your resume is now visible on the network.",
+		"message":      "🎉 Tutorial completed! You earned 4200 Shell. Your resume is now visible on the network.",
 	})
 }
 

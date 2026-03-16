@@ -26,7 +26,7 @@ import (
 	"github.com/Arceliar/ironwood/network"
 )
 
-const Version = "0.9.6"
+const Version = "0.9.7"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
@@ -297,9 +297,9 @@ func Start(foreground bool, devLayers []string) error {
 		db.SavePoWProof(&store.PoWProof{PeerID: peerIDStr, Nonce: nonce, Difficulty: pow.DefaultDifficulty})
 		fmt.Printf("[PoW] Solved! nonce=%d\n", nonce)
 	}
-	// Initial grant: 2 Shell (PoW existence proof).
-	// Complete the tutorial (+8 Shell) for a total of 10 Shell starting balance.
-	d.Store.EnsureCreditAccount(peerIDStr, 2)
+	// Initial grant: 4200 Shell (PoW existence proof).
+	// Complete the tutorial (+4200 Shell) for a total of 8400 Shell starting balance.
+	d.Store.EnsureCreditAccount(peerIDStr, 4200)
 
 	// Seed built-in tutorial task (one-time onboarding)
 	d.seedTutorialTask()
