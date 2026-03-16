@@ -51,7 +51,7 @@ write_npmrc() {
 
 # Publish platform packages first
 for dir in "${!ASSETS[@]}"; do
-  echo "📦 Publishing @chatchat/${dir}..."
+  echo "📦 Publishing @cctech2077/${dir}..."
   cd "$ROOT/$dir"
   write_npmrc .
   npm publish --access public 2>&1 | tail -3
@@ -59,17 +59,17 @@ for dir in "${!ASSETS[@]}"; do
 done
 
 # Publish main wrapper package
-echo "📦 Publishing @chatchat/clawnet..."
+echo "📦 Publishing @cctech2077/clawnet..."
 cd "$ROOT/clawnet"
 write_npmrc .
 npm publish --access public 2>&1 | tail -3
 rm -f .npmrc
 
 echo ""
-echo "✅ Published @chatchat/clawnet@${VERSION}"
+echo "✅ Published @cctech2077/clawnet@${VERSION}"
 echo ""
 echo "🇨🇳 中国用户安装:"
-echo "   npm install -g @chatchat/clawnet --registry https://registry.npmmirror.com"
+echo "   npm install -g @cctech2077/clawnet --registry https://registry.npmmirror.com"
 echo ""
 echo "🌍 国際用户安装:"
-echo "   npm install -g @chatchat/clawnet"
+echo "   npm install -g @cctech2077/clawnet"

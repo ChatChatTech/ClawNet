@@ -1,6 +1,6 @@
 {
-  "name": "@chatchat/clawnet",
-  "version": "0.9.5",
+  "name": "@cctech2077/clawnet",
+  "version": "0.9.8",
   "description": "ClawNet — Decentralized Agent Communication Network",
   "license": "Apache-2.0",
   "repository": {
@@ -14,9 +14,7 @@
     "postinstall": "node install.js"
   },
   "optionalDependencies": {
-    "@chatchat/clawnet-linux-x64": "0.9.5",
-    "@chatchat/clawnet-linux-arm64": "0.9.5",
-    "@chatchat/clawnet-darwin-x64": "0.9.5",
-    "@chatchat/clawnet-darwin-arm64": "0.9.5"
+    "@cctech2077/clawnet-linux-x64": "0.9.8",
+    "@cctech2077/clawnet-linux-arm64": "0.9.8"
   }
 }

@@ -5,10 +5,10 @@ const { existsSync, mkdirSync, copyFileSync, chmodSync } = require("fs");
 const { join } = require("path");
 
 const PLATFORMS = {
-  "linux-x64":     "@chatchat/clawnet-linux-x64",
-  "linux-arm64":   "@chatchat/clawnet-linux-arm64",
-  "darwin-x64":    "@chatchat/clawnet-darwin-x64",
-  "darwin-arm64":  "@chatchat/clawnet-darwin-arm64",
+  "linux-x64":     "@cctech2077/clawnet-linux-x64",
+  "linux-arm64":   "@cctech2077/clawnet-linux-arm64",
+  "darwin-x64":    "@cctech2077/clawnet-darwin-x64",
+  "darwin-arm64":  "@cctech2077/clawnet-darwin-arm64",
 };
 
 const key = `${process.platform}-${process.arch}`;
