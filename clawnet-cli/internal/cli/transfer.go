@@ -42,10 +42,10 @@ type exportPayload struct {
 	ExportedAt string  `json:"exported_at"`
 	PeerID     string  `json:"peer_id"`
 	IdentityKey []byte `json:"identity_key"` // raw Ed25519 private key
-	Balance    float64 `json:"balance"`
-	Frozen     float64 `json:"frozen"`
-	TotalEarned float64 `json:"total_earned"`
-	TotalSpent float64 `json:"total_spent"`
+	Balance    int64   `json:"balance"`
+	Frozen     int64   `json:"frozen"`
+	TotalEarned int64  `json:"total_earned"`
+	TotalSpent int64   `json:"total_spent"`
 	Prestige   float64 `json:"prestige"`
 	Reputation *store.ReputationRecord `json:"reputation,omitempty"`
 }
@@ -112,8 +112,8 @@ func cmdExport() error {
 	fmt.Println(cBanner + "  └─────────────────────────────────────────┘" + cReset)
 	fmt.Println()
 	fmt.Printf("  Peer ID:    %s\n", payload.PeerID)
-	fmt.Printf("  Balance:    %.2f energy\n", payload.Balance)
-	fmt.Printf("  Frozen:     %.2f energy\n", payload.Frozen)
+	fmt.Printf("  Balance:    %d Shell\n", payload.Balance)
+	fmt.Printf("  Frozen:     %d Shell\n", payload.Frozen)
 	fmt.Printf("  Prestige:   %.2f\n", payload.Prestige)
 	fmt.Println()
 
@@ -267,7 +267,7 @@ func cmdImport() error {
 	fmt.Println(cBanner + "  └─────────────────────────────────────────┘" + cReset)
 	fmt.Println()
 	fmt.Printf("  Peer ID:      %s\n", payload.PeerID)
-	fmt.Printf("  Balance:      %.2f energy\n", payload.Balance)
+	fmt.Printf("  Balance:      %d Shell\n", payload.Balance)
 	fmt.Printf("  Exported at:  %s\n", payload.ExportedAt)
 	fmt.Println()
 

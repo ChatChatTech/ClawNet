@@ -28,7 +28,7 @@ import (
 var clawTips = []string{
 	"Try `clawnet board` to see open tasks you can pick up and earn credits.",
 	"Run `clawnet chat` to start a conversation with a random peer.",
-	"Curious about something? Publish a low-cost task: curl -X POST localhost:3998/api/tasks -d '{\"title\":\"...\",\"reward\":1}'",
+	"Curious about something? Publish a task: curl -X POST localhost:3998/api/tasks -d '{\"title\":\"...\",\"reward\":100}'",
 	"Run `clawnet update` to check for the latest version.",
 	"Browse what others are discussing: curl localhost:3998/api/topics",
 	"Join a Swarm Think session to reason collectively with other agents.",
@@ -781,7 +781,7 @@ func cmdBoard() error {
 			target = dim + " [targeted]" + rst
 		}
 		countdown := formatCountdown(t.BidCloseAt, t.WorkDeadline, t.Status)
-		fmt.Printf("    %s[%s]%s %s%.1f%s %s%s%s%s%s%s\n",
+		fmt.Printf("    %s[%s]%s %s%d%s %s%s%s%s%s%s\n",
 			statusColor, t.Status, rst, coral, t.Reward, rst, t.Title, target, bidInfo, subInfo, assignee, countdown)
 		fmt.Printf("    %s%s  %s%s\n", dim, t.ID[:8]+"...", t.CreatedAt[:10], rst)
 	}
@@ -796,9 +796,9 @@ func cmdBoard() error {
 		countdown := formatCountdown(t.BidCloseAt, t.WorkDeadline, t.Status)
 		expectPay := ""
 		if t.ExpectedPay > 0 {
-			expectPay = fmt.Sprintf("  %sE[pay]=%.2f%s", yellow, t.ExpectedPay, rst)
+			expectPay = fmt.Sprintf("  %sE[pay]=%d%s", yellow, t.ExpectedPay, rst)
 		}
-		fmt.Printf("    %s[%s]%s %s%.1f%s %s  by %s%s%s\n",
+		fmt.Printf("    %s[%s]%s %s%d%s %s  by %s%s%s\n",
 			tidal, t.Status, rst, coral, t.Reward, rst, t.Title, truncName(t.AuthorName, 16), countdown, expectPay)
 		fmt.Printf("    %s%s  %s  %d bid(s) %d sub(s)%s\n",
 			dim, t.ID[:8]+"...", t.CreatedAt[:10], t.BidCount, t.SubCount, rst)
@@ -818,9 +818,9 @@ func cmdBoard() error {
 		countdown := formatCountdown(t.BidCloseAt, t.WorkDeadline, t.Status)
 		expectPay := ""
 		if t.ExpectedPay > 0 {
-			expectPay = fmt.Sprintf("  %sE[pay]=%.2f%s", yellow, t.ExpectedPay, rst)
+			expectPay = fmt.Sprintf("  %sE[pay]=%d%s", yellow, t.ExpectedPay, rst)
 		}
-		fmt.Printf("    %s%.1f%s %s%s  %sby %s%s%s%s\n",
+		fmt.Printf("    %s%d%s %s%s  %sby %s%s%s%s\n",
 			coral, t.Reward, rst, t.Title, target, dim, truncName(t.AuthorName, 16), rst, countdown, expectPay)
 		fmt.Printf("    %s%s  %s  %d bid(s)%s\n",
 			dim, t.ID[:8]+"...", t.CreatedAt[:10], t.BidCount, rst)
@@ -869,19 +869,19 @@ func fmtCountdownDur(d time.Duration) string {
 }
 
 type boardTask struct {
-	ID           string  `json:"id"`
-	Title        string  `json:"title"`
-	Status       string  `json:"status"`
-	Reward       float64 `json:"reward"`
-	AuthorName   string  `json:"author_name"`
-	AssignedTo   string  `json:"assigned_to"`
-	TargetPeer   string  `json:"target_peer"`
-	BidCount     int     `json:"bid_count"`
-	SubCount     int     `json:"sub_count"`
-	BidCloseAt   string  `json:"bid_close_at"`
-	WorkDeadline string  `json:"work_deadline"`
-	ExpectedPay  float64 `json:"expected_pay"`
-	CreatedAt    string  `json:"created_at"`
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	Status       string `json:"status"`
+	Reward       int64  `json:"reward"`
+	AuthorName   string `json:"author_name"`
+	AssignedTo   string `json:"assigned_to"`
+	TargetPeer   string `json:"target_peer"`
+	BidCount     int    `json:"bid_count"`
+	SubCount     int    `json:"sub_count"`
+	BidCloseAt   string `json:"bid_close_at"`
+	WorkDeadline string `json:"work_deadline"`
+	ExpectedPay  int64  `json:"expected_pay"`
+	CreatedAt    string `json:"created_at"`
 }
 
 func truncName(s string, max int) string {
@@ -1131,8 +1131,8 @@ type networkStats struct {
 	Peers     int      `json:"peers"`
 	Version   string   `json:"version"`
 	Topics    []string `json:"topics"`
-	Balance   float64  `json:"-"`
-	Frozen    float64  `json:"-"`
+	Balance   int64    `json:"-"`
+	Frozen    int64    `json:"-"`
 	Location  string   `json:"location"`
 	StartedAt int64    `json:"started_at"`
 	PeerID    string   `json:"peer_id"`
@@ -1145,10 +1145,10 @@ type networkStats struct {
 }
 
 type creditInfo struct {
-	Balance     float64 `json:"balance"`
-	Frozen      float64 `json:"frozen"`
-	TotalEarned float64 `json:"total_earned"`
-	TotalSpent  float64 `json:"total_spent"`
+	Balance     int64 `json:"balance"`
+	Frozen      int64 `json:"frozen"`
+	TotalEarned int64 `json:"total_earned"`
+	TotalSpent  int64 `json:"total_spent"`
 }
 
 func fetchGeoPeers(base string) []peerGeoData {
@@ -1287,9 +1287,9 @@ func fetchActivityFeed(base string) []activityEvent {
 	// Credit transactions (last 10)
 	if resp, err := http.Get(base + "/api/credits/transactions?limit=10"); err == nil {
 		var txns []struct {
-			Amount    float64 `json:"amount"`
-			Reason    string  `json:"reason"`
-			CreatedAt string  `json:"created_at"`
+			Amount    int64  `json:"amount"`
+			Reason    string `json:"reason"`
+			CreatedAt string `json:"created_at"`
 		}
 		json.NewDecoder(resp.Body).Decode(&txns)
 		resp.Body.Close()
@@ -1301,7 +1301,7 @@ func fetchActivityFeed(base string) []activityEvent {
 			events = append(events, activityEvent{
 				Time:   t.CreatedAt,
 				Type:   "credit",
-				Detail: fmt.Sprintf("%s%.1f  %s", sign, t.Amount, t.Reason),
+				Detail: fmt.Sprintf("%s%d  %s", sign, t.Amount, t.Reason),
 			})
 		}
 	}
@@ -1474,7 +1474,7 @@ func renderHeader(termW int, stats networkStats) string {
 	var sb strings.Builder
 
 	titleText := " ClawNet Agent Network "
-	statsText := fmt.Sprintf("Nodes:%d  Credits:%.0f  Topics:%d  v%s",
+	statsText := fmt.Sprintf("Nodes:%d  Shell:%d  Topics:%d  v%s",
 		stats.Peers+1, stats.Balance, len(stats.Topics), daemon.Version)
 	headerDisplay := titleText + "  " + statsText + " "
 	headerLen := len([]rune(headerDisplay))
@@ -2089,7 +2089,7 @@ func renderSelfDetail(pInfos []peerInfo, stats networkStats, w int, now int64) [
 
 	lines = append(lines, "")
 	lines = append(lines, cTitle+" Network"+cReset)
-	lines = append(lines, cSelfInfo+" Credits:    "+cReset+fmt.Sprintf("%.1f (frozen: %.1f)", stats.Balance, stats.Frozen))
+	lines = append(lines, cSelfInfo+" Shell:      "+cReset+fmt.Sprintf("%d (frozen: %d)", stats.Balance, stats.Frozen))
 	lines = append(lines, cSelfInfo+" Peers:      "+cReset+fmt.Sprintf("%d", stats.Peers))
 	lines = append(lines, cSelfInfo+" Topics:     "+cReset+fmt.Sprintf("%d", len(stats.Topics)))
 	if stats.StartedAt > 0 {
@@ -2275,7 +2275,7 @@ func renderClawNetStats(pInfos []peerInfo, stats networkStats, w int, now int64,
 		{"", cTitle + "ClawNet" + cReset + " " + cDim + "v" + daemon.Version + cReset},
 		{"", strings.Repeat("-", 30)},
 		{"Nodes", fmt.Sprintf("%d total (%d peers + self)", totalPeers+1, totalPeers)},
-		{"Credits", fmt.Sprintf("%.1f (frozen: %.1f)", stats.Balance, stats.Frozen)},
+		{"Shell", fmt.Sprintf("%d (frozen: %d)", stats.Balance, stats.Frozen)},
 		{"Topics", fmt.Sprintf("%d subscribed", len(stats.Topics))},
 	}
 	if stats.StartedAt > 0 {
@@ -2463,7 +2463,7 @@ func buildSelfLines(pInfos []peerInfo, stats networkStats, selfW, bottomH int) [
 		if selfPeer.lat != 0 || selfPeer.lon != 0 {
 			lines = append(lines, fmt.Sprintf("  Coord: %.2f, %.2f", selfPeer.lat, selfPeer.lon))
 		}
-		lines = append(lines, fmt.Sprintf("  Credits: %.1f (frozen: %.1f)", stats.Balance, stats.Frozen))
+		lines = append(lines, fmt.Sprintf("  Shell: %d (frozen: %d)", stats.Balance, stats.Frozen))
 		if stats.StartedAt > 0 {
 			upSec := now - stats.StartedAt
 			lines = append(lines, fmt.Sprintf("  Uptime: %s", formatDuration(upSec)))

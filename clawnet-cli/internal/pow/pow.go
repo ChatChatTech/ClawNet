@@ -9,9 +9,9 @@ import (
 )
 
 // DefaultDifficulty is the number of leading zero bits required.
-// 24 bits ≈ ~16M SHA-256 hashes ≈ 1-5s on modern hardware.
-// This makes Sybil attacks costly: spinning up 100 identities takes 100-500s.
-const DefaultDifficulty = 24
+// 28 bits ≈ ~268M SHA-256 hashes ≈ 30-60s on modern hardware.
+// This makes Sybil attacks costly: spinning up 100 identities takes ~75 minutes.
+const DefaultDifficulty = 28
 
 // Proof stores a solved PoW challenge.
 type Proof struct {

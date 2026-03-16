@@ -3,32 +3,31 @@ package store
 import (
 	"database/sql"
 	"math"
-	"time"
 )
 
-// CreditAccount represents a peer's credit account.
+// CreditAccount represents a peer's Shell (贝壳) account.
 type CreditAccount struct {
-	PeerID       string  `json:"peer_id"`
-	Balance      float64 `json:"balance"`
-	Frozen       float64 `json:"frozen"`
-	TotalEarned  float64 `json:"total_earned"`
-	TotalSpent   float64 `json:"total_spent"`
-	UpdatedAt    string  `json:"updated_at"`
+	PeerID       string `json:"peer_id"`
+	Balance      int64  `json:"balance"`
+	Frozen       int64  `json:"frozen"`
+	TotalEarned  int64  `json:"total_earned"`
+	TotalSpent   int64  `json:"total_spent"`
+	UpdatedAt    string `json:"updated_at"`
 }
 
-// CreditTransaction represents a credit transfer record.
+// CreditTransaction represents a Shell transfer record.
 type CreditTransaction struct {
-	ID        string  `json:"id"`
-	FromPeer  string  `json:"from_peer"`
-	ToPeer    string  `json:"to_peer"`
-	Amount    float64 `json:"amount"`
-	Reason    string  `json:"reason"` // "transfer", "task_payment", "task_reward", "initial", "reputation_bonus", "swarm_reward"
-	RefID     string  `json:"ref_id"` // optional reference (task_id, etc.)
-	CreatedAt string  `json:"created_at"`
+	ID        string `json:"id"`
+	FromPeer  string `json:"from_peer"`
+	ToPeer    string `json:"to_peer"`
+	Amount    int64  `json:"amount"`
+	Reason    string `json:"reason"` // "transfer", "task_payment", "task_reward", "initial", "reputation_bonus", "swarm_reward"
+	RefID     string `json:"ref_id"` // optional reference (task_id, etc.)
+	CreatedAt string `json:"created_at"`
 }
 
 // EnsureCreditAccount creates an account with initial balance if it doesn't exist.
-func (s *Store) EnsureCreditAccount(peerID string, initialBalance float64) error {
+func (s *Store) EnsureCreditAccount(peerID string, initialBalance int64) error {
 	_, err := s.DB.Exec(
 		`INSERT OR IGNORE INTO credit_accounts (peer_id, balance, total_earned)
 		 VALUES (?, ?, ?)`,
@@ -40,7 +39,8 @@ func (s *Store) EnsureCreditAccount(peerID string, initialBalance float64) error
 // GetCreditBalance returns the credit account for a peer.
 func (s *Store) GetCreditBalance(peerID string) (*CreditAccount, error) {
 	row := s.DB.QueryRow(
-		`SELECT peer_id, balance, frozen, total_earned, total_spent, updated_at
+		`SELECT peer_id, CAST(balance AS INTEGER), CAST(frozen AS INTEGER),
+		        CAST(total_earned AS INTEGER), CAST(total_spent AS INTEGER), updated_at
 		 FROM credit_accounts WHERE peer_id = ?`, peerID,
 	)
 	a := &CreditAccount{}
@@ -52,7 +52,7 @@ func (s *Store) GetCreditBalance(peerID string) (*CreditAccount, error) {
 }
 
 // TransferCredits moves credits from one peer to another within a transaction.
-func (s *Store) TransferCredits(txnID, fromPeer, toPeer string, amount float64, reason, refID string) error {
+func (s *Store) TransferCredits(txnID, fromPeer, toPeer string, amount int64, reason, refID string) error {
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return err
@@ -60,8 +60,8 @@ func (s *Store) TransferCredits(txnID, fromPeer, toPeer string, amount float64, 
 	defer tx.Rollback()
 
 	// Check sender balance
-	var balance float64
-	err = tx.QueryRow(`SELECT balance FROM credit_accounts WHERE peer_id = ?`, fromPeer).Scan(&balance)
+	var balance int64
+	err = tx.QueryRow(`SELECT CAST(balance AS INTEGER) FROM credit_accounts WHERE peer_id = ?`, fromPeer).Scan(&balance)
 	if err != nil {
 		return err
 	}
@@ -104,15 +104,15 @@ func (s *Store) TransferCredits(txnID, fromPeer, toPeer string, amount float64, 
 }
 
 // FreezeCredits freezes an amount from available balance.
-func (s *Store) FreezeCredits(peerID string, amount float64) error {
+func (s *Store) FreezeCredits(peerID string, amount int64) error {
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	var balance float64
-	err = tx.QueryRow(`SELECT balance FROM credit_accounts WHERE peer_id = ?`, peerID).Scan(&balance)
+	var balance int64
+	err = tx.QueryRow(`SELECT CAST(balance AS INTEGER) FROM credit_accounts WHERE peer_id = ?`, peerID).Scan(&balance)
 	if err != nil {
 		return err
 	}
@@ -131,7 +131,7 @@ func (s *Store) FreezeCredits(peerID string, amount float64) error {
 }
 
 // UnfreezeCredits returns frozen credits back to available balance.
-func (s *Store) UnfreezeCredits(peerID string, amount float64) error {
+func (s *Store) UnfreezeCredits(peerID string, amount int64) error {
 	_, err := s.DB.Exec(
 		`UPDATE credit_accounts SET balance = balance + ?, frozen = frozen - ?, updated_at = datetime('now')
 		 WHERE peer_id = ? AND frozen >= ?`,
@@ -166,7 +166,7 @@ func (s *Store) ListCreditTransactions(peerID string, limit, offset int) ([]*Cre
 }
 
 // AddCredits adds credits to a peer (for initial grant, reputation bonus, etc.)
-func (s *Store) AddCredits(txnID, peerID string, amount float64, reason string) error {
+func (s *Store) AddCredits(txnID, peerID string, amount int64, reason string) error {
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return err
@@ -197,7 +197,7 @@ func (s *Store) AddCredits(txnID, peerID string, amount float64, reason string) 
 }
 
 // LogCreditAudit stores a credit audit record received from peers for supervision.
-func (s *Store) LogCreditAudit(txnID, taskID, from, to string, amount float64, reason, eventTime string) error {
+func (s *Store) LogCreditAudit(txnID, taskID, from, to string, amount int64, reason, eventTime string) error {
 	_, err := s.DB.Exec(
 		`INSERT OR IGNORE INTO credit_audit_log (txn_id, task_id, from_peer, to_peer, amount, reason, event_time)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -208,14 +208,14 @@ func (s *Store) LogCreditAudit(txnID, taskID, from, to string, amount float64, r
 
 // CreditAuditRecord represents a peer-broadcast credit audit entry.
 type CreditAuditRecord struct {
-	TxnID      string  `json:"txn_id"`
-	TaskID     string  `json:"task_id"`
-	FromPeer   string  `json:"from_peer"`
-	ToPeer     string  `json:"to_peer"`
-	Amount     float64 `json:"amount"`
-	Reason     string  `json:"reason"`
-	EventTime  string  `json:"event_time"`
-	ReceivedAt string  `json:"received_at"`
+	TxnID      string `json:"txn_id"`
+	TaskID     string `json:"task_id"`
+	FromPeer   string `json:"from_peer"`
+	ToPeer     string `json:"to_peer"`
+	Amount     int64  `json:"amount"`
+	Reason     string `json:"reason"`
+	EventTime  string `json:"event_time"`
+	ReceivedAt string `json:"received_at"`
 }
 
 // ListCreditAudit returns recent credit audit records.
@@ -253,11 +253,11 @@ func (s *Store) ListCreditAudit(limit, offset int) ([]*CreditAuditRecord, error)
 
 // LobsterTier represents a node's rank in the network, themed after lobster rarity.
 type LobsterTier struct {
-	Level     int     `json:"level"`
-	Name      string  `json:"name"`
-	NameEN    string  `json:"name_en"`
-	Emoji     string  `json:"emoji"`
-	MinEnergy float64 `json:"min_energy"`
+	Level     int    `json:"level"`
+	Name      string `json:"name"`
+	NameEN    string `json:"name_en"`
+	Emoji     string `json:"emoji"`
+	MinEnergy int64  `json:"min_energy"`
 }
 
 // All tiers ordered by rarity (energy threshold).
@@ -301,7 +301,7 @@ var LobsterTiers = []LobsterTier{
 }
 
 // GetTier returns the lobster tier for a given energy balance.
-func GetTier(energy float64) LobsterTier {
+func GetTier(energy int64) LobsterTier {
 	tier := LobsterTiers[0]
 	for _, t := range LobsterTiers {
 		if energy >= t.MinEnergy {
@@ -311,97 +311,49 @@ func GetTier(energy float64) LobsterTier {
 	return tier
 }
 
-// EnergyRegenRate computes daily energy regeneration: 1 + ln(1 + P/10).
+// EnergyRegenRate returns 0 in Phase 0 (passive income disabled).
 func EnergyRegenRate(prestige float64) float64 {
-	return 1.0 + math.Log(1.0+prestige/10.0)
+	return 0
 }
 
 // EnergyProfile is the full account view including tier and prestige info.
 type EnergyProfile struct {
 	PeerID      string      `json:"peer_id"`
-	Energy      float64     `json:"energy"`
-	Frozen      float64     `json:"frozen"`
+	Energy      int64       `json:"energy"`
+	Frozen      int64       `json:"frozen"`
 	Prestige    float64     `json:"prestige"`
 	Tier        LobsterTier `json:"tier"`
 	RegenRate   float64     `json:"regen_rate"`
-	TotalEarned float64     `json:"total_earned"`
-	TotalSpent  float64     `json:"total_spent"`
+	TotalEarned int64       `json:"total_earned"`
+	TotalSpent  int64       `json:"total_spent"`
 	UpdatedAt   string      `json:"updated_at"`
 }
 
 // GetEnergyProfile returns the full energy profile for a peer.
 func (s *Store) GetEnergyProfile(peerID string) (*EnergyProfile, error) {
 	row := s.DB.QueryRow(
-		`SELECT peer_id, balance, frozen, prestige, total_earned, total_spent, updated_at
+		`SELECT peer_id, CAST(balance AS INTEGER), CAST(frozen AS INTEGER),
+		        prestige, CAST(total_earned AS INTEGER), CAST(total_spent AS INTEGER), updated_at
 		 FROM credit_accounts WHERE peer_id = ?`, peerID,
 	)
 	var p EnergyProfile
 	err := row.Scan(&p.PeerID, &p.Energy, &p.Frozen, &p.Prestige, &p.TotalEarned, &p.TotalSpent, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
-		p = EnergyProfile{PeerID: peerID, Tier: LobsterTiers[0], RegenRate: 1.0}
+		p = EnergyProfile{PeerID: peerID, Tier: LobsterTiers[0], RegenRate: 0}
 		return &p, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	p.Tier = GetTier(p.Energy)
-	p.RegenRate = EnergyRegenRate(p.Prestige)
+	p.RegenRate = 0 // Phase 0: regen disabled
 	return &p, nil
 }
 
-// RegenAllEnergy applies time-based energy regeneration to all accounts.
-// Returns number of accounts updated.
+// RegenAllEnergy is disabled in Phase 0 (Shell system: no passive income).
+// Returns 0 accounts updated.
 func (s *Store) RegenAllEnergy() (int, error) {
-	now := time.Now().UTC()
-
-	rows, err := s.DB.Query(
-		`SELECT peer_id, prestige, last_regen FROM credit_accounts`)
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
-
-	type regenItem struct {
-		peerID   string
-		prestige float64
-		lastRegen string
-	}
-	var items []regenItem
-	for rows.Next() {
-		var it regenItem
-		if err := rows.Scan(&it.peerID, &it.prestige, &it.lastRegen); err != nil {
-			return 0, err
-		}
-		items = append(items, it)
-	}
-	if err := rows.Err(); err != nil {
-		return 0, err
-	}
-
-	updated := 0
-	for _, it := range items {
-		lastRegen, err := time.Parse("2006-01-02 15:04:05", it.lastRegen)
-		if err != nil {
-			lastRegen = now.Add(-24 * time.Hour) // fallback: assume 1 day ago
-		}
-		elapsed := now.Sub(lastRegen).Hours() / 24.0 // fraction of days
-		if elapsed < 0.04 { // less than ~1 hour
-			continue
-		}
-		rate := EnergyRegenRate(it.prestige)
-		gain := rate * elapsed
-		if gain < 0.001 {
-			continue
-		}
-
-		_, err = s.DB.Exec(
-			`UPDATE credit_accounts SET balance = balance + ?, last_regen = ?, updated_at = datetime('now')
-			 WHERE peer_id = ?`, gain, now.Format("2006-01-02 15:04:05"), it.peerID)
-		if err == nil {
-			updated++
-		}
-	}
-	return updated, nil
+	return 0, nil
 }
 
 // DecayAllPrestige applies daily prestige decay (factor 0.998) to all accounts.
@@ -432,7 +384,7 @@ func (s *Store) AddPrestige(peerID string, amount float64, evaluatorPrestige flo
 }
 
 // BurnEnergy permanently removes energy from the system (deflationary).
-func (s *Store) BurnEnergy(peerID string, amount float64) error {
+func (s *Store) BurnEnergy(peerID string, amount int64) error {
 	_, err := s.DB.Exec(
 		`UPDATE credit_accounts SET balance = balance - ?, total_spent = total_spent + ?, updated_at = datetime('now')
 		 WHERE peer_id = ? AND balance >= ?`,
@@ -444,18 +396,18 @@ func (s *Store) BurnEnergy(peerID string, amount float64) error {
 type LeaderboardEntry struct {
 	Rank           int         `json:"rank"`
 	PeerID         string      `json:"peer_id"`
-	Energy         float64     `json:"energy"`
+	Energy         int64       `json:"energy"`
 	Prestige       float64     `json:"prestige"`
 	Tier           LobsterTier `json:"tier"`
 	TasksCompleted int         `json:"tasks_completed"`
 	Contributions  int         `json:"contributions"`
-	TotalEarned    float64     `json:"total_earned"`
+	TotalEarned    int64       `json:"total_earned"`
 }
 
 // GetWealthLeaderboard returns peers ranked by energy (descending).
 func (s *Store) GetWealthLeaderboard(limit int) ([]*LeaderboardEntry, error) {
 	rows, err := s.DB.Query(
-		`SELECT c.peer_id, c.balance, c.prestige, c.total_earned,
+		`SELECT c.peer_id, CAST(c.balance AS INTEGER), c.prestige, CAST(c.total_earned AS INTEGER),
 		        COALESCE(r.tasks_completed, 0), COALESCE(r.contributions, 0)
 		 FROM credit_accounts c
 		 LEFT JOIN reputation r ON c.peer_id = r.peer_id

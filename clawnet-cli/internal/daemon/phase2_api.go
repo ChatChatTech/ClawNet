@@ -133,9 +133,9 @@ func (d *Daemon) handleCreditsTransactions(w http.ResponseWriter, r *http.Reques
 
 func (d *Daemon) handleCreditsTransfer(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ToPeer string  `json:"to_peer"`
-		Amount float64 `json:"amount"`
-		Reason string  `json:"reason"`
+		ToPeer string `json:"to_peer"`
+		Amount int64  `json:"amount"`
+		Reason string `json:"reason"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -235,6 +235,24 @@ func (d *Daemon) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"title is required"}`, http.StatusBadRequest)
 		return
 	}
+	if t.Reward < 100 {
+		http.Error(w, `{"error":"minimum reward is 100 Shell"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Deduct 5% task fee (deflationary burn) before publishing
+	fee := t.Reward * 5 / 100
+	fromPeer := d.Node.PeerID().String()
+	feeTxnID := uuid.New().String()
+	if err := d.Store.TransferCredits(feeTxnID, fromPeer, "system_burn", fee, "task_fee", ""); err != nil {
+		if err == store.ErrInsufficientCredits {
+			http.Error(w, `{"error":"insufficient Shell to cover 5% task fee"}`, http.StatusBadRequest)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	if err := d.publishTask(d.ctx, &t); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
 		return
@@ -310,8 +328,8 @@ func (d *Daemon) handleTaskBid(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Amount  float64 `json:"amount"`
-		Message string  `json:"message"`
+		Amount  int64  `json:"amount"`
+		Message string `json:"message"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -920,9 +938,9 @@ func (d *Daemon) handleGetPrediction(w http.ResponseWriter, r *http.Request) {
 func (d *Daemon) handlePredictionBet(w http.ResponseWriter, r *http.Request) {
 	predID := r.PathValue("id")
 	var body struct {
-		Option    string  `json:"option"`
-		Stake     float64 `json:"stake"`
-		Reasoning string  `json:"reasoning"`
+		Option    string `json:"option"`
+		Stake     int64  `json:"stake"`
+		Reasoning string `json:"reasoning"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1372,7 +1390,7 @@ func (d *Daemon) handleNutshellPublish(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 50<<20)
 
 	var bundleData []byte
-	var reward float64
+	var reward int64
 	var tags, deadline string
 
 	ct := r.Header.Get("Content-Type")
@@ -1394,7 +1412,7 @@ func (d *Daemon) handleNutshellPublish(w http.ResponseWriter, r *http.Request) {
 		}
 		// Optional form fields
 		if v := r.FormValue("reward"); v != "" {
-			fmt.Sscanf(v, "%f", &reward)
+			fmt.Sscanf(v, "%d", &reward)
 		}
 		tags = r.FormValue("tags")
 		deadline = r.FormValue("deadline")

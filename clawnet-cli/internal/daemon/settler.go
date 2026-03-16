@@ -110,10 +110,10 @@ func (d *Daemon) settleTask(t *store.Task, subs []*store.TaskSubmission, winner 
 			d.publishCreditAudit(d.ctx, txnID, t.ID, t.AuthorID, winner.WorkerID, t.Reward, "task_reward")
 		}
 	} else {
-		// Multiple submissions: winner 80%, consolation 20% split
-		winnerPay := t.Reward * store.WinnerShare
-		consolationPool := t.Reward * store.ConsolationShare
-		consolationEach := consolationPool / float64(len(subs)-1)
+		// Multiple submissions: winner 80%, consolation 20% split (integer math)
+		winnerPay := t.Reward * int64(store.WinnerSharePct) / 100
+		consolationPool := t.Reward * int64(store.ConsolationSharePct) / 100
+		consolationEach := consolationPool / int64(len(subs)-1)
 
 		for _, sub := range subs {
 			if sub.WorkerID == t.AuthorID {
@@ -126,7 +126,7 @@ func (d *Daemon) settleTask(t *store.Task, subs []*store.TaskSubmission, winner 
 					d.publishCreditAudit(d.ctx, txnID, t.ID, t.AuthorID, sub.WorkerID, winnerPay, "task_reward")
 				}
 			} else {
-				if consolationEach > 0.001 {
+				if consolationEach > 0 {
 					txnID := uuid.New().String()
 					d.Store.TransferCredits(txnID, t.AuthorID, sub.WorkerID, consolationEach, "task_consolation", t.ID)
 					d.publishCreditAudit(d.ctx, txnID, t.ID, t.AuthorID, sub.WorkerID, consolationEach, "task_consolation")
@@ -161,7 +161,7 @@ func (d *Daemon) settleTask(t *store.Task, subs []*store.TaskSubmission, winner 
 		d.publishTaskUpdate(d.ctx, updated)
 	}
 
-	fmt.Printf("[settler] task %s settled → winner %s (%.1f credits, %d submissions)\n",
+	fmt.Printf("[settler] task %s settled → winner %s (%d Shell, %d submissions)\n",
 		t.ID[:8], winner.WorkerID[:12], t.Reward, len(subs))
 }
 

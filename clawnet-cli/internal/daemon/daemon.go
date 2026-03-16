@@ -26,7 +26,7 @@ import (
 	"github.com/Arceliar/ironwood/network"
 )
 
-const Version = "0.9.4"
+const Version = "0.9.5"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
@@ -291,15 +291,15 @@ func Start(foreground bool, devLayers []string) error {
 		proof = &pow.Proof{PeerID: sp.PeerID, Nonce: sp.Nonce, Difficulty: sp.Difficulty}
 	}
 	if proof == nil || proof.PeerID != peerIDStr || !pow.Verify(proof.PeerID, proof.Nonce, pow.DefaultDifficulty) {
-		fmt.Printf("[PoW] Solving proof-of-work (one-time, ~3s)...\n")
+		fmt.Printf("[PoW] Solving proof-of-work (one-time, ~45s)...\n")
 		nonce := pow.Solve(peerIDStr, pow.DefaultDifficulty)
 		proof = &pow.Proof{PeerID: peerIDStr, Nonce: nonce, Difficulty: pow.DefaultDifficulty}
 		db.SavePoWProof(&store.PoWProof{PeerID: peerIDStr, Nonce: nonce, Difficulty: pow.DefaultDifficulty})
 		fmt.Printf("[PoW] Solved! nonce=%d\n", nonce)
 	}
-	// Initial grant: 10 credits (just enough to explore).
-	// Complete the tutorial (+50) for a productive starting balance of 60.
-	d.Store.EnsureCreditAccount(peerIDStr, 10.0)
+	// Initial grant: 2 Shell (PoW existence proof).
+	// Complete the tutorial (+8 Shell) for a total of 10 Shell starting balance.
+	d.Store.EnsureCreditAccount(peerIDStr, 2)
 
 	// Seed built-in tutorial task (one-time onboarding)
 	d.seedTutorialTask()

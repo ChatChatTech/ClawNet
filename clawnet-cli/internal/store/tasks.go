@@ -2,7 +2,6 @@ package store
 
 import (
 	"database/sql"
-	"math"
 	"time"
 )
 
@@ -15,8 +14,8 @@ const (
 	BidWindowMax       = 4 * time.Hour    // hard cap
 	WorkPeriod         = 2 * time.Hour    // time after bid close for workers to submit
 	SettleGrace        = 1 * time.Hour    // grace for author to pick winner before auto-settle
-	WinnerShare        = 0.80             // winner gets 80% of reward
-	ConsolationShare   = 0.20             // remaining 20% split among other submitters
+	WinnerSharePct     = 80               // winner gets 80% of reward (integer percent)
+	ConsolationSharePct = 20              // remaining 20% split among other submitters
 )
 
 // ComputeBidClose calculates the deterministic bid closing time.
@@ -38,17 +37,16 @@ func ComputeWorkDeadline(bidClose time.Time) time.Time {
 // ExpectedEarnings estimates per-worker expected reward given current bid count.
 // Uses game-theory expected value: R / E[n] where E[n] ≈ current bidders.
 // Adjusts for winner-take-most: winner 80%, consolation split among rest.
-func ExpectedEarnings(reward float64, numBids int) float64 {
-	if numBids <= 0 {
+func ExpectedEarnings(reward int64, numBids int) int64 {
+	if numBids <= 1 {
 		return reward
 	}
-	if numBids == 1 {
-		return reward
-	}
-	// Expected value = P(win)*WinnerShare*R + P(lose)*ConsolationPerWorker
-	pWin := 1.0 / float64(numBids)
-	consolationEach := (ConsolationShare * reward) / math.Max(float64(numBids-1), 1)
-	return pWin*WinnerShare*reward + (1-pWin)*consolationEach
+	// Integer math: P(win)=1/n, winner gets 80%, consolation = 20%/(n-1)
+	winnerPay := reward * int64(WinnerSharePct) / 100
+	consolationTotal := reward * int64(ConsolationSharePct) / 100
+	consolationEach := consolationTotal / int64(numBids-1)
+	// Expected value ≈ (winnerPay + (n-1)*consolationEach) / n
+	return (winnerPay + int64(numBids-1)*consolationEach) / int64(numBids)
 }
 
 // Task represents a task in the Task Bazaar.
@@ -60,7 +58,7 @@ type Task struct {
 	Description string  `json:"description"`
 	Tags        string  `json:"tags"`     // JSON array of required skill tags, e.g. ["data-analysis","python"]
 	Deadline    string  `json:"deadline"` // RFC3339 deadline for task completion
-	Reward      float64 `json:"reward"`
+	Reward      int64   `json:"reward"`
 	Status      string  `json:"status"` // open, assigned, submitted, approved, rejected, cancelled, settled
 	AssignedTo  string  `json:"assigned_to"`
 	Result      string  `json:"result"`
@@ -77,13 +75,13 @@ type Task struct {
 
 // TaskBid represents a bid on a task.
 type TaskBid struct {
-	ID        string  `json:"id"`
-	TaskID    string  `json:"task_id"`
-	BidderID  string  `json:"bidder_id"`
+	ID        string `json:"id"`
+	TaskID    string `json:"task_id"`
+	BidderID  string `json:"bidder_id"`
 	BidderName string `json:"bidder_name"`
-	Amount    float64 `json:"amount"`
-	Message   string  `json:"message"`
-	CreatedAt string  `json:"created_at"`
+	Amount    int64  `json:"amount"`
+	Message   string `json:"message"`
+	CreatedAt string `json:"created_at"`
 }
 
 // InsertTask upserts a task.
@@ -690,19 +688,19 @@ func (s *Store) HasTaskBundle(taskID string) (bool, error) {
 
 // BoardTask is a summary task for the dashboard.
 type BoardTask struct {
-	ID           string  `json:"id"`
-	Title        string  `json:"title"`
-	Status       string  `json:"status"`
-	Reward       float64 `json:"reward"`
-	AuthorName   string  `json:"author_name"`
-	AssignedTo   string  `json:"assigned_to"`
-	TargetPeer   string  `json:"target_peer,omitempty"`
-	BidCount     int     `json:"bid_count"`
-	SubCount     int     `json:"sub_count"`        // number of submissions
-	BidCloseAt   string  `json:"bid_close_at"`     // deterministic bid close time
-	WorkDeadline string  `json:"work_deadline"`    // submission deadline
-	ExpectedPay  float64 `json:"expected_pay"`     // game-theory expected earnings
-	CreatedAt    string  `json:"created_at"`
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	Status       string `json:"status"`
+	Reward       int64  `json:"reward"`
+	AuthorName   string `json:"author_name"`
+	AssignedTo   string `json:"assigned_to"`
+	TargetPeer   string `json:"target_peer,omitempty"`
+	BidCount     int    `json:"bid_count"`
+	SubCount     int    `json:"sub_count"`        // number of submissions
+	BidCloseAt   string `json:"bid_close_at"`     // deterministic bid close time
+	WorkDeadline string `json:"work_deadline"`    // submission deadline
+	ExpectedPay  int64  `json:"expected_pay"`     // game-theory expected earnings
+	CreatedAt    string `json:"created_at"`
 }
 
 // TaskBoard returns a dashboard view: tasks the peer published, tasks assigned to peer, and open tasks.

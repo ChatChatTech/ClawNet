@@ -21,7 +21,7 @@ type TxnRecord struct {
 	TxnID     string  `json:"txn_id"`
 	From      string  `json:"from"`
 	To        string  `json:"to"`
-	Amount    float64 `json:"amount"`
+	Amount    int64   `json:"amount"`
 	Reason    string  `json:"reason"`
 	RefID     string  `json:"ref_id,omitempty"`
 	Timestamp int64   `json:"timestamp"`

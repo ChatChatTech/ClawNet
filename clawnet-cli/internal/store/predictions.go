@@ -18,7 +18,7 @@ type Prediction struct {
 	ResolutionSource string  `json:"resolution_source"` // description of ground truth
 	Status           string  `json:"status"`            // open, resolved, cancelled
 	Result           string  `json:"result"`            // winning option after resolution
-	TotalStake       float64 `json:"total_stake"`
+	TotalStake       int64  `json:"total_stake"`
 	CreatedAt        string  `json:"created_at"`
 	UpdatedAt        string  `json:"updated_at"`
 }
@@ -30,7 +30,7 @@ type PredictionBet struct {
 	BettorID     string  `json:"bettor_id"`
 	BettorName   string  `json:"bettor_name"`
 	Option       string  `json:"option"`    // selected option
-	Stake        float64 `json:"stake"`     // credit amount
+	Stake        int64   `json:"stake"`     // Shell amount
 	Reasoning    string  `json:"reasoning"` // optional explanation
 	CreatedAt    string  `json:"created_at"`
 }
@@ -51,7 +51,7 @@ type PredictionLeaderEntry struct {
 	TotalBets int     `json:"total_bets"`
 	Wins      int     `json:"wins"`
 	Losses    int     `json:"losses"`
-	Profit    float64 `json:"profit"`
+	Profit    int64   `json:"profit"`
 	Accuracy  float64 `json:"accuracy"` // wins / total_bets
 }
 
@@ -214,13 +214,13 @@ func (s *Store) ResolvePrediction(predictionID, result string) error {
 
 // SettlePrediction distributes credits to winners from losers.
 // Returns the list of (bettor_id, profit) for each winner.
-func (s *Store) SettlePrediction(predictionID, result string) ([]struct{ PeerID string; Profit float64 }, error) {
+func (s *Store) SettlePrediction(predictionID, result string) ([]struct{ PeerID string; Profit int64 }, error) {
 	bets, err := s.ListPredictionBets(predictionID)
 	if err != nil {
 		return nil, err
 	}
 
-	var totalPool, winnerPool float64
+	var totalPool, winnerPool int64
 	for _, b := range bets {
 		totalPool += b.Stake
 		if b.Option == result {
@@ -232,20 +232,20 @@ func (s *Store) SettlePrediction(predictionID, result string) ([]struct{ PeerID 
 		return nil, nil // no winners or no bets
 	}
 
-	var settlements []struct{ PeerID string; Profit float64 }
+	var settlements []struct{ PeerID string; Profit int64 }
 	for _, b := range bets {
 		if b.Option == result {
 			// Winner: gets back stake + proportional share of loser pool
-			payout := b.Stake / winnerPool * totalPool
+			payout := b.Stake * totalPool / winnerPool
 			profit := payout - b.Stake
-			settlements = append(settlements, struct{ PeerID string; Profit float64 }{b.BettorID, profit})
+			settlements = append(settlements, struct{ PeerID string; Profit int64 }{b.BettorID, profit})
 		}
 	}
 	return settlements, nil
 }
 
 // GetOptionStakes returns a map of option -> total stake for a prediction.
-func (s *Store) GetOptionStakes(predictionID string) (map[string]float64, error) {
+func (s *Store) GetOptionStakes(predictionID string) (map[string]int64, error) {
 	rows, err := s.DB.Query(
 		`SELECT option, SUM(stake) FROM prediction_bets
 		 WHERE prediction_id = ? GROUP BY option`,
@@ -256,10 +256,10 @@ func (s *Store) GetOptionStakes(predictionID string) (map[string]float64, error)
 	}
 	defer rows.Close()
 
-	stakes := map[string]float64{}
+	stakes := map[string]int64{}
 	for rows.Next() {
 		var opt string
-		var total float64
+		var total int64
 		if err := rows.Scan(&opt, &total); err != nil {
 			return nil, err
 		}
@@ -306,9 +306,9 @@ func (s *Store) GetPredictionLeaderboard(limit int) ([]*PredictionLeaderEntry, e
 
 // PredictionOptionDetail is used for API response with per-option stats.
 type PredictionOptionDetail struct {
-	Name       string  `json:"name"`
-	TotalStake float64 `json:"total_stake"`
-	Bettors    int     `json:"bettors"`
+	Name       string `json:"name"`
+	TotalStake int64  `json:"total_stake"`
+	Bettors    int    `json:"bettors"`
 }
 
 // GetPredictionDetails returns the prediction with per-option breakdown.
@@ -336,7 +336,7 @@ func (s *Store) GetPredictionDetails(id string) (*Prediction, []PredictionOption
 	stakeMap := map[string]PredictionOptionDetail{}
 	for rows.Next() {
 		var opt string
-		var stake float64
+		var stake int64
 		var bettors int
 		if err := rows.Scan(&opt, &stake, &bettors); err != nil {
 			continue
