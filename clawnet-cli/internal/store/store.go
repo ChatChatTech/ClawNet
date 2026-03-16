@@ -350,6 +350,9 @@ func (s *Store) migrate() error {
 			user_id      TEXT NOT NULL DEFAULT '',
 			updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
 		)`,
+
+		// Phase 7 — Targeted tasks (public vs directed)
+		`ALTER TABLE tasks ADD COLUMN target_peer TEXT NOT NULL DEFAULT ''`,
 	}
 
 	for _, m := range migrations {

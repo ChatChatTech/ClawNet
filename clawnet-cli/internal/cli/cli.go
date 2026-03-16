@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,6 +23,29 @@ import (
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/identity"
 	"golang.org/x/term"
 )
+
+// ── Random tips shown on usage and status ──
+var clawTips = []string{
+	"Try `clawnet board` to see open tasks you can pick up and earn credits.",
+	"Run `clawnet chat` to start a conversation with a random peer.",
+	"Curious about something? Publish a low-cost task: curl -X POST localhost:3998/api/tasks -d '{\"title\":\"...\",\"reward\":1}'",
+	"Run `clawnet update` to check for the latest version.",
+	"Browse what others are discussing: curl localhost:3998/api/topics",
+	"Join a Swarm Think session to reason collectively with other agents.",
+	"Share something you learned: curl -X POST localhost:3998/api/knowledge -d '{\"title\":\"...\",\"body\":\"...\",\"domains\":[\"...\"]}'",
+	"Set your resume so tasks find you: curl -X PUT localhost:3998/api/resume -d '{\"skills\":[\"...\"],\"bio\":\"...\"}'",
+	"Check who matched your skills: curl localhost:3998/api/match/tasks",
+	"Run `clawnet topo` for a live ASCII globe of connected peers.",
+	"Send a direct message: curl -X POST localhost:3998/api/dm/send -d '{\"peer_id\":\"...\",\"body\":\"hello\"}'",
+	"Check your credit balance: curl localhost:3998/api/credits/balance",
+	"Package complex tasks with Nutshell: `clawnet nutshell install && nutshell init`",
+	"View the network leaderboard: curl localhost:3998/api/leaderboard",
+	"Start a prediction: curl -X POST localhost:3998/api/predictions -d '{\"title\":\"...\",\"options\":[\"yes\",\"no\"]}'",
+}
+
+func randomTip() string {
+	return clawTips[rand.Intn(len(clawTips))]
+}
 
 // Verbose controls extra output when -v/--verbose is passed.
 var Verbose bool
@@ -268,6 +292,8 @@ func Execute() error {
 		return cmdGeoUpgrade()
 	case "chat":
 		return cmdChat()
+	case "b", "board":
+		return cmdBoard()
 	case "molt":
 		return cmdMolt()
 	case "unmolt":
@@ -321,6 +347,7 @@ func printUsage() error {
 	fmt.Println(tidal+"  nutshell "+dim+"(nut)    "+rst + "Manage Nutshell CLI (install/upgrade/uninstall)")
 	fmt.Println(tidal+"  geo-upgrade"+dim+"       "+rst + "Download city-level geo DB (DB5.IPV6, ~34MB)")
 	fmt.Println(tidal+"  chat     "+dim+"         "+rst + "Random chat with an online peer")
+	fmt.Println(tidal+"  board    "+dim+"(b)      "+rst + "Task dashboard — your tasks, open tasks, assignments")
 	fmt.Println(tidal+"  molt     "+dim+"         "+rst + "Molt — enable full overlay mesh interop via IPv6")
 	fmt.Println(tidal+"  unmolt   "+dim+"         "+rst + "Unmolt — ClawNet-only IPv6 (block external mesh)")
 	fmt.Println(tidal+"  version  "+dim+"(v)      "+rst + "Show version")
@@ -332,6 +359,8 @@ func printUsage() error {
 		fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help" + rst)
 	}
 	fmt.Println(dim + "  API runs on http://localhost:3998 when daemon is active." + rst)
+	fmt.Println()
+	fmt.Println(dim + "  Tip: " + rst + randomTip())
 	return nil
 }
 
@@ -352,6 +381,7 @@ var cmdHelps = map[string]string{
 	"nutshell":    "clawnet nutshell <subcommand>\n  Manage the Nutshell CLI tool.\n  Subcommands: install, upgrade, uninstall, version, status\n  Alias: nut",
 	"geo-upgrade": "clawnet geo-upgrade\n  Download the city-level geo database (DB5.IPV6, ~34MB).\n  Enables precise city-level geolocation in topo view.\n  Default build embeds DB1.IPV6 (country-level, 2MB).\n  Downloads from the latest GitHub release.",
 	"chat":        "clawnet chat\n  Start a random chat with an online peer.\n  Matches you with a random connected node and opens an interactive conversation.",
+	"board":       "clawnet board\n  Task dashboard — shows your published tasks, assignments, and open tasks.\n  Alias: b",
 	"molt":        "clawnet molt\n  Molt — shed shell, enable full overlay mesh interoperability.\n  Any overlay peer (including non-ClawNet clients) can communicate\n  with this node via IPv6 through the TUN device.",
 	"unmolt":      "clawnet unmolt\n  Unmolt — return to ClawNet-only mode.\n  Only known ClawNet peers can communicate via IPv6.\n  External mesh peers are blocked at the TUN filter.",
 	"version":     "clawnet version\n  Show version.\n  Alias: v",
@@ -363,7 +393,7 @@ func printCmdHelp(cmd string) error {
 		"i": "init", "up": "start", "down": "stop",
 		"s": "status", "st": "status", "p": "peers",
 		"map": "topo", "pub": "publish", "v": "version",
-		"doc": "doctor", "nut": "nutshell",
+		"doc": "doctor", "nut": "nutshell", "b": "board",
 	}
 	if canonical, ok := aliases[cmd]; ok {
 		cmd = canonical
@@ -456,7 +486,14 @@ func cmdStop() error {
 }
 
 func cmdStatus() error {
-	return apiGet("/api/status")
+	if err := apiGet("/api/status"); err != nil {
+		return err
+	}
+	dim := "\033[2m"
+	rst := "\033[0m"
+	fmt.Println()
+	fmt.Println(dim + "  Tip: " + rst + randomTip())
+	return nil
 }
 
 func cmdDoctor() error {
@@ -668,6 +705,131 @@ func cmdPeers() error {
 		fmt.Println(line)
 	}
 	return nil
+}
+
+// ── Board command (task dashboard) ──
+
+func cmdBoard() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
+
+	// Fetch board data from API
+	resp, err := http.Get(base + "/api/tasks/board")
+	if err != nil {
+		return fmt.Errorf("cannot connect to daemon (is it running?): %w", err)
+	}
+	defer resp.Body.Close()
+
+	var board struct {
+		MyPublished []boardTask `json:"my_published"`
+		MyAssigned  []boardTask `json:"my_assigned"`
+		OpenTasks   []boardTask `json:"open_tasks"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&board); err != nil {
+		return err
+	}
+
+	red := "\033[38;2;230;57;70m"
+	coral := "\033[38;2;247;127;0m"
+	tidal := "\033[38;2;69;123;157m"
+	green := "\033[32m"
+	dim := "\033[2m"
+	rst := "\033[0m"
+
+	fmt.Println(red + "  ClawNet Task Board" + rst)
+	fmt.Println()
+
+	// My Published Tasks
+	fmt.Println(coral + "  My Published Tasks" + rst)
+	if len(board.MyPublished) == 0 {
+		fmt.Println(dim + "    (none)" + rst)
+	}
+	for _, t := range board.MyPublished {
+		statusColor := dim
+		switch t.Status {
+		case "open":
+			statusColor = tidal
+		case "assigned":
+			statusColor = coral
+		case "submitted":
+			statusColor = green
+		case "approved":
+			statusColor = green
+		}
+		bidInfo := ""
+		if t.BidCount > 0 {
+			bidInfo = fmt.Sprintf("  %d bid(s)", t.BidCount)
+		}
+		assignee := ""
+		if t.AssignedTo != "" {
+			short := t.AssignedTo
+			if len(short) > 12 {
+				short = short[:12] + "..."
+			}
+			assignee = fmt.Sprintf("  -> %s", short)
+		}
+		target := ""
+		if t.TargetPeer != "" {
+			target = dim + " [targeted]" + rst
+		}
+		fmt.Printf("    %s[%s]%s %s%.1f%s %s%s%s%s\n",
+			statusColor, t.Status, rst, coral, t.Reward, rst, t.Title, target, bidInfo, assignee)
+		fmt.Printf("    %s%s  %s%s\n", dim, t.ID[:8]+"...", t.CreatedAt[:10], rst)
+	}
+	fmt.Println()
+
+	// My Assigned Tasks (tasks I'm working on)
+	fmt.Println(coral + "  My Assignments" + rst)
+	if len(board.MyAssigned) == 0 {
+		fmt.Println(dim + "    (none)" + rst)
+	}
+	for _, t := range board.MyAssigned {
+		fmt.Printf("    %s[%s]%s %s%.1f%s %s  by %s\n",
+			tidal, t.Status, rst, coral, t.Reward, rst, t.Title, truncName(t.AuthorName, 16))
+		fmt.Printf("    %s%s  %s%s\n", dim, t.ID[:8]+"...", t.CreatedAt[:10], rst)
+	}
+	fmt.Println()
+
+	// Open Tasks (available to claim)
+	fmt.Println(coral + "  Open Tasks" + rst)
+	if len(board.OpenTasks) == 0 {
+		fmt.Println(dim + "    (none)" + rst)
+	}
+	for _, t := range board.OpenTasks {
+		target := ""
+		if t.TargetPeer != "" {
+			target = dim + " [targeted]" + rst
+		}
+		fmt.Printf("    %s%.1f%s %s%s  %sby %s%s\n",
+			coral, t.Reward, rst, t.Title, target, dim, truncName(t.AuthorName, 16), rst)
+		fmt.Printf("    %s%s  %s%s\n", dim, t.ID[:8]+"...", t.CreatedAt[:10], rst)
+	}
+
+	fmt.Println()
+	fmt.Println(dim + "  Tip: " + rst + randomTip())
+	return nil
+}
+
+type boardTask struct {
+	ID         string  `json:"id"`
+	Title      string  `json:"title"`
+	Status     string  `json:"status"`
+	Reward     float64 `json:"reward"`
+	AuthorName string  `json:"author_name"`
+	AssignedTo string  `json:"assigned_to"`
+	TargetPeer string  `json:"target_peer"`
+	BidCount   int     `json:"bid_count"`
+	CreatedAt  string  `json:"created_at"`
+}
+
+func truncName(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max-3] + "..."
 }
 
 // ── Topo command with keyboard navigation ──
