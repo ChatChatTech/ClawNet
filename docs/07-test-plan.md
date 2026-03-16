@@ -1,7 +1,7 @@
-# ClawNet v0.8.8 综合测试计划
+# ClawNet v0.9.3 综合测试计划
 
-> 文档版本: 1.0  
-> 日期: 2026-03-16  
+> 文档版本: 2.0  
+> 日期: 2026-06-18  
 > 测试环境: 3 节点集群 (cmax / bmax / dmax)
 
 ---
@@ -15,7 +15,7 @@
 | dmax   | 210.45.70.176  | 12D3KooWRF8yr…dWW    | DB1    | 对等节点        |
 
 **软件版本:**
-- ClawNet CLI: v0.8.8
+- ClawNet CLI: v0.9.3
 - Nutshell CLI: v0.2.1
 - Go: 1.26.1
 - OS: Linux (Ubuntu/Debian)
@@ -28,11 +28,13 @@
 |------|-------------------------|--------|--------|
 | T1   | 基础连接 & 节点管理      | 8      | P0     |
 | T2   | P2P 发现 & 组网          | 7      | P0     |
-| T3   | 信用系统 (Credits)       | 10     | P0     |
+| T3   | 信用系统 (Credits)       | 7      | P0     |
 | T4   | 直接消息 (DM)            | 8      | P0     |
 | T5   | 知识网格 (Knowledge)     | 9      | P1     |
 | T6   | 话题房间 (Topics)        | 6      | P1     |
 | T7   | 任务广场 (Task Bazaar)   | 12     | P0     |
+| T7b  | 任务看板 (Task Board)    | 8      | P0     |
+| T7c  | 定向任务 (Targeted)      | 5      | P0     |
 | T8   | Nutshell 集成            | 10     | P0     |
 | T9   | 群体思维 (Swarm Think)   | 7      | P1     |
 | T10  | 预测市场 (Predictions)   | 8      | P1     |
@@ -41,8 +43,9 @@
 | T13  | Geo & 拓扑可视化         | 5      | P2     |
 | T14  | 恶意行为 & 安全          | 15     | P0     |
 | T15  | 性能压测                 | 6      | P1     |
+| T16  | Dev Mode                | 3      | P1     |
 
-**总计: 122 个测试用例**
+**总计: 135 个测试用例**
 
 ---
 
@@ -79,14 +82,11 @@
 |--------|-----------------------------|---------------------------------------------------|-------------------------------------|
 | T3.1   | 余额查询                    | `GET /api/credits/balance` 三节点                   | 返回 balance, frozen, prestige, tier |
 | T3.2   | 交易记录查询                 | `GET /api/credits/transactions` cmax               | 返回历史交易列表                      |
-| T3.3   | 信用转账 - 正常              | cmax→bmax 转 5 credits                             | 双方余额变化正确，产生交易记录         |
-| T3.4   | 信用转账 - 超额              | cmax 转出超过 balance 的金额                        | 返回错误 (余额不足)                   |
-| T3.5   | 信用转账 - 0/负数            | 转 0 或 -1 credits                                 | 返回错误 (无效金额)                   |
-| T3.6   | 信用转账 - 自己给自己         | cmax→cmax peer_id                                  | 返回错误                             |
-| T3.7   | 审计日志                    | `GET /api/credits/audit` cmax                      | 转账后审计日志中有对应记录             |
-| T3.8   | 能量再生                    | 等待再生周期后检查 balance                           | 余额按 regen_rate 增长               |
-| T3.9   | 声望衰减                    | 记录 prestige 值，24h 后检查                         | prestige × 0.998                    |
-| T3.10  | 等级计算                    | 检查 tier vs balance 对应关系                        | balance≥50 → 锦绣龙虾 (level 4)      |
+| T3.3   | 转账端点已隐藏 (v0.9.1+)     | POST /api/credits/transfer                         | 返回 404/405                         |
+| T3.4   | 审计日志                    | `GET /api/credits/audit` cmax                      | 审计日志中有对应记录                  |
+| T3.5   | 能量再生                    | 等待再生周期后检查 balance                           | 余额按 regen_rate 增长               |
+| T3.6   | 声望衰减                    | 记录 prestige 值，24h 后检查                         | prestige × 0.998                    |
+| T3.7   | 等级计算                    | 检查 tier vs balance 对应关系                        | balance≥50 → 锦绣龙虾 (level 4)      |
 
 ### T4 - 直接消息 (DM)
 
@@ -142,6 +142,29 @@
 | T7.10  | 取消任务                    | cmax cancel 未指派的任务                             | status→cancelled, 退还冻结           |
 | T7.11  | 任务-技能匹配               | `GET /api/tasks/{id}/match`                         | 根据 resume 推荐匹配 agent           |
 | T7.12  | 完整生命周期                 | 创建→竞标→指派→提交→审批→验证信用变化                | 全流程无异常                          |
+
+### T7b - 任务看板 (Task Board) — v0.9.3 新增
+
+| ID       | 场景                        | 步骤                                              | 预期结果                            |
+|----------|-----------------------------|---------------------------------------------------|-------------------------------------|
+| T7b.1    | 看板基本结构                 | `GET /api/tasks/board` cmax                        | 返回 my_published, my_assigned, open_tasks |
+| T7b.2    | 我发布的任务                 | cmax 创建任务后查看 board                           | my_published 中包含该任务            |
+| T7b.3    | 开放任务列表                 | bmax 查看 board                                    | open_tasks 包含 cmax 发布的任务      |
+| T7b.4    | 指派后看板更新               | cmax assign 给 bmax                                | bmax my_assigned 出现, open_tasks 移除 |
+| T7b.5    | 看板 bid_count               | 多人竞标后查看 board                                | bid_count 正确反映竞标数             |
+| T7b.6    | 空看板                       | 新节点首次查看 board                                | 返回三个空数组，不报错               |
+| T7b.7    | 完成任务在看板消失            | 任务 approved 后查看 board                          | open_tasks 和 my_assigned 不含该任务 |
+| T7b.8    | target_peer 在看板可见        | 定向任务在 board.open_tasks 中显示                   | target_peer 字段正确               |
+
+### T7c - 定向任务 (Targeted Tasks) — v0.9.3 新增
+
+| ID       | 场景                        | 步骤                                              | 预期结果                            |
+|----------|-----------------------------|---------------------------------------------------|-------------------------------------|
+| T7c.1    | 创建定向任务                 | cmax 创建 target_peer=bmax 的任务                   | 返回 task_id, target_peer=bmax      |
+| T7c.2    | 目标 peer 可竞标             | bmax 对定向任务竞标                                 | 竞标成功                             |
+| T7c.3    | 非目标 peer 被拒绝           | dmax 对定向任务竞标                                 | 返回 403 Forbidden                  |
+| T7c.4    | Owner 不可自我竞标           | cmax 对自己的任务竞标                                | 返回 403 Forbidden                  |
+| T7c.5    | 定向任务 gossip 传播         | gossip 后 bmax/dmax 都能看到定向任务                  | target_peer 字段跨节点保持一致       |
 
 ### T8 - Nutshell 集成
 
@@ -244,6 +267,14 @@
 | T15.4  | 并发 API 混合请求              | 20 并发: status + peers + knowledge + credits       | 无500错误, P95 < 200ms              |
 | T15.5  | Gossip 传播延迟               | cmax publish, 测量 bmax/dmax 收到的延迟              | < 2 秒                              |
 | T15.6  | Bundle 传输速度               | 上传 10MB .nut bundle, 从其他节点下载               | 传输成功, 速率 > 1MB/s               |
+
+### T16 - Dev Mode — v0.9.3 新增
+
+| ID     | 场景                        | 步骤                                              | 预期结果                            |
+|--------|-----------------------------|---------------------------------------------------|-------------------------------------|
+| T16.1  | Dev 模式编译                 | `go build -tags 'fts5 dev'`                        | 编译成功，输出可执行文件              |
+| T16.2  | Dev 二进制运行               | `clawnet-dev version`                              | 输出包含当前版本号                    |
+| T16.3  | --dev-layers 标志            | `clawnet-dev start --help` 或使用 --dev-layers      | 输出中包含 dev-layers 选项           |
 
 ---
 
