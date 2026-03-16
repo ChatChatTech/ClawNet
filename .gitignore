@@ -37,6 +37,15 @@ clawnet-topo*.gif
 # Contribution plans (local only)
 *.pr
 
+# Test artifacts
+*.nut
+!clawnet-cli/internal/daemon/embed/tutorial.nut
+
+# Design / asset files (not for repo)
+*.svg
+*.html
+*.webp
+
 # Development docs (not for public repo)
 TODO.md
 SKILL.md

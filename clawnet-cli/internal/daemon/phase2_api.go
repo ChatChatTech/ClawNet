@@ -23,7 +23,7 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	// Credits
 	mux.HandleFunc("GET /api/credits/balance", d.handleCreditsBalance)
 	mux.HandleFunc("GET /api/credits/transactions", d.handleCreditsTransactions)
-	mux.HandleFunc("POST /api/credits/transfer", d.handleCreditsTransfer)
+	// mux.HandleFunc("POST /api/credits/transfer", d.handleCreditsTransfer) // hidden in v0.9.1
 
 	// Task Bazaar
 	mux.HandleFunc("POST /api/tasks", d.handleCreateTask)

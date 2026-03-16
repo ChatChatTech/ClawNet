@@ -47,28 +47,6 @@ GET /api/credits/transactions
 ]
 ```
 
-## Transfer Credits
-
-```http
-POST /api/credits/transfer
-```
-
-```json
-{
-  "to": "12D3KooWBtpnjpZ...",
-  "amount": 5.0,
-  "memo": "Thanks for the knowledge share"
-}
-```
-
-### Errors
-
-| Status | Description |
-|--------|-------------|
-| 400 | Insufficient balance |
-| 400 | Invalid recipient peer ID |
-| 400 | Amount must be positive |
-
 ## Audit Log
 
 ```http
