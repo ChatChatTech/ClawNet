@@ -353,6 +353,21 @@ func (s *Store) migrate() error {
 
 		// Phase 7 — Targeted tasks (public vs directed)
 		`ALTER TABLE tasks ADD COLUMN target_peer TEXT NOT NULL DEFAULT ''`,
+
+		// Phase 8 — Auction House: dynamic bidding window + multi-worker + auto-settle
+		`ALTER TABLE tasks ADD COLUMN bid_close_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN work_deadline TEXT NOT NULL DEFAULT ''`,
+		`CREATE TABLE IF NOT EXISTS task_submissions (
+			id          TEXT PRIMARY KEY,
+			task_id     TEXT NOT NULL,
+			worker_id   TEXT NOT NULL,
+			worker_name TEXT NOT NULL DEFAULT '',
+			result      TEXT NOT NULL DEFAULT '',
+			is_winner   INTEGER NOT NULL DEFAULT 0,
+			submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (task_id) REFERENCES tasks(id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_task_submissions ON task_submissions(task_id, submitted_at)`,
 	}
 
 	for _, m := range migrations {
@@ -369,6 +384,11 @@ func (s *Store) migrate() error {
 	// Only needed for DBs created before appeal mechanism was added.
 	if err := s.migratePredictionsCheck(); err != nil {
 		return fmt.Errorf("predictions check migration: %w", err)
+	}
+
+	// Migrate tasks CHECK constraint to allow 'settled' status.
+	if err := s.migrateTasksCheck(); err != nil {
+		return fmt.Errorf("tasks check migration: %w", err)
 	}
 
 	return nil
@@ -424,6 +444,69 @@ func (s *Store) migratePredictionsCheck() error {
 	for _, stmt := range stmts {
 		if _, err := s.DB.Exec(stmt); err != nil {
 			return fmt.Errorf("exec migration: %w", err)
+		}
+	}
+	return nil
+}
+
+// migrateTasksCheck recreates the tasks table if its CHECK constraint
+// doesn't include 'settled'. This is a one-time migration for existing databases.
+func (s *Store) migrateTasksCheck() error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec(`INSERT INTO tasks (id, author_id, title, status)
+	                   VALUES ('__check_probe__', '__probe__', '__probe__', 'settled')`)
+	if err == nil {
+		tx.Exec(`DELETE FROM tasks WHERE id = '__check_probe__'`)
+		tx.Commit()
+		return nil
+	}
+	tx.Rollback()
+
+	s.DB.Exec(`PRAGMA foreign_keys = OFF`)
+	defer s.DB.Exec(`PRAGMA foreign_keys = ON`)
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS tasks_v2 (
+			id          TEXT PRIMARY KEY,
+			author_id   TEXT NOT NULL,
+			author_name TEXT NOT NULL DEFAULT '',
+			title       TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			tags        TEXT NOT NULL DEFAULT '[]',
+			deadline    TEXT NOT NULL DEFAULT '',
+			reward      REAL NOT NULL DEFAULT 0,
+			status      TEXT NOT NULL DEFAULT 'open'
+			            CHECK(status IN ('open','assigned','submitted','approved','rejected','cancelled','settled')),
+			assigned_to TEXT NOT NULL DEFAULT '',
+			result      TEXT NOT NULL DEFAULT '',
+			target_peer TEXT NOT NULL DEFAULT '',
+			nutshell_hash TEXT NOT NULL DEFAULT '',
+			nutshell_id TEXT NOT NULL DEFAULT '',
+			bundle_type TEXT NOT NULL DEFAULT '',
+			bid_close_at TEXT NOT NULL DEFAULT '',
+			work_deadline TEXT NOT NULL DEFAULT '',
+			created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`INSERT OR IGNORE INTO tasks_v2
+		   SELECT id, author_id, author_name, title, description,
+		          COALESCE(tags, '[]'), COALESCE(deadline, ''),
+		          reward, status, assigned_to, result,
+		          COALESCE(target_peer, ''),
+		          COALESCE(nutshell_hash, ''), COALESCE(nutshell_id, ''),
+		          COALESCE(bundle_type, ''),
+		          COALESCE(bid_close_at, ''), COALESCE(work_deadline, ''),
+		          created_at, updated_at
+		   FROM tasks`,
+		`DROP TABLE tasks`,
+		`ALTER TABLE tasks_v2 RENAME TO tasks`,
+	}
+	for _, stmt := range stmts {
+		if _, err := s.DB.Exec(stmt); err != nil {
+			return fmt.Errorf("exec tasks migration: %w", err)
 		}
 	}
 	return nil

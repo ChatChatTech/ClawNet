@@ -26,7 +26,7 @@ import (
 	"github.com/Arceliar/ironwood/network"
 )
 
-const Version = "0.9.3"
+const Version = "0.9.4"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
@@ -276,6 +276,12 @@ func Start(foreground bool, devLayers []string) error {
 
 	// Start prediction settlement loop (auto-settle expired pending predictions)
 	go d.predictionSettlementLoop(ctx)
+
+	// Start Auction House auto-settlement loop
+	d.startTaskSettler(ctx)
+
+	// Start silent auto-updater
+	d.startAutoUpdater(ctx)
 
 	// Anti-Sybil: require one-time PoW before granting initial credits
 	peerIDStr := node.PeerID().String()

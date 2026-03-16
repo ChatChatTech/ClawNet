@@ -37,6 +37,10 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/tasks/{id}/approve", d.handleTaskApprove)
 	mux.HandleFunc("POST /api/tasks/{id}/reject", d.handleTaskReject)
 	mux.HandleFunc("POST /api/tasks/{id}/cancel", d.handleTaskCancel)
+	// Auction House: multi-worker submission & settlement
+	mux.HandleFunc("POST /api/tasks/{id}/work", d.handleTaskSubmitWork)
+	mux.HandleFunc("GET /api/tasks/{id}/submissions", d.handleTaskSubmissions)
+	mux.HandleFunc("POST /api/tasks/{id}/pick", d.handleTaskPickWinner)
 
 	// Task Bazaar — Nutshell bundle endpoints
 	mux.HandleFunc("POST /api/tasks/{id}/bundle", d.handleUploadTaskBundle)
@@ -516,6 +520,143 @@ func (d *Daemon) handleTaskCancel(w http.ResponseWriter, r *http.Request) {
 		d.publishTaskUpdate(d.ctx, t)
 	}
 	writeJSON(w, map[string]string{"status": "cancelled"})
+}
+
+// ── Auction House handlers (multi-worker submit / pick winner) ──
+
+// handleTaskSubmitWork allows any bidder to submit work for a task (multi-worker parallel execution).
+// In the Auction House model, bid = start working. Workers submit results here.
+func (d *Daemon) handleTaskSubmitWork(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("id")
+
+	t, err := d.Store.GetTask(taskID)
+	if err != nil || t == nil {
+		http.Error(w, `{"error":"task not found"}`, http.StatusNotFound)
+		return
+	}
+	if t.Status != "open" && t.Status != "assigned" {
+		http.Error(w, `{"error":"task is not accepting submissions"}`, http.StatusConflict)
+		return
+	}
+
+	peerID := d.Node.PeerID().String()
+
+	// Must have bid on this task to submit work
+	bids, _ := d.Store.ListTaskBids(taskID)
+	hasBid := false
+	for _, b := range bids {
+		if b.BidderID == peerID {
+			hasBid = true
+			break
+		}
+	}
+	if !hasBid {
+		http.Error(w, `{"error":"must bid on task before submitting work"}`, http.StatusForbidden)
+		return
+	}
+
+	// Prevent duplicate submissions from same worker
+	subs, _ := d.Store.ListTaskSubmissions(taskID)
+	for _, s := range subs {
+		if s.WorkerID == peerID {
+			http.Error(w, `{"error":"already submitted work for this task"}`, http.StatusConflict)
+			return
+		}
+	}
+
+	var body struct {
+		Result string `json:"result"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.Result == "" {
+		http.Error(w, `{"error":"result is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	sub := &store.TaskSubmission{
+		TaskID: taskID,
+		Result: body.Result,
+	}
+	if err := d.publishTaskSubmission(d.ctx, sub); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, sub)
+}
+
+// handleTaskSubmissions returns all submissions for a task.
+func (d *Daemon) handleTaskSubmissions(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("id")
+	subs, err := d.Store.ListTaskSubmissions(taskID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if subs == nil {
+		subs = []*store.TaskSubmission{}
+	}
+	writeJSON(w, subs)
+}
+
+// handleTaskPickWinner lets the task author manually pick a winner from submissions.
+// If the author doesn't pick within the grace period, auto-settlement picks by reputation.
+func (d *Daemon) handleTaskPickWinner(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("id")
+
+	t, err := d.Store.GetTask(taskID)
+	if err != nil || t == nil {
+		http.Error(w, `{"error":"task not found"}`, http.StatusNotFound)
+		return
+	}
+
+	// Only task author can pick
+	if t.AuthorID != d.Node.PeerID().String() {
+		http.Error(w, `{"error":"only the task author can pick a winner"}`, http.StatusForbidden)
+		return
+	}
+	if t.Status != "open" && t.Status != "assigned" && t.Status != "submitted" {
+		http.Error(w, `{"error":"task already settled or cancelled"}`, http.StatusConflict)
+		return
+	}
+
+	var body struct {
+		SubmissionID string `json:"submission_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.SubmissionID == "" {
+		http.Error(w, `{"error":"submission_id is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	subs, err := d.Store.ListTaskSubmissions(taskID)
+	if err != nil || len(subs) == 0 {
+		http.Error(w, `{"error":"no submissions to pick from"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Verify submission exists and belongs to this task
+	var winnerSub *store.TaskSubmission
+	for _, s := range subs {
+		if s.ID == body.SubmissionID {
+			winnerSub = s
+			break
+		}
+	}
+	if winnerSub == nil {
+		http.Error(w, `{"error":"submission not found for this task"}`, http.StatusNotFound)
+		return
+	}
+
+	// Settle: mark winner, distribute credits
+	d.settleTask(t, subs, winnerSub)
+
+	writeJSON(w, map[string]string{"status": "settled", "winner": winnerSub.WorkerID})
 }
 
 // ── Swarm handlers ──

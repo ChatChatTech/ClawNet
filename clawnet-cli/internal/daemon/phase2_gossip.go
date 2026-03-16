@@ -24,9 +24,10 @@ const (
 
 // GossipTaskMsg is the wire format for task messages.
 type GossipTaskMsg struct {
-	Type string         `json:"type"` // "task", "bid", "update"
-	Task *store.Task    `json:"task,omitempty"`
-	Bid  *store.TaskBid `json:"bid,omitempty"`
+	Type       string                `json:"type"` // "task", "bid", "update", "submission"
+	Task       *store.Task           `json:"task,omitempty"`
+	Bid        *store.TaskBid        `json:"bid,omitempty"`
+	Submission *store.TaskSubmission `json:"submission,omitempty"`
 }
 
 // GossipSwarmMsg is the wire format for swarm messages.
@@ -391,11 +392,16 @@ func (d *Daemon) handleTaskSub(ctx context.Context, sub *pubsub.Subscription) {
 		case "bid":
 			if gm.Bid != nil && gossipAuthorOK(msg, gm.Bid.BidderID) {
 				d.Store.InsertTaskBid(gm.Bid)
+				d.Store.UpdateBidClose(gm.Bid.TaskID)
 			}
 		case "update":
 			// Allow updates from the author (e.g. assignment) or the assignee (e.g. delivery)
 			if gm.Task != nil && (gossipAuthorOK(msg, gm.Task.AuthorID) || gossipAuthorOK(msg, gm.Task.AssignedTo)) {
 				d.Store.InsertTask(gm.Task)
+			}
+		case "submission":
+			if gm.Submission != nil && gossipAuthorOK(msg, gm.Submission.WorkerID) {
+				d.Store.InsertTaskSubmission(gm.Submission)
 			}
 		}
 	}
@@ -450,6 +456,12 @@ func (d *Daemon) publishTask(ctx context.Context, t *store.Task) error {
 		t.Reward = DefaultReward
 	}
 
+	// Set initial bid close time (no bids yet)
+	createdAt, _ := time.Parse(time.RFC3339, t.CreatedAt)
+	bidClose := store.ComputeBidClose(createdAt, 0)
+	t.BidCloseAt = bidClose.Format(time.RFC3339)
+	t.WorkDeadline = store.ComputeWorkDeadline(bidClose).Format(time.RFC3339)
+
 	if err := d.Store.InsertTask(t); err != nil {
 		return err
 	}
@@ -478,6 +490,9 @@ func (d *Daemon) publishTaskBid(ctx context.Context, b *store.TaskBid) error {
 		return err
 	}
 
+	// Recalculate bid close time (extends with each new bid)
+	d.Store.UpdateBidClose(b.TaskID)
+
 	msg := GossipTaskMsg{Type: "bid", Bid: b}
 	data, _ := json.Marshal(msg)
 	return d.Node.Publish(ctx, TaskTopic, data)
@@ -490,6 +505,24 @@ func (d *Daemon) publishTaskUpdate(ctx context.Context, t *store.Task) error {
 	}
 
 	msg := GossipTaskMsg{Type: "update", Task: t}
+	data, _ := json.Marshal(msg)
+	return d.Node.Publish(ctx, TaskTopic, data)
+}
+
+// publishTaskSubmission broadcasts a worker's submission to the network.
+func (d *Daemon) publishTaskSubmission(ctx context.Context, sub *store.TaskSubmission) error {
+	if sub.ID == "" {
+		sub.ID = uuid.New().String()
+	}
+	sub.WorkerID = d.Node.PeerID().String()
+	sub.WorkerName = d.Profile.AgentName
+	sub.SubmittedAt = time.Now().UTC().Format(time.RFC3339)
+
+	if err := d.Store.InsertTaskSubmission(sub); err != nil {
+		return err
+	}
+
+	msg := GossipTaskMsg{Type: "submission", Submission: sub}
 	data, _ := json.Marshal(msg)
 	return d.Node.Publish(ctx, TaskTopic, data)
 }

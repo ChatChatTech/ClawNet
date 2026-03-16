@@ -736,10 +736,11 @@ func cmdBoard() error {
 	coral := "\033[38;2;247;127;0m"
 	tidal := "\033[38;2;69;123;157m"
 	green := "\033[32m"
+	yellow := "\033[33m"
 	dim := "\033[2m"
 	rst := "\033[0m"
 
-	fmt.Println(red + "  ClawNet Task Board" + rst)
+	fmt.Println(red + "  🦞 ClawNet Auction House" + rst)
 	fmt.Println()
 
 	// My Published Tasks
@@ -756,12 +757,16 @@ func cmdBoard() error {
 			statusColor = coral
 		case "submitted":
 			statusColor = green
-		case "approved":
+		case "approved", "settled":
 			statusColor = green
 		}
 		bidInfo := ""
 		if t.BidCount > 0 {
 			bidInfo = fmt.Sprintf("  %d bid(s)", t.BidCount)
+		}
+		subInfo := ""
+		if t.SubCount > 0 {
+			subInfo = fmt.Sprintf("  %d sub(s)", t.SubCount)
 		}
 		assignee := ""
 		if t.AssignedTo != "" {
@@ -775,21 +780,28 @@ func cmdBoard() error {
 		if t.TargetPeer != "" {
 			target = dim + " [targeted]" + rst
 		}
-		fmt.Printf("    %s[%s]%s %s%.1f%s %s%s%s%s\n",
-			statusColor, t.Status, rst, coral, t.Reward, rst, t.Title, target, bidInfo, assignee)
+		countdown := formatCountdown(t.BidCloseAt, t.WorkDeadline, t.Status)
+		fmt.Printf("    %s[%s]%s %s%.1f%s %s%s%s%s%s%s\n",
+			statusColor, t.Status, rst, coral, t.Reward, rst, t.Title, target, bidInfo, subInfo, assignee, countdown)
 		fmt.Printf("    %s%s  %s%s\n", dim, t.ID[:8]+"...", t.CreatedAt[:10], rst)
 	}
 	fmt.Println()
 
-	// My Assigned Tasks (tasks I'm working on)
-	fmt.Println(coral + "  My Assignments" + rst)
+	// My Assignments / Active Work
+	fmt.Println(coral + "  My Active Work" + rst)
 	if len(board.MyAssigned) == 0 {
-		fmt.Println(dim + "    (none)" + rst)
+		fmt.Println(dim + "    (none — bid on open tasks to start working!)" + rst)
 	}
 	for _, t := range board.MyAssigned {
-		fmt.Printf("    %s[%s]%s %s%.1f%s %s  by %s\n",
-			tidal, t.Status, rst, coral, t.Reward, rst, t.Title, truncName(t.AuthorName, 16))
-		fmt.Printf("    %s%s  %s%s\n", dim, t.ID[:8]+"...", t.CreatedAt[:10], rst)
+		countdown := formatCountdown(t.BidCloseAt, t.WorkDeadline, t.Status)
+		expectPay := ""
+		if t.ExpectedPay > 0 {
+			expectPay = fmt.Sprintf("  %sE[pay]=%.2f%s", yellow, t.ExpectedPay, rst)
+		}
+		fmt.Printf("    %s[%s]%s %s%.1f%s %s  by %s%s%s\n",
+			tidal, t.Status, rst, coral, t.Reward, rst, t.Title, truncName(t.AuthorName, 16), countdown, expectPay)
+		fmt.Printf("    %s%s  %s  %d bid(s) %d sub(s)%s\n",
+			dim, t.ID[:8]+"...", t.CreatedAt[:10], t.BidCount, t.SubCount, rst)
 	}
 	fmt.Println()
 
@@ -803,9 +815,15 @@ func cmdBoard() error {
 		if t.TargetPeer != "" {
 			target = dim + " [targeted]" + rst
 		}
-		fmt.Printf("    %s%.1f%s %s%s  %sby %s%s\n",
-			coral, t.Reward, rst, t.Title, target, dim, truncName(t.AuthorName, 16), rst)
-		fmt.Printf("    %s%s  %s%s\n", dim, t.ID[:8]+"...", t.CreatedAt[:10], rst)
+		countdown := formatCountdown(t.BidCloseAt, t.WorkDeadline, t.Status)
+		expectPay := ""
+		if t.ExpectedPay > 0 {
+			expectPay = fmt.Sprintf("  %sE[pay]=%.2f%s", yellow, t.ExpectedPay, rst)
+		}
+		fmt.Printf("    %s%.1f%s %s%s  %sby %s%s%s%s\n",
+			coral, t.Reward, rst, t.Title, target, dim, truncName(t.AuthorName, 16), rst, countdown, expectPay)
+		fmt.Printf("    %s%s  %s  %d bid(s)%s\n",
+			dim, t.ID[:8]+"...", t.CreatedAt[:10], t.BidCount, rst)
 	}
 
 	fmt.Println()
@@ -813,16 +831,57 @@ func cmdBoard() error {
 	return nil
 }
 
+// formatCountdown shows time remaining until bid close or work deadline.
+func formatCountdown(bidCloseAt, workDeadline, status string) string {
+	if status != "open" {
+		return ""
+	}
+	dim := "\033[2m"
+	yellow := "\033[33m"
+	rst := "\033[0m"
+	now := time.Now().UTC()
+
+	if bidCloseAt != "" {
+		if bc, err := time.Parse(time.RFC3339, bidCloseAt); err == nil {
+			remaining := bc.Sub(now)
+			if remaining > 0 {
+				return fmt.Sprintf("  %s⏱ bid closes %s%s", yellow, fmtCountdownDur(remaining), rst)
+			}
+		}
+	}
+	if workDeadline != "" {
+		if wd, err := time.Parse(time.RFC3339, workDeadline); err == nil {
+			remaining := wd.Sub(now)
+			if remaining > 0 {
+				return fmt.Sprintf("  %s⏱ submit by %s%s", dim, fmtCountdownDur(remaining), rst)
+			}
+			return fmt.Sprintf("  %s⏱ settling...%s", dim, rst)
+		}
+	}
+	return ""
+}
+
+func fmtCountdownDur(d time.Duration) string {
+	if d > time.Hour {
+		return fmt.Sprintf("%.1fh", d.Hours())
+	}
+	return fmt.Sprintf("%.0fm", d.Minutes())
+}
+
 type boardTask struct {
-	ID         string  `json:"id"`
-	Title      string  `json:"title"`
-	Status     string  `json:"status"`
-	Reward     float64 `json:"reward"`
-	AuthorName string  `json:"author_name"`
-	AssignedTo string  `json:"assigned_to"`
-	TargetPeer string  `json:"target_peer"`
-	BidCount   int     `json:"bid_count"`
-	CreatedAt  string  `json:"created_at"`
+	ID           string  `json:"id"`
+	Title        string  `json:"title"`
+	Status       string  `json:"status"`
+	Reward       float64 `json:"reward"`
+	AuthorName   string  `json:"author_name"`
+	AssignedTo   string  `json:"assigned_to"`
+	TargetPeer   string  `json:"target_peer"`
+	BidCount     int     `json:"bid_count"`
+	SubCount     int     `json:"sub_count"`
+	BidCloseAt   string  `json:"bid_close_at"`
+	WorkDeadline string  `json:"work_deadline"`
+	ExpectedPay  float64 `json:"expected_pay"`
+	CreatedAt    string  `json:"created_at"`
 }
 
 func truncName(s string, max int) string {
