@@ -220,8 +220,27 @@ func isDaemonRunning() bool {
 }
 
 func Execute() error {
+	// Internal --daemon flag: run daemon in foreground (used by background launcher).
+	// This path is invoked by startDaemonBackground() — output goes to log file.
+	daemonMode := false
+	for _, a := range os.Args[1:] {
+		if a == "--daemon" {
+			daemonMode = true
+		}
+		if devBuild && strings.HasPrefix(a, "--dev-layers=") {
+			devLayers = strings.Split(strings.TrimPrefix(a, "--dev-layers="), ",")
+		}
+	}
+	if daemonMode {
+		return daemon.Start(true, devLayers)
+	}
+
 	if len(os.Args) < 2 {
-		return printUsage()
+		// No args: ensure daemon + show status
+		if _, err := ensureDaemon(); err != nil {
+			return err
+		}
+		return cmdStatus()
 	}
 
 	// Global flags: strip -h/--help and -v/--verbose from args
@@ -249,10 +268,20 @@ func Execute() error {
 
 	// No subcommand after flag stripping
 	if len(os.Args) < 2 {
-		return printUsage()
+		if _, err := ensureDaemon(); err != nil {
+			return err
+		}
+		return cmdStatus()
 	}
 
 	cmd := os.Args[1]
+
+	// Auto-init + auto-start daemon for commands that need it
+	if needsDaemon(cmd) {
+		if _, err := ensureDaemon(); err != nil {
+			return err
+		}
+	}
 
 	// If -h/--help was passed with a subcommand, show subcommand help
 	if showHelp && cmd != "help" {
@@ -294,6 +323,8 @@ func Execute() error {
 		return cmdChat()
 	case "b", "board":
 		return cmdBoard()
+	case "log", "logs":
+		return cmdLog()
 	case "molt":
 		return cmdMolt()
 	case "unmolt":
@@ -332,7 +363,7 @@ func printUsage() error {
 	fmt.Println()
 	fmt.Println(bold + "COMMANDS" + rst)
 	fmt.Println(tidal+"  init     "+dim+"(i)      "+rst + "Generate identity key and default config")
-	fmt.Println(tidal+"  start    "+dim+"(up)     "+rst + "Start the daemon (foreground)")
+	fmt.Println(tidal+"  start    "+dim+"(up)     "+rst + "Start the daemon (background)")
 	fmt.Println(tidal+"  stop     "+dim+"(down)   "+rst + "Stop a running daemon")
 	fmt.Println(tidal+"  status   "+dim+"(s, st)  "+rst + "Show network status")
 	fmt.Println(tidal+"  peers    "+dim+"(p)      "+rst + "List connected peers")
@@ -348,6 +379,7 @@ func printUsage() error {
 	fmt.Println(tidal+"  geo-upgrade"+dim+"       "+rst + "Download city-level geo DB (DB5.IPV6, ~34MB)")
 	fmt.Println(tidal+"  chat     "+dim+"         "+rst + "Async mail — inbox, threads, send (-i for real-time)")
 	fmt.Println(tidal+"  board    "+dim+"(b)      "+rst + "Task dashboard — your tasks, open tasks, assignments")
+	fmt.Println(tidal+"  log      "+dim+"(logs)   "+rst + "Show daemon logs (-v verbose, -f follow)")
 	fmt.Println(tidal+"  molt     "+dim+"         "+rst + "Molt — enable full overlay mesh interop via IPv6")
 	fmt.Println(tidal+"  unmolt   "+dim+"         "+rst + "Unmolt — ClawNet-only IPv6 (block external mesh)")
 	fmt.Println(tidal+"  version  "+dim+"(v)      "+rst + "Show version")
@@ -366,7 +398,8 @@ func printUsage() error {
 
 var cmdHelps = map[string]string{
 	"init":    "clawnet init\n  Generate identity key (ed25519) and default config.\n  Alias: i",
-	"start":   "clawnet start\n  Start the daemon in the foreground.\n  Alias: up",
+	"start":   "clawnet start\n  Start the daemon in background. Logs go to ~/.openclaw/clawnet/logs/daemon.log\n  Use 'clawnet log' to view, 'clawnet log -f' to follow.\n  Alias: up",
+	"log":     "clawnet log [flags]\n  Show daemon log output.\n  Flags:\n    (none)    Summary — milestones only\n    -v        Verbose — full log output\n    -f        Follow — live tail (like tail -f)\n    --clear   Clear the log file\n  Alias: logs",
 	"stop":    "clawnet stop\n  Stop a running daemon gracefully.\n  Alias: down",
 	"status":  "clawnet status [-v]\n  Show network status (peer count, topics, version).\n  -v  Show full peer ID and all details.\n  Alias: s, st",
 	"peers":   "clawnet peers [-v]\n  List connected peers with geo info.\n  -v  Show full peer IDs.\n  Alias: p",
@@ -394,6 +427,7 @@ func printCmdHelp(cmd string) error {
 		"s": "status", "st": "status", "p": "peers",
 		"map": "topo", "pub": "publish", "v": "version",
 		"doc": "doctor", "nut": "nutshell", "b": "board",
+		"logs": "log",
 	}
 	if canonical, ok := aliases[cmd]; ok {
 		cmd = canonical
@@ -460,7 +494,9 @@ func cmdStart() error {
 		fmt.Println("Daemon is already running.")
 		return cmdStatus()
 	}
-	return daemon.Start(true, devLayers)
+	// Start daemon in background with log file
+	_, err := ensureDaemon()
+	return err
 }
 
 func cmdStop() error {
