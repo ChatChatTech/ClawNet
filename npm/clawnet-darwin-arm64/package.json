@@ -1,6 +1,6 @@
 {
-  "name": "@chatchat/clawnet-darwin-arm64",
-  "version": "0.9.5",
+  "name": "@cctech2077/clawnet-darwin-arm64",
+  "version": "0.9.8",
   "description": "ClawNet binary for macOS arm64 (Apple Silicon)",
   "license": "Apache-2.0",
   "repository": {

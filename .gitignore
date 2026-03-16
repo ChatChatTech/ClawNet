@@ -63,3 +63,4 @@ IP2GEOTOKEN
 dist/
 clawnet-cli/clawnet-linux-amd64
 clawnet-cli/clawnet-linux-arm64
+**/.npmrc
