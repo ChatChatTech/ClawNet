@@ -244,8 +244,12 @@ func (s *Store) ListCreditAudit(limit, offset int) ([]*CreditAuditRecord, error)
 }
 
 // ══════════════════════════════════════════════════════════
-// Lobster Tier System — Social Energy Model v1.1
+// Lobster Tier System — Social Energy Model v2.0
 // ══════════════════════════════════════════════════════════
+//
+// 20 tiers named after real crustacean species and rare colour morphs,
+// ordered by biological rarity — from the most abundant invasive crayfish
+// to the near-mythical translucent Ghost Lobster.
 
 // LobsterTier represents a node's rank in the network, themed after lobster rarity.
 type LobsterTier struct {
@@ -257,15 +261,43 @@ type LobsterTier struct {
 }
 
 // All tiers ordered by rarity (energy threshold).
-// Named after real-world lobster species and rare colour morphs.
+// Named after real-world crustacean species and rare colour morphs.
+//
+//   Lv 1–4:   Common species (farmed / invasive / ubiquitous)
+//   Lv 5–8:   Commercial species (restaurant-grade)
+//   Lv 9–12:  Prized species (high-value / restricted range)
+//   Lv 13–16: Rare & protected species (endangered / limited habitat)
+//   Lv 17–20: Legendary colour morphs (genetic mutations, 1-in-millions)
 var LobsterTiers = []LobsterTier{
-	{Level: 1, Name: "小龙虾", NameEN: "Crayfish", Emoji: "🦐", MinEnergy: 0},
-	{Level: 2, Name: "波士顿龙虾", NameEN: "Boston Lobster", Emoji: "🦞", MinEnergy: 5},
-	{Level: 3, Name: "澳洲岩龙", NameEN: "Australian Rock Lobster", Emoji: "🦞", MinEnergy: 20},
-	{Level: 4, Name: "锦绣龙虾", NameEN: "Ornate Spiny Lobster", Emoji: "🦞", MinEnergy: 50},
-	{Level: 5, Name: "蓝龙虾", NameEN: "Blue Lobster", Emoji: "🦞", MinEnergy: 100},
-	{Level: 6, Name: "白化龙虾", NameEN: "Albino Lobster", Emoji: "🦞", MinEnergy: 500},
-	{Level: 7, Name: "幽灵龙虾", NameEN: "Ghost Lobster", Emoji: "🦞", MinEnergy: 2000},
+	// ── Common (farmed / invasive) ──
+	{Level: 1, Name: "克氏原螯虾", NameEN: "Red Swamp Crayfish", Emoji: "🦐", MinEnergy: 0},            // Procambarus clarkii — 全球入侵种，最常见的小龙虾
+	{Level: 2, Name: "大理石纹螯虾", NameEN: "Marbled Crayfish", Emoji: "🦐", MinEnergy: 2},             // Procambarus virginalis — 孤雌生殖，自我克隆
+	{Level: 3, Name: "信号小龙虾", NameEN: "Signal Crayfish", Emoji: "🦐", MinEnergy: 5},                // Pacifastacus leniusculus — 北美溪流常见种
+	{Level: 4, Name: "红螯螯虾", NameEN: "Red Claw Crayfish", Emoji: "🦐", MinEnergy: 10},               // Cherax quadricarinatus — 澳洲养殖种
+
+	// ── Commercial (restaurant-grade) ──
+	{Level: 5, Name: "波士顿龙虾", NameEN: "American Lobster", Emoji: "🦞", MinEnergy: 18},              // Homarus americanus — 经典餐厅龙虾
+	{Level: 6, Name: "欧洲龙虾", NameEN: "European Lobster", Emoji: "🦞", MinEnergy: 30},                // Homarus gammarus — 大西洋东岸，比波龙稀有
+	{Level: 7, Name: "加州刺龙虾", NameEN: "California Spiny Lobster", Emoji: "🦞", MinEnergy: 50},      // Panulirus interruptus — 太平洋东岸
+	{Level: 8, Name: "日本伊势龙虾", NameEN: "Japanese Spiny Lobster", Emoji: "🦞", MinEnergy: 80},      // Panulirus japonicus — 日本国宝级食材
+
+	// ── Prized (high-value / restricted range) ──
+	{Level: 9, Name: "锦绣龙虾", NameEN: "Ornate Spiny Lobster", Emoji: "🦞", MinEnergy: 120},           // Panulirus ornatus — 印太海域，花纹华丽
+	{Level: 10, Name: "澳洲岩龙虾", NameEN: "Southern Rock Lobster", Emoji: "🦞", MinEnergy: 180},       // Jasus edwardsii — 澳洲高端出口
+	{Level: 11, Name: "拖鞋龙虾", NameEN: "Mediterranean Slipper Lobster", Emoji: "🦞", MinEnergy: 260}, // Scyllarides latus — 地中海，外形奇特，种群下降
+	{Level: 12, Name: "吉普斯兰刺螯虾", NameEN: "Gippsland Spiny Crayfish", Emoji: "🦞", MinEnergy: 380}, // Euastacus kershawi — 澳洲维州特有种，分布极窄
+
+	// ── Rare & protected (endangered / limited habitat) ──
+	{Level: 13, Name: "默里河螯虾", NameEN: "Murray Crayfish", Emoji: "🦞", MinEnergy: 550},             // Euastacus armatus — 澳洲第二大淡水螯虾，易危种
+	{Level: 14, Name: "胡安费尔南德斯岩龙虾", NameEN: "Juan Fernández Rock Lobster", Emoji: "🦞", MinEnergy: 800}, // Jasus frontalis — 仅分布于智利胡安费尔南德斯群岛
+	{Level: 15, Name: "塔斯马尼亚巨螯虾", NameEN: "Tasmanian Giant Crayfish", Emoji: "🦞", MinEnergy: 1200},      // Astacopsis gouldi — 世界最大淡水无脊椎动物，濒危
+	{Level: 16, Name: "毛伊龙虾", NameEN: "Banded Spiny Lobster", Emoji: "🦞", MinEnergy: 1800},         // Panulirus marginatus — 夏威夷特有种，极度限域
+
+	// ── Legendary colour morphs (genetic mutations, 1-in-millions) ──
+	{Level: 17, Name: "蓝龙虾", NameEN: "Blue Lobster", Emoji: "💎", MinEnergy: 3000},                   // 基因突变，约 200 万分之一
+	{Level: 18, Name: "双色龙虾", NameEN: "Split-Colored Lobster", Emoji: "🌗", MinEnergy: 5000},        // 雌雄嵌合体 (Gynandromorph)，约 5000 万分之一
+	{Level: 19, Name: "白化龙虾", NameEN: "Albino Lobster", Emoji: "🤍", MinEnergy: 10000},              // 完全白化，约 1 亿分之一
+	{Level: 20, Name: "幽灵龙虾", NameEN: "Ghost Lobster", Emoji: "👻", MinEnergy: 20000},               // 通体半透明，有记录以来仅数例
 }
 
 // GetTier returns the lobster tier for a given energy balance.
