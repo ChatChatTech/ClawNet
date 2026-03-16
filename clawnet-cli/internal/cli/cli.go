@@ -1133,6 +1133,7 @@ type networkStats struct {
 	Topics    []string `json:"topics"`
 	Balance   int64    `json:"-"`
 	Frozen    int64    `json:"-"`
+	LocalValue string  `json:"-"`
 	Location  string   `json:"location"`
 	StartedAt int64    `json:"started_at"`
 	PeerID    string   `json:"peer_id"`
@@ -1145,10 +1146,11 @@ type networkStats struct {
 }
 
 type creditInfo struct {
-	Balance     int64 `json:"balance"`
-	Frozen      int64 `json:"frozen"`
-	TotalEarned int64 `json:"total_earned"`
-	TotalSpent  int64 `json:"total_spent"`
+	Balance     int64  `json:"balance"`
+	Frozen      int64  `json:"frozen"`
+	TotalEarned int64  `json:"total_earned"`
+	TotalSpent  int64  `json:"total_spent"`
+	LocalValue  string `json:"local_value"`
 }
 
 func fetchGeoPeers(base string) []peerGeoData {
@@ -1270,6 +1272,7 @@ func fetchNetworkStats(base string) networkStats {
 		resp.Body.Close()
 		stats.Balance = ci.Balance
 		stats.Frozen = ci.Frozen
+		stats.LocalValue = ci.LocalValue
 	}
 	return stats
 }
@@ -2089,7 +2092,11 @@ func renderSelfDetail(pInfos []peerInfo, stats networkStats, w int, now int64) [
 
 	lines = append(lines, "")
 	lines = append(lines, cTitle+" Network"+cReset)
-	lines = append(lines, cSelfInfo+" Shell:      "+cReset+fmt.Sprintf("%d (frozen: %d)", stats.Balance, stats.Frozen))
+	shellLine := fmt.Sprintf("%d (frozen: %d)", stats.Balance, stats.Frozen)
+	if stats.LocalValue != "" {
+		shellLine += "  ≈ " + stats.LocalValue
+	}
+	lines = append(lines, cSelfInfo+" Shell:      "+cReset+shellLine)
 	lines = append(lines, cSelfInfo+" Peers:      "+cReset+fmt.Sprintf("%d", stats.Peers))
 	lines = append(lines, cSelfInfo+" Topics:     "+cReset+fmt.Sprintf("%d", len(stats.Topics)))
 	if stats.StartedAt > 0 {
@@ -2271,11 +2278,15 @@ func renderClawNetStats(pInfos []peerInfo, stats networkStats, w int, now int64,
 
 	// Build stat labels + values (right side of banner)
 	type kv struct{ k, v string }
+	shellDisplay := fmt.Sprintf("%d (frozen: %d)", stats.Balance, stats.Frozen)
+	if stats.LocalValue != "" {
+		shellDisplay += "  ≈ " + stats.LocalValue
+	}
 	statsLines := []kv{
 		{"", cTitle + "ClawNet" + cReset + " " + cDim + "v" + daemon.Version + cReset},
 		{"", strings.Repeat("-", 30)},
 		{"Nodes", fmt.Sprintf("%d total (%d peers + self)", totalPeers+1, totalPeers)},
-		{"Shell", fmt.Sprintf("%d (frozen: %d)", stats.Balance, stats.Frozen)},
+		{"Shell", shellDisplay},
 		{"Topics", fmt.Sprintf("%d subscribed", len(stats.Topics))},
 	}
 	if stats.StartedAt > 0 {
@@ -2463,7 +2474,11 @@ func buildSelfLines(pInfos []peerInfo, stats networkStats, selfW, bottomH int) [
 		if selfPeer.lat != 0 || selfPeer.lon != 0 {
 			lines = append(lines, fmt.Sprintf("  Coord: %.2f, %.2f", selfPeer.lat, selfPeer.lon))
 		}
-		lines = append(lines, fmt.Sprintf("  Shell: %d (frozen: %d)", stats.Balance, stats.Frozen))
+		shellInfo := fmt.Sprintf("  Shell: %d (frozen: %d)", stats.Balance, stats.Frozen)
+		if stats.LocalValue != "" {
+			shellInfo += "  ≈ " + stats.LocalValue
+		}
+		lines = append(lines, shellInfo)
 		if stats.StartedAt > 0 {
 			upSec := now - stats.StartedAt
 			lines = append(lines, fmt.Sprintf("  Uptime: %s", formatDuration(upSec)))

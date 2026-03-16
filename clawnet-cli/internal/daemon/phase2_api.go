@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/p2p"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
 	"github.com/google/uuid"
 )
@@ -23,7 +22,6 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	// Credits
 	mux.HandleFunc("GET /api/credits/balance", d.handleCreditsBalance)
 	mux.HandleFunc("GET /api/credits/transactions", d.handleCreditsTransactions)
-	// mux.HandleFunc("POST /api/credits/transfer", d.handleCreditsTransfer) // hidden in v0.9.1
 
 	// Task Bazaar
 	mux.HandleFunc("POST /api/tasks", d.handleCreateTask)
@@ -101,8 +99,7 @@ func (d *Daemon) handleCreditsBalance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// Also include legacy fields for backward compat
-	writeJSON(w, map[string]any{
+	resp := map[string]any{
 		"peer_id":      profile.PeerID,
 		"balance":      profile.Energy,
 		"energy":       profile.Energy,
@@ -113,7 +110,15 @@ func (d *Daemon) handleCreditsBalance(w http.ResponseWriter, r *http.Request) {
 		"total_earned": profile.TotalEarned,
 		"total_spent":  profile.TotalSpent,
 		"updated_at":   profile.UpdatedAt,
-	})
+	}
+	// Add local currency exchange info based on node geo location
+	if c := d.selfCurrency(); c != nil {
+		resp["currency"] = c.Code
+		resp["currency_symbol"] = c.Symbol
+		resp["exchange_rate"] = c.Rate
+		resp["local_value"] = c.Format(profile.Energy)
+	}
+	writeJSON(w, resp)
 }
 
 func (d *Daemon) handleCreditsTransactions(w http.ResponseWriter, r *http.Request) {
@@ -129,56 +134,6 @@ func (d *Daemon) handleCreditsTransactions(w http.ResponseWriter, r *http.Reques
 		txns = []*store.CreditTransaction{}
 	}
 	writeJSON(w, txns)
-}
-
-func (d *Daemon) handleCreditsTransfer(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ToPeer string `json:"to_peer"`
-		Amount int64  `json:"amount"`
-		Reason string `json:"reason"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if body.ToPeer == "" || body.Amount <= 0 {
-		http.Error(w, `{"error":"to_peer and positive amount required"}`, http.StatusBadRequest)
-		return
-	}
-	if body.Reason == "" {
-		body.Reason = "transfer"
-	}
-	fromPeer := d.Node.PeerID().String()
-	if fromPeer == body.ToPeer {
-		http.Error(w, `{"error":"cannot transfer credits to yourself"}`, http.StatusBadRequest)
-		return
-	}
-	txnID := uuid.New().String()
-	if err := d.Store.TransferCredits(txnID, fromPeer, body.ToPeer, body.Amount, body.Reason, ""); err != nil {
-		if err == store.ErrInsufficientCredits {
-			http.Error(w, `{"error":"insufficient credits"}`, http.StatusBadRequest)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Sign and publish the transaction to DHT
-	priv := d.Node.Host.Peerstore().PrivKey(d.Node.Host.ID())
-	if priv != nil {
-		rec := p2p.TxnRecord{
-			TxnID:  txnID,
-			From:   fromPeer,
-			To:     body.ToPeer,
-			Amount: body.Amount,
-			Reason: body.Reason,
-		}
-		if data, err := p2p.SignTxn(priv, rec); err == nil {
-			go d.Node.PublishTxn(d.ctx, data, txnID)
-		}
-	}
-
-	writeJSON(w, map[string]string{"status": "transferred", "txn_id": txnID})
 }
 
 // ── Task handlers ──

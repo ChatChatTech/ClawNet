@@ -336,6 +336,22 @@ func (d *Daemon) geoDBType() string {
 	return "none"
 }
 
+// selfCurrency returns the CurrencyInfo for this node's geo location.
+func (d *Daemon) selfCurrency() *geo.CurrencyInfo {
+	if d.Geo == nil {
+		return geo.CurrencyForCountry("")
+	}
+	for _, a := range d.Node.Addrs() {
+		ip := geo.ExtractIP(a.String())
+		if ip != "" && geo.IsPublicIP(ip) {
+			if gi := d.Geo.Lookup(ip); gi != nil {
+				return geo.CurrencyForCountry(gi.Country)
+			}
+		}
+	}
+	return geo.CurrencyForCountry("")
+}
+
 func (d *Daemon) handleGetProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, d.Profile)
 }
