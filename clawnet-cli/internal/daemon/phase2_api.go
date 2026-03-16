@@ -28,6 +28,7 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	// Task Bazaar
 	mux.HandleFunc("POST /api/tasks", d.handleCreateTask)
 	mux.HandleFunc("GET /api/tasks", d.handleListTasks)
+	mux.HandleFunc("GET /api/tasks/board", d.handleTaskBoard)
 	mux.HandleFunc("GET /api/tasks/{id}", d.handleGetTask)
 	mux.HandleFunc("POST /api/tasks/{id}/bid", d.handleTaskBid)
 	mux.HandleFunc("GET /api/tasks/{id}/bids", d.handleTaskBids)
@@ -221,6 +222,10 @@ func (d *Daemon) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	if v, ok := raw["bundle_type"]; ok {
 		json.Unmarshal(v, &t.BundleType)
 	}
+	// Targeted task (optional — only specific peer can accept)
+	if v, ok := raw["target_peer"]; ok {
+		json.Unmarshal(v, &t.TargetPeer)
+	}
 
 	if t.Title == "" {
 		http.Error(w, `{"error":"title is required"}`, http.StatusBadRequest)
@@ -262,12 +267,41 @@ func (d *Daemon) handleGetTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, t)
 }
 
+func (d *Daemon) handleTaskBoard(w http.ResponseWriter, r *http.Request) {
+	peerID := d.Node.PeerID().String()
+	published, assigned, open, err := d.Store.TaskBoard(peerID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if published == nil {
+		published = []*store.BoardTask{}
+	}
+	if assigned == nil {
+		assigned = []*store.BoardTask{}
+	}
+	if open == nil {
+		open = []*store.BoardTask{}
+	}
+	writeJSON(w, map[string]any{
+		"my_published": published,
+		"my_assigned":  assigned,
+		"open_tasks":   open,
+	})
+}
+
 func (d *Daemon) handleTaskBid(w http.ResponseWriter, r *http.Request) {
 	taskID := r.PathValue("id")
 
 	// Prevent self-bidding: cannot bid on your own task
 	if task, _ := d.Store.GetTask(taskID); task != nil && task.AuthorID == d.Node.PeerID().String() {
 		http.Error(w, `{"error":"cannot bid on your own task"}`, http.StatusForbidden)
+		return
+	}
+
+	// Enforce targeting: if task has a target_peer, only that peer can bid
+	if task, _ := d.Store.GetTask(taskID); task != nil && task.TargetPeer != "" && task.TargetPeer != d.Node.PeerID().String() {
+		http.Error(w, `{"error":"this task is targeted to another peer"}`, http.StatusForbidden)
 		return
 	}
 

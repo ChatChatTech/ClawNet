@@ -48,7 +48,6 @@ clawnet-topo*.gif
 
 # Development docs (not for public repo)
 TODO.md
-SKILL.md
 bootstrap.json
 docs/phase0-report.md
 docs/archive-v1/

@@ -15,6 +15,7 @@ type Task struct {
 	Status      string  `json:"status"` // open, assigned, submitted, approved, rejected, cancelled
 	AssignedTo  string  `json:"assigned_to"`
 	Result      string  `json:"result"`
+	TargetPeer  string  `json:"target_peer,omitempty"` // if set, only this peer can bid/accept
 	CreatedAt   string  `json:"created_at"`
 	UpdatedAt   string  `json:"updated_at"`
 	// Nutshell integration (optional — populated when task originates from a .nut bundle)
@@ -38,19 +39,20 @@ type TaskBid struct {
 func (s *Store) InsertTask(t *Task) error {
 	_, err := s.DB.Exec(
 		`INSERT INTO tasks (id, author_id, author_name, title, description, tags, deadline, reward, status,
-		                     assigned_to, result, nutshell_hash, nutshell_id, bundle_type)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                     assigned_to, result, target_peer, nutshell_hash, nutshell_id, bundle_type)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   title = excluded.title, description = excluded.description,
 		   tags = excluded.tags, deadline = excluded.deadline,
 		   reward = excluded.reward, status = excluded.status,
 		   assigned_to = COALESCE(NULLIF(excluded.assigned_to, ''), tasks.assigned_to),
 		   result = COALESCE(NULLIF(excluded.result, ''), tasks.result),
+		   target_peer = excluded.target_peer,
 		   nutshell_hash = excluded.nutshell_hash, nutshell_id = excluded.nutshell_id,
 		   bundle_type = excluded.bundle_type,
 		   updated_at = datetime('now')`,
 		t.ID, t.AuthorID, t.AuthorName, t.Title, t.Description, t.Tags, t.Deadline, t.Reward, t.Status,
-		t.AssignedTo, t.Result, t.NutshellHash, t.NutshellID, t.BundleType,
+		t.AssignedTo, t.Result, t.TargetPeer, t.NutshellHash, t.NutshellID, t.BundleType,
 	)
 	return err
 }
@@ -59,13 +61,14 @@ func (s *Store) InsertTask(t *Task) error {
 func (s *Store) GetTask(id string) (*Task, error) {
 	row := s.DB.QueryRow(
 		`SELECT id, author_id, author_name, title, description, tags, deadline, reward, status,
-		        assigned_to, result, created_at, updated_at,
+		        assigned_to, result, target_peer, created_at, updated_at,
 		        nutshell_hash, nutshell_id, bundle_type
 		 FROM tasks WHERE id = ?`, id,
 	)
 	t := &Task{}
 	err := row.Scan(&t.ID, &t.AuthorID, &t.AuthorName, &t.Title, &t.Description,
-		&t.Tags, &t.Deadline, &t.Reward, &t.Status, &t.AssignedTo, &t.Result, &t.CreatedAt, &t.UpdatedAt,
+		&t.Tags, &t.Deadline, &t.Reward, &t.Status, &t.AssignedTo, &t.Result, &t.TargetPeer,
+		&t.CreatedAt, &t.UpdatedAt,
 		&t.NutshellHash, &t.NutshellID, &t.BundleType)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -81,7 +84,7 @@ func (s *Store) ListTasks(status string, limit, offset int) ([]*Task, error) {
 	if status != "" {
 		rows, err = s.DB.Query(
 			`SELECT t.id, t.author_id, t.author_name, t.title, t.description, t.tags, t.deadline, t.reward, t.status,
-			        t.assigned_to, t.result, t.created_at, t.updated_at,
+			        t.assigned_to, t.result, t.target_peer, t.created_at, t.updated_at,
 			        t.nutshell_hash, t.nutshell_id, t.bundle_type
 			 FROM tasks t
 			 LEFT JOIN credit_accounts c ON t.author_id = c.peer_id
@@ -92,7 +95,7 @@ func (s *Store) ListTasks(status string, limit, offset int) ([]*Task, error) {
 	} else {
 		rows, err = s.DB.Query(
 			`SELECT t.id, t.author_id, t.author_name, t.title, t.description, t.tags, t.deadline, t.reward, t.status,
-			        t.assigned_to, t.result, t.created_at, t.updated_at,
+			        t.assigned_to, t.result, t.target_peer, t.created_at, t.updated_at,
 			        t.nutshell_hash, t.nutshell_id, t.bundle_type
 			 FROM tasks t
 			 LEFT JOIN credit_accounts c ON t.author_id = c.peer_id
@@ -109,7 +112,8 @@ func (s *Store) ListTasks(status string, limit, offset int) ([]*Task, error) {
 	for rows.Next() {
 		t := &Task{}
 		if err := rows.Scan(&t.ID, &t.AuthorID, &t.AuthorName, &t.Title, &t.Description,
-			&t.Tags, &t.Deadline, &t.Reward, &t.Status, &t.AssignedTo, &t.Result, &t.CreatedAt, &t.UpdatedAt,
+			&t.Tags, &t.Deadline, &t.Reward, &t.Status, &t.AssignedTo, &t.Result, &t.TargetPeer,
+			&t.CreatedAt, &t.UpdatedAt,
 			&t.NutshellHash, &t.NutshellID, &t.BundleType); err != nil {
 			return nil, err
 		}
@@ -461,4 +465,81 @@ func (s *Store) HasTaskBundle(taskID string) (bool, error) {
 		`SELECT COUNT(*) FROM task_bundles WHERE task_id = ?`, taskID,
 	).Scan(&count)
 	return count > 0, err
+}
+
+// BoardTask is a summary task for the dashboard.
+type BoardTask struct {
+	ID         string  `json:"id"`
+	Title      string  `json:"title"`
+	Status     string  `json:"status"`
+	Reward     float64 `json:"reward"`
+	AuthorName string  `json:"author_name"`
+	AssignedTo string  `json:"assigned_to"`
+	TargetPeer string  `json:"target_peer,omitempty"`
+	BidCount   int     `json:"bid_count"`
+	CreatedAt  string  `json:"created_at"`
+}
+
+// TaskBoard returns a dashboard view: tasks the peer published, tasks assigned to peer, and open tasks.
+func (s *Store) TaskBoard(peerID string) (published, assigned, open []*BoardTask, err error) {
+	// My published tasks (all statuses)
+	rows, err := s.DB.Query(
+		`SELECT t.id, t.title, t.status, t.reward, t.author_name, t.assigned_to, t.target_peer, t.created_at,
+		        (SELECT COUNT(*) FROM task_bids b WHERE b.task_id = t.id) as bid_count
+		 FROM tasks t WHERE t.author_id = ?
+		 ORDER BY t.created_at DESC LIMIT 50`, peerID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		bt := &BoardTask{}
+		if err := rows.Scan(&bt.ID, &bt.Title, &bt.Status, &bt.Reward, &bt.AuthorName,
+			&bt.AssignedTo, &bt.TargetPeer, &bt.CreatedAt, &bt.BidCount); err != nil {
+			return nil, nil, nil, err
+		}
+		published = append(published, bt)
+	}
+
+	// My assigned tasks
+	rows2, err := s.DB.Query(
+		`SELECT t.id, t.title, t.status, t.reward, t.author_name, t.assigned_to, t.target_peer, t.created_at,
+		        (SELECT COUNT(*) FROM task_bids b WHERE b.task_id = t.id) as bid_count
+		 FROM tasks t WHERE t.assigned_to = ? AND t.status IN ('assigned','submitted')
+		 ORDER BY t.created_at DESC LIMIT 50`, peerID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	defer rows2.Close()
+	for rows2.Next() {
+		bt := &BoardTask{}
+		if err := rows2.Scan(&bt.ID, &bt.Title, &bt.Status, &bt.Reward, &bt.AuthorName,
+			&bt.AssignedTo, &bt.TargetPeer, &bt.CreatedAt, &bt.BidCount); err != nil {
+			return nil, nil, nil, err
+		}
+		assigned = append(assigned, bt)
+	}
+
+	// Open tasks (exclude my own, respect targeting)
+	rows3, err := s.DB.Query(
+		`SELECT t.id, t.title, t.status, t.reward, t.author_name, t.assigned_to, t.target_peer, t.created_at,
+		        (SELECT COUNT(*) FROM task_bids b WHERE b.task_id = t.id) as bid_count
+		 FROM tasks t
+		 WHERE t.status = 'open' AND t.author_id != ?
+		   AND (t.target_peer = '' OR t.target_peer = ?)
+		 ORDER BY t.reward DESC, t.created_at DESC LIMIT 50`, peerID, peerID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	defer rows3.Close()
+	for rows3.Next() {
+		bt := &BoardTask{}
+		if err := rows3.Scan(&bt.ID, &bt.Title, &bt.Status, &bt.Reward, &bt.AuthorName,
+			&bt.AssignedTo, &bt.TargetPeer, &bt.CreatedAt, &bt.BidCount); err != nil {
+			return nil, nil, nil, err
+		}
+		open = append(open, bt)
+	}
+
+	return published, assigned, open, nil
 }
