@@ -346,7 +346,7 @@ func printUsage() error {
 	fmt.Println(tidal+"  update   "+dim+"         "+rst + "Self-update to latest release")
 	fmt.Println(tidal+"  nutshell "+dim+"(nut)    "+rst + "Manage Nutshell CLI (install/upgrade/uninstall)")
 	fmt.Println(tidal+"  geo-upgrade"+dim+"       "+rst + "Download city-level geo DB (DB5.IPV6, ~34MB)")
-	fmt.Println(tidal+"  chat     "+dim+"         "+rst + "Random chat with an online peer")
+	fmt.Println(tidal+"  chat     "+dim+"         "+rst + "Async mail — inbox, threads, send (-i for real-time)")
 	fmt.Println(tidal+"  board    "+dim+"(b)      "+rst + "Task dashboard — your tasks, open tasks, assignments")
 	fmt.Println(tidal+"  molt     "+dim+"         "+rst + "Molt — enable full overlay mesh interop via IPv6")
 	fmt.Println(tidal+"  unmolt   "+dim+"         "+rst + "Unmolt — ClawNet-only IPv6 (block external mesh)")
@@ -380,7 +380,7 @@ var cmdHelps = map[string]string{
 	"update":   "clawnet update\n  Check for the latest release on GitHub and self-update the binary.",
 	"nutshell":    "clawnet nutshell <subcommand>\n  Manage the Nutshell CLI tool.\n  Subcommands: install, upgrade, uninstall, version, status\n  Alias: nut",
 	"geo-upgrade": "clawnet geo-upgrade\n  Download the city-level geo database (DB5.IPV6, ~34MB).\n  Enables precise city-level geolocation in topo view.\n  Default build embeds DB1.IPV6 (country-level, 2MB).\n  Downloads from the latest GitHub release.",
-	"chat":        "clawnet chat\n  Start a random chat with an online peer.\n  Matches you with a random connected node and opens an interactive conversation.",
+	"chat":        "clawnet chat                       — inbox (list conversations)\nclawnet chat <peer_id>             — read thread with a peer\nclawnet chat <peer_id> <message>   — send a message\nclawnet chat --interactive / -i    — real-time random chat (legacy)",
 	"board":       "clawnet board\n  Task dashboard — shows your published tasks, assignments, and open tasks.\n  Alias: b",
 	"molt":        "clawnet molt\n  Molt — shed shell, enable full overlay mesh interoperability.\n  Any overlay peer (including non-ClawNet clients) can communicate\n  with this node via IPv6 through the TUN device.",
 	"unmolt":      "clawnet unmolt\n  Unmolt — return to ClawNet-only mode.\n  Only known ClawNet peers can communicate via IPv6.\n  External mesh peers are blocked at the TUN filter.",
