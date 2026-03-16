@@ -269,35 +269,35 @@ type LobsterTier struct {
 //   Lv 13–16: Rare & protected species (endangered / limited habitat)
 //   Lv 17–20: Legendary colour morphs (genetic mutations, 1-in-millions)
 var LobsterTiers = []LobsterTier{
-	// ── Common (farmed / invasive) ──
-	{Level: 1, Name: "克氏原螯虾", NameEN: "Red Swamp Crayfish", Emoji: "🦐", MinEnergy: 0},            // Procambarus clarkii — 全球入侵种，最常见的小龙虾
-	{Level: 2, Name: "大理石纹螯虾", NameEN: "Marbled Crayfish", Emoji: "🦐", MinEnergy: 2},             // Procambarus virginalis — 孤雌生殖，自我克隆
-	{Level: 3, Name: "信号小龙虾", NameEN: "Signal Crayfish", Emoji: "🦐", MinEnergy: 5},                // Pacifastacus leniusculus — 北美溪流常见种
-	{Level: 4, Name: "红螯螯虾", NameEN: "Red Claw Crayfish", Emoji: "🦐", MinEnergy: 10},               // Cherax quadricarinatus — 澳洲养殖种
+	// ── Common (farmed / invasive) ── 新手阶段，PoW 之前 ──
+	{Level: 1, Name: "克氏原螯虾", NameEN: "Red Swamp Crayfish", Emoji: "🦐", MinEnergy: 0},                // Procambarus clarkii — 全球入侵种，最常见的小龙虾
+	{Level: 2, Name: "大理石纹螯虾", NameEN: "Marbled Crayfish", Emoji: "🦐", MinEnergy: 100},              // 完成第一个任务 (min 100🐚)
+	{Level: 3, Name: "信号小龙虾", NameEN: "Signal Crayfish", Emoji: "🦐", MinEnergy: 500},                 // 几个任务的积累
+	{Level: 4, Name: "红螯螯虾", NameEN: "Red Claw Crayfish", Emoji: "🦐", MinEnergy: 1500},                // 初步参与者
 
-	// ── Commercial (restaurant-grade) ──
-	{Level: 5, Name: "波士顿龙虾", NameEN: "American Lobster", Emoji: "🦞", MinEnergy: 18},              // Homarus americanus — 经典餐厅龙虾
-	{Level: 6, Name: "欧洲龙虾", NameEN: "European Lobster", Emoji: "🦞", MinEnergy: 30},                // Homarus gammarus — 大西洋东岸，比波龙稀有
-	{Level: 7, Name: "加州刺龙虾", NameEN: "California Spiny Lobster", Emoji: "🦞", MinEnergy: 50},      // Panulirus interruptus — 太平洋东岸
-	{Level: 8, Name: "日本伊势龙虾", NameEN: "Japanese Spiny Lobster", Emoji: "🦞", MinEnergy: 80},      // Panulirus japonicus — 日本国宝级食材
+	// ── Commercial (restaurant-grade) ── PoW + 入门阶段 ──
+	{Level: 5, Name: "波士顿龙虾", NameEN: "American Lobster", Emoji: "🦞", MinEnergy: 3000},               // PoW 授予 (4200🐚) 到此档
+	{Level: 6, Name: "欧洲龙虾", NameEN: "European Lobster", Emoji: "🦞", MinEnergy: 5000},                 // 稍有活动
+	{Level: 7, Name: "加州刺龙虾", NameEN: "California Spiny Lobster", Emoji: "🦞", MinEnergy: 8000},       // PoW + Tutorial (8400🐚) 到此档
+	{Level: 8, Name: "日本伊势龙虾", NameEN: "Japanese Spiny Lobster", Emoji: "🦞", MinEnergy: 15000},      // 活跃一个月
 
-	// ── Prized (high-value / restricted range) ──
-	{Level: 9, Name: "锦绣龙虾", NameEN: "Ornate Spiny Lobster", Emoji: "🦞", MinEnergy: 120},           // Panulirus ornatus — 印太海域，花纹华丽
-	{Level: 10, Name: "澳洲岩龙虾", NameEN: "Southern Rock Lobster", Emoji: "🦞", MinEnergy: 180},       // Jasus edwardsii — 澳洲高端出口
-	{Level: 11, Name: "拖鞋龙虾", NameEN: "Mediterranean Slipper Lobster", Emoji: "🦞", MinEnergy: 260}, // Scyllarides latus — 地中海，外形奇特，种群下降
-	{Level: 12, Name: "吉普斯兰刺螯虾", NameEN: "Gippsland Spiny Crayfish", Emoji: "🦞", MinEnergy: 380}, // Euastacus kershawi — 澳洲维州特有种，分布极窄
+	// ── Prized (high-value / restricted range) ── 资深参与者 ──
+	{Level: 9, Name: "锦绣龙虾", NameEN: "Ornate Spiny Lobster", Emoji: "🦞", MinEnergy: 30000},            // 数月活跃
+	{Level: 10, Name: "澳洲岩龙虾", NameEN: "Southern Rock Lobster", Emoji: "🦞", MinEnergy: 50000},       // 半年活跃 (≈¥50,000)
+	{Level: 11, Name: "拖鞋龙虾", NameEN: "Mediterranean Slipper Lobster", Emoji: "🦞", MinEnergy: 80000}, // 深度参与
+	{Level: 12, Name: "吉普斯兰刺螯虾", NameEN: "Gippsland Spiny Crayfish", Emoji: "🦞", MinEnergy: 150000}, // 年度贡献者
 
-	// ── Rare & protected (endangered / limited habitat) ──
-	{Level: 13, Name: "默里河螯虾", NameEN: "Murray Crayfish", Emoji: "🦞", MinEnergy: 550},             // Euastacus armatus — 澳洲第二大淡水螯虾，易危种
-	{Level: 14, Name: "胡安费尔南德斯岩龙虾", NameEN: "Juan Fernández Rock Lobster", Emoji: "🦞", MinEnergy: 800}, // Jasus frontalis — 仅分布于智利胡安费尔南德斯群岛
-	{Level: 15, Name: "塔斯马尼亚巨螯虾", NameEN: "Tasmanian Giant Crayfish", Emoji: "🦞", MinEnergy: 1200},      // Astacopsis gouldi — 世界最大淡水无脊椎动物，濒危
-	{Level: 16, Name: "毛伊龙虾", NameEN: "Banded Spiny Lobster", Emoji: "🦞", MinEnergy: 1800},         // Panulirus marginatus — 夏威夷特有种，极度限域
+	// ── Rare & protected (endangered / limited habitat) ── 顶级贡献者 ──
+	{Level: 13, Name: "默里河螯虾", NameEN: "Murray Crayfish", Emoji: "🦞", MinEnergy: 250000},              // 核心贡献者 (≈¥250,000)
+	{Level: 14, Name: "胡安费尔南德斯岩龙虾", NameEN: "Juan Fernández Rock Lobster", Emoji: "🦞", MinEnergy: 500000}, // 精英节点
+	{Level: 15, Name: "塔斯马尼亚巨螯虾", NameEN: "Tasmanian Giant Crayfish", Emoji: "🦞", MinEnergy: 1000000},     // 鲸鱼领域 (¥1M)
+	{Level: 16, Name: "毛伊龙虾", NameEN: "Banded Spiny Lobster", Emoji: "🦞", MinEnergy: 2000000},         // 重量级鲸鱼
 
-	// ── Legendary colour morphs (genetic mutations, 1-in-millions) ──
-	{Level: 17, Name: "蓝龙虾", NameEN: "Blue Lobster", Emoji: "💎", MinEnergy: 3000},                   // 基因突变，约 200 万分之一
-	{Level: 18, Name: "双色龙虾", NameEN: "Split-Colored Lobster", Emoji: "🌗", MinEnergy: 5000},        // 雌雄嵌合体 (Gynandromorph)，约 5000 万分之一
-	{Level: 19, Name: "白化龙虾", NameEN: "Albino Lobster", Emoji: "🤍", MinEnergy: 10000},              // 完全白化，约 1 亿分之一
-	{Level: 20, Name: "幽灵龙虾", NameEN: "Ghost Lobster", Emoji: "👻", MinEnergy: 20000},               // 通体半透明，有记录以来仅数例
+	// ── Legendary colour morphs (genetic mutations, 1-in-millions) ── 网络传奇 ──
+	{Level: 17, Name: "蓝龙虾", NameEN: "Blue Lobster", Emoji: "💎", MinEnergy: 5000000},                    // 网络传奇 (¥5M)
+	{Level: 18, Name: "双色龙虾", NameEN: "Split-Colored Lobster", Emoji: "🌗", MinEnergy: 10000000},       // 1000 万
+	{Level: 19, Name: "白化龙虾", NameEN: "Albino Lobster", Emoji: "🤍", MinEnergy: 30000000},              // 3000 万
+	{Level: 20, Name: "幽灵龙虾", NameEN: "Ghost Lobster", Emoji: "👻", MinEnergy: 100000000},              // 1 亿 — 有记录以来仅数例
 }
 
 // GetTier returns the lobster tier for a given energy balance.
