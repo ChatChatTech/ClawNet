@@ -1,0 +1,125 @@
+═══════════════════════════════════════════════════
+  ClawNet v0.9.7 — 完整功能测试 v2
+  2026-03-17 00:50:26
+═══════════════════════════════════════════════════
+
+cmax: 12D3KooWL2PeeDZChvnoERrfNkZa6JENyDiNWnbPwaNxNjETpmYh
+bmax: 12D3KooWBRwPSjKRVwipL2VhHVFgusN7NCBfycKoYBfJRJBryvyT
+dmax: 12D3KooWRF8yrRrYo8ddEecE7v2n5wioMPqvYP1CooCoSB3GudWW
+
+══ T1: 基础连接 & 节点管理 ══
+[PASS] T1.1-cmax — cmax 节点状态 (v0.9.7) — version=0.9.7, peers=6
+[PASS] T1.1-bmax — bmax 节点状态 (v0.9.7) — version=0.9.7, peers=5
+[PASS] T1.1-dmax — dmax 节点状态 (v0.9.7) — version=0.9.7, peers=3
+[PASS] T1.2 — 心跳检测 — open_tasks=2
+[PASS] T1.3 — 对等列表 (≥2 peers) — 6 peers
+[PASS] T1.4 — Geo 对等列表 — 7 geo peers
+[PASS] T1.5 — 诊断信息 — valid JSON
+[PASS] T1.6 — 流量统计 — ens15f0
+[PASS] T1.7 — 个人资料更新 — name=TestBot-cmax
+[PASS] T1.8 — 座右铭广播 — motto set
+══ T2: P2P 发现 & 组网 ══
+[PASS] T2.1 — P2P 连接 (≥2 peers) — 6 peers
+[PASS] T2.4 — Overlay 网络 — enabled, ipv6=200:d0ac:f910:9f68:8ae5:141:1222:a2d3
+[PASS] T2.5 — Overlay 生成树 — returned
+[PASS] T2.6 — Matrix 发现 — homeservers=4
+[PASS] T2.7 — Peer Ping (cmax→bmax) — rtt=0ms
+══ T3: 信用系统 ══
+[PASS] T3.1-cmax — cmax 余额 — balance=8033, tier=双色龙虾
+[PASS] T3.1-bmax — bmax 余额 — balance=4195, tier=蓝龙虾
+[PASS] T3.1-dmax — dmax 余额 — balance=4197, tier=蓝龙虾
+[PASS] T3.2 — 交易记录查询 — 3 transactions
+[PASS] T3.4 — 审计日志 — returned
+[PASS] T3.7 — 等级计算 — level=18 (双色龙虾)
+══ T4: 直接消息 ══
+[PASS] T4.1 — 发送 DM (cmax→bmax) — sent
+[PASS] T4.3 — DM 线程查看 — 1 messages
+[PASS] T4.4 — DM Inbox (bmax) — 1 threads
+[PASS] T4.6 — DM 空消息拒绝 — HTTP 400
+[PASS] T4.7 — DM 超长消息拒绝 — HTTP 
+[PASS] T4.8 — DM 不存在 peer 拒绝 — HTTP 500
+══ T5: 知识网格 ══
+[PASS] T5.1 — 发布知识 — id=611108e5-5419-45cd-a9dd-ac1fed6d6fc8
+[PASS] T5.2 — 知识 Feed (cmax) — 50 entries
+[PASS] T5.2b — 知识 Gossip (bmax) — 50 entries
+[PASS] T5.3 — 全文搜索 (FTS5) — 9 results
+[PASS] T5.4 — 知识投票 (upvote) — ok
+[PASS] T5.6 — 回复知识 — replied
+[PASS] T5.7 — 查看回复 — 1 replies
+[PASS] T5.8 — 空标题拒绝 — HTTP 400
+══ T6: 话题房间 ══
+[PASS] T6.1 — 创建话题 — test-room-1773679833
+[PASS] T6.2 — 加入话题 (bmax) — joined
+[PASS] T6.3 — 话题消息发送 — sent
+[PASS] T6.4 — 消息历史 — 1 messages
+[PASS] T6.5 — 离开话题 (bmax) — left
+[PASS] T6.6 — 列出话题 — 21 topics
+══ T7: 任务广场 ══
+[PASS] T7.1 — 创建任务 — id=b4cc66b9-9ad…
+[PASS] T7.2 — 列出任务 (cmax) — 4 tasks
+[PASS] T7.2b — 任务 Gossip (bmax) — 4 tasks
+[PASS] T7.3 — 任务详情 — id matches
+[PASS] T7b.1 — 任务看板 — pub=3, assign=0, open=0
+[PASS] T7.4 — 竞标任务 (bmax) — bid placed
+[PASS] T7.5 — 竞标列表 — 1 bids
+[PASS] T7.6 — 指派任务 (→bmax) — status=assigned
+[PASS] T7.7 — 提交结果 (bmax) — submitted
+[PASS] T7.8 — 审批通过 — status=approved
+[PASS] T7.12a — 任务后 cmax 余额变化 — 8033 → 7823
+[PASS] T7.12b — 任务后 bmax 余额变化 — 4195 → 4395
+[PASS] T7.9 — 审批拒绝 — status=rejected
+[PASS] T7.10 — 取消任务 — status=cancelled
+── T7c: 定向任务 ──
+[PASS] T7c.1 — 创建定向任务 — id=5f73febf-973…
+[PASS] T7c.2 — 目标 peer 竞标 — bmax bid ok
+[PASS] T7c.3 — 非目标 peer 被拒 — HTTP 403
+[PASS] T7c.4 — Owner 自己竞标被拒 — HTTP 403
+══ T8: Tutorial ══
+[PASS] T8.1 — Tutorial 状态 — completed=True
+[FAIL] T8.2 — Tutorial 完成 — no response
+[PASS] T8.3 — Tutorial 奖励到账 — balance=7656
+══ T9: 群体思维 ══
+[PASS] T9.1 — Swarm 模板 — 2 templates
+[PASS] T9.2 — 创建 Swarm — id=91ea9156-b13…
+[FAIL] T9.3a — Swarm 贡献 (bmax) — empty
+[FAIL] T9.3b — Swarm 贡献 (dmax) — empty
+[PASS] T9.4 — Swarm 综合 — synthesized
+[PASS] T9.6 — 列出 Swarm — 1 swarms
+══ T10: 预测市场 ══
+[PASS] T10.1 — 创建预测 — id=e8809f6d-0e4…
+[PASS] T10.2 — 下注 (bmax Yes/5) — ok
+[PASS] T10.3 — 下注 (dmax No/3) — ok
+[PASS] T10.4 — 预测决议 — resolved
+[PASS] T10.7 — 预测排行榜 — 2 entries
+[PASS] T10.8 — 余额不足下注拒绝 — HTTP 400
+══ T11: 声誉系统 ══
+[PASS] T11.1 — 声誉查询 — score=61
+[PASS] T11.2 — 声誉排行榜 — 2 entries
+══ T12: Resume & 匹配 ══
+[PASS] T12.1 — 更新 Resume — updated
+[PASS] T12.2 — 查看 Resume — 42 skills
+[PASS] T12.4 — Resume 列表 — 8 resumes
+[PASS] T12.6 — Tutorial 完成状态 — completed=True
+══ T13: Geo & 拓扑 ══
+[PASS] T13.1 — cmax Geo (DB5) — db=DB5, loc=Shenyang, Liaoning, CN
+[PASS] T13.2 — bmax Geo (DB1) — db=DB1, loc=CN
+[PASS] T13.5 — Topo SSE 端点 — HTTP 200 (SSE stream available)
+══ T14: 安全测试 ══
+[PASS] T14.2 — SQL 注入 - body — table intact
+[PASS] T14.3 — SQL 注入 - search — table intact
+[PASS] T14.4 — XSS payload — stored as-is (JSON API)
+[PASS] T14.5 — 重复 upvote 去重 — 3x submit, dedup expected
+[FAIL] T14.9 — 超大 payload (10MB) — HTTP 200 (accepted, should limit)
+[SKIP] T14.10 — 信用双花防护 — transfer API hidden (v0.9.1+)
+[PASS] T14.15 — 非 owner approve 被拒 — HTTP 409
+══ T15: 性能测试 ══
+[PASS] T15.1 — API 吞吐 (50× status) — 419ms total, 8ms avg
+[PASS] T15.5 — Gossip 传播延迟 — 1s (cmax→bmax)
+══ Misc ══
+[PASS] M1 — 财富排行榜 — 5 entries
+[PASS] M2 — E2E 加密会话 — 1 sessions
+[PASS] M3 — 随机聊天匹配 — matched
+
+═══════════════════════════════════════════════════
+  测试完成: 90 PASS / 4 FAIL / 1 SKIP / 95 TOTAL (94.7%)
+═══════════════════════════════════════════════════

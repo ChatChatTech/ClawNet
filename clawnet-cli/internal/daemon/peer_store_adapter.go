@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/matrix"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/overlay"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
 )
@@ -45,36 +44,4 @@ func (a *peerStoreAdapter) LoadOverlayPeers() (map[string]*overlay.PeerState, er
 		}
 	}
 	return peers, nil
-}
-
-// matrixTokenAdapter bridges store.Store to matrix.TokenStore interface.
-type matrixTokenAdapter struct {
-	db *store.Store
-}
-
-func (a *matrixTokenAdapter) SaveMatrixTokens(tokens map[string]matrix.TokenEntry) error {
-	st := make(map[string]store.MatrixToken, len(tokens))
-	for hs, te := range tokens {
-		st[hs] = store.MatrixToken{
-			Homeserver:  hs,
-			AccessToken: te.AccessToken,
-			UserID:      te.UserID,
-		}
-	}
-	return a.db.SaveMatrixTokens(st)
-}
-
-func (a *matrixTokenAdapter) LoadMatrixTokens() (map[string]matrix.TokenEntry, error) {
-	loaded, err := a.db.LoadMatrixTokens()
-	if err != nil {
-		return nil, err
-	}
-	tokens := make(map[string]matrix.TokenEntry, len(loaded))
-	for hs, mt := range loaded {
-		tokens[hs] = matrix.TokenEntry{
-			AccessToken: mt.AccessToken,
-			UserID:      mt.UserID,
-		}
-	}
-	return tokens, nil
 }

@@ -386,7 +386,7 @@ func printUsage() error {
 	fmt.Println()
 	if devBuild {
 		fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help  --dev-layers=layer1,layer2,..." + rst)
-		fmt.Println(dim + "  DEV LAYERS: stun, mdns, dht, bt-dht, bootstrap, relay, matrix, overlay, k8s" + rst)
+		fmt.Println(dim + "  DEV LAYERS: stun, mdns, dht, bt-dht, bootstrap, relay, overlay, k8s" + rst)
 	} else {
 		fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help" + rst)
 	}
@@ -618,13 +618,6 @@ func cmdDoctor() error {
 			sym = red + "✗" + rst
 		}
 		fmt.Printf("    BT DHT       %s %s\n", sym, bt)
-	}
-	matrixHS := int(getFloat(diag, "matrix_homeservers"))
-	matrixRooms := int(getFloat(diag, "matrix_rooms"))
-	if matrixHS > 0 {
-		fmt.Printf("    Matrix       %s✓%s %d homeserver(s), %d room(s)\n", green, rst, matrixHS, matrixRooms)
-	} else {
-		fmt.Printf("    Matrix       %s– not connected%s\n", dim, rst)
 	}
 	overlayPeers := int(getFloat(diag, "overlay_peers"))
 	if overlayPeers > 0 {

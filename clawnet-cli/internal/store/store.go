@@ -343,7 +343,7 @@ func (s *Store) migrate() error {
 			difficulty INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
 		)`,
-		// Matrix homeserver tokens (was matrix_tokens.json)
+		// Legacy table — kept for schema compatibility (no longer used)
 		`CREATE TABLE IF NOT EXISTS matrix_tokens (
 			homeserver   TEXT PRIMARY KEY,
 			access_token TEXT NOT NULL DEFAULT '',
@@ -389,6 +389,11 @@ func (s *Store) migrate() error {
 	// Migrate tasks CHECK constraint to allow 'settled' status.
 	if err := s.migrateTasksCheck(); err != nil {
 		return fmt.Errorf("tasks check migration: %w", err)
+	}
+
+	// Migrate tasks to add 'mode' and 'self_eval_score' columns.
+	if err := s.migrateTasksMode(); err != nil {
+		return fmt.Errorf("tasks mode migration: %w", err)
 	}
 
 	return nil
@@ -507,6 +512,28 @@ func (s *Store) migrateTasksCheck() error {
 	for _, stmt := range stmts {
 		if _, err := s.DB.Exec(stmt); err != nil {
 			return fmt.Errorf("exec tasks migration: %w", err)
+		}
+	}
+	return nil
+}
+
+// migrateTasksMode adds the 'mode' and 'self_eval_score' columns to the tasks table.
+// Existing tasks default to "auction" mode; new tasks created via API default to "simple".
+func (s *Store) migrateTasksMode() error {
+	// Probe: check if 'mode' column already exists
+	var dummy string
+	err := s.DB.QueryRow(`SELECT mode FROM tasks LIMIT 1`).Scan(&dummy)
+	if err == nil || err == sql.ErrNoRows {
+		return nil // column already exists
+	}
+	// Column doesn't exist — add it
+	stmts := []string{
+		`ALTER TABLE tasks ADD COLUMN mode TEXT NOT NULL DEFAULT 'auction'`,
+		`ALTER TABLE tasks ADD COLUMN self_eval_score REAL NOT NULL DEFAULT 0`,
+	}
+	for _, stmt := range stmts {
+		if _, err := s.DB.Exec(stmt); err != nil {
+			return fmt.Errorf("exec tasks mode migration: %w", err)
 		}
 	}
 	return nil

@@ -43,6 +43,13 @@ func NewPathBridge(h host.Host, t *Transport, throttle time.Duration) *PathBridg
 // It converts the discovered Ed25519 public key to a libp2p peer ID
 // and attempts a connection if not already connected.
 func (b *PathBridge) OnPathNotify(key ed25519.PublicKey) {
+	// Register as ClawPeer for TUN filtering and update keyStore for
+	// address resolution. This allows relay-only nodes to communicate.
+	if b.transport != nil {
+		fmt.Printf("[overlay/bridge] PathNotify: key=%x\n", key[:8])
+		b.transport.RegisterClawPeer(key)
+	}
+
 	if b.host == nil {
 		return
 	}

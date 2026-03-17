@@ -32,7 +32,6 @@ type Config struct {
 	WireGuard      WireGuardConfig `json:"wireguard"`
 	BTDHT          BTDHTConfig     `json:"bt_dht"`
 	HTTPBootstrap  bool            `json:"http_bootstrap"`
-	MatrixDiscovery MatrixDiscoveryConfig `json:"matrix_discovery"`
 	Overlay        OverlayConfig  `json:"overlay"`
 	DevLayers      []string       `json:"-"` // runtime-only: dev mode layer whitelist
 }
@@ -61,13 +60,6 @@ type WireGuardConfig struct {
 type BTDHTConfig struct {
 	Enabled    bool `json:"enabled"`
 	ListenPort int  `json:"listen_port"`
-}
-
-// MatrixDiscoveryConfig controls Matrix-based peer discovery.
-type MatrixDiscoveryConfig struct {
-	Enabled            bool     `json:"enabled"`
-	Homeservers        []string `json:"homeservers,omitempty"`
-	AnnounceIntervalSec int    `json:"announce_interval_sec,omitempty"`
 }
 
 // OverlayConfig controls the Ironwood overlay transport.
@@ -123,9 +115,6 @@ func DefaultConfig() *Config {
 			ListenPort: DefaultBTDHTPort,
 		},
 		HTTPBootstrap: true,
-		MatrixDiscovery: MatrixDiscoveryConfig{
-			Enabled: true,
-		},
 		Overlay: OverlayConfig{
 			Enabled: false,
 		},
@@ -221,9 +210,6 @@ func (c *Config) applyEnvOverrides() {
 	}
 	if v := os.Getenv("CLAWNET_FORCE_PRIVATE"); v == "1" || strings.EqualFold(v, "true") {
 		c.ForcePrivate = true
-	}
-	if v := os.Getenv("CLAWNET_MATRIX_ENABLED"); v == "0" || strings.EqualFold(v, "false") {
-		c.MatrixDiscovery.Enabled = false
 	}
 	if v := os.Getenv("CLAWNET_OVERLAY_ENABLED"); v == "1" || strings.EqualFold(v, "true") {
 		c.Overlay.Enabled = true

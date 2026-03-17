@@ -86,3 +86,46 @@ func FormatOverlaySubnet(publicKey ed25519.PublicKey) string {
 	copy(ip[:8], subnet[:])
 	return fmt.Sprintf("%s/64", ip.String())
 }
+
+// SubnetKeyTransform is the bloom filter key transform function matching
+// yggdrasil-go's address.SubnetForKey(key).GetKey(). It derives the /64 subnet
+// from an Ed25519 public key, then reverse-derives a partial key from the
+// subnet bytes — exactly as yggdrasil-go's Subnet.GetKey() does.
+// This MUST match the transform used by public Yggdrasil mesh peers.
+func SubnetKeyTransform(key ed25519.PublicKey) ed25519.PublicKey {
+	subnet := OverlaySubnet(key)
+	// Treat the 8-byte subnet as a 16-byte Address (zero-padded) and
+	// call the same reverse-derivation that yggdrasil uses in GetKey().
+	var addr [16]byte
+	copy(addr[:], subnet[:])
+	return PartialKeyForAddr(addr)
+}
+
+// PartialKeyForAddr reverse-derives a partial Ed25519 public key from an
+// overlay IPv6 address. Matches yggdrasil-go's Address.GetKey().
+// The recovered key preserves enough bits for bloom-filter lookup via
+// SubnetKeyTransform to work correctly.
+func PartialKeyForAddr(addr [16]byte) ed25519.PublicKey {
+	var key [ed25519.PublicKeySize]byte
+	ones := int(addr[1])
+	for idx := 0; idx < ones; idx++ {
+		key[idx/8] |= 0x80 >> byte(idx%8)
+	}
+	keyOffset := ones + 1
+	addrOffset := 8 + 8 // 8 bits prefix + 8 bits ones
+	for idx := addrOffset; idx < 8*len(addr); idx++ {
+		bits := addr[idx/8] & (0x80 >> byte(idx%8))
+		bits <<= byte(idx % 8)
+		keyIdx := keyOffset + (idx - addrOffset)
+		bits >>= byte(keyIdx % 8)
+		ki := keyIdx / 8
+		if ki >= len(key) {
+			break
+		}
+		key[ki] |= bits
+	}
+	for i := range key {
+		key[i] = ^key[i]
+	}
+	return ed25519.PublicKey(key[:])
+}

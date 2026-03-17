@@ -116,7 +116,7 @@ func Start(foreground bool, devLayers []string) error {
 		}
 	}
 
-	// Open local SQLite store (needed before node creation for Matrix token persistence)
+	// Open local SQLite store
 	db, err := store.Open(dataDir)
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
@@ -134,9 +134,6 @@ func Start(foreground bool, devLayers []string) error {
 	if err != nil {
 		return fmt.Errorf("start p2p node: %w", err)
 	}
-	// Inject DB-backed token store so matrix discovery persists tokens in SQLite
-	node.MatrixTokenStore = &matrixTokenAdapter{db: db}
-	node.StartMatrixDiscovery(ctx, priv)
 	defer node.Close()
 
 	// Print listen addresses
@@ -175,7 +172,6 @@ func Start(foreground bool, devLayers []string) error {
 		fmt.Printf("  Announce:        %v\n", cfg.AnnounceAddrs)
 	}
 	fmt.Printf("  Bootstrap:       %d peers configured\n", len(cfg.BootstrapPeers))
-	layerStatus("matrix", "Matrix", cfg.MatrixDiscovery.Enabled)
 	layerStatus("overlay", "Overlay", cfg.Overlay.Enabled)
 	layerStatus("stun", "STUN", true)
 
@@ -217,16 +213,9 @@ func Start(foreground bool, devLayers []string) error {
 		bridge := overlay.NewPathBridge(node.Host, nil, time.Second)
 		overlayOpts = append(overlayOpts, network.WithPathNotify(bridge.OnPathNotify))
 
-		// Reputation-weighted bloom transform: higher rep nodes get distinct bloom signatures
-		overlayOpts = append(overlayOpts, network.WithBloomTransform(
-			overlay.ReputationBloomTransform(func() float64 {
-				rec, err := db.GetReputation(node.PeerID().String())
-				if err != nil {
-					return 50.0 // default
-				}
-				return rec.Score
-			}),
-		))
+		// BloomTransform must be identical on every node in the network.
+		// Yggdrasil public peers use SubnetForKey().GetKey() — we must match.
+		overlayOpts = append(overlayOpts, network.WithBloomTransform(overlay.SubnetKeyTransform))
 
 		ot, err := overlay.NewTransport(priv, cfg.Overlay.ListenPort, cfg.Overlay.StaticPeers, cfg.Overlay.BootstrapPeers, overlayOpts...)
 		if err != nil {

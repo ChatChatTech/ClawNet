@@ -4,8 +4,8 @@ crawshaw.io/iox v0.0.0-20181124134642-c51c3df30797/go.mod h1:sXBiorCo8c46JlQV3oX
 crawshaw.io/sqlite v0.3.2/go.mod h1:igAO5JulrQ1DbdZdtVq48mnZUBAPOeFzer7VhDWNtW4=
 filippo.io/edwards25519 v1.0.0-rc.1 h1:m0VOOB23frXZvAOK44usCgLWvtsxIoMCTBGJZlpmGfU=
 filippo.io/edwards25519 v1.0.0-rc.1/go.mod h1:N1IkdkCkiLB6tki+MYJoSx2JTY9NUlxZE7eHn5EwJns=
-github.com/Arceliar/ironwood v0.0.0-20260117132459-7017dbc41d8e h1:s7MuhcZu2hNfVvYLT4cKnQt7pZ1+z6eL2E48YlaAqzY=
-github.com/Arceliar/ironwood v0.0.0-20260117132459-7017dbc41d8e/go.mod h1:SrrElc3FFMpYCODSr11jWbLFeOM8WsY+DbDY/l2AXF0=
+github.com/Arceliar/ironwood v0.0.0-20241213013129-743fe2fccbd3 h1:d8N0z+udAnbU5PdjpLSNPTWlqeU/nnYsQ42B6+879aw=
+github.com/Arceliar/ironwood v0.0.0-20241213013129-743fe2fccbd3/go.mod h1:SrrElc3FFMpYCODSr11jWbLFeOM8WsY+DbDY/l2AXF0=
 github.com/Arceliar/phony v0.0.0-20220903101357-530938a4b13d h1:UK9fsWbWqwIQkMCz1CP+v5pGbsGoWAw6g4AyvMpm1EM=
 github.com/Arceliar/phony v0.0.0-20220903101357-530938a4b13d/go.mod h1:BCnxhRf47C/dy/e/D2pmB8NkB3dQVIrkD98b220rx5Q=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=

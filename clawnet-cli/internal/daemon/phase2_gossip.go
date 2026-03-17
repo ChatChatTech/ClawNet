@@ -275,6 +275,9 @@ func (d *Daemon) handleTaskSub(ctx context.Context, sub *pubsub.Subscription) {
 		switch gm.Type {
 		case "task":
 			if gm.Task != nil && gossipAuthorOK(msg, gm.Task.AuthorID) {
+				if gm.Task.ID == TutorialTaskID {
+					continue // each node manages its own tutorial independently
+				}
 				d.Store.InsertTask(gm.Task)
 			}
 		case "bid":
@@ -285,7 +288,16 @@ func (d *Daemon) handleTaskSub(ctx context.Context, sub *pubsub.Subscription) {
 		case "update":
 			// Allow updates from the author (e.g. assignment) or the assignee (e.g. delivery)
 			if gm.Task != nil && (gossipAuthorOK(msg, gm.Task.AuthorID) || gossipAuthorOK(msg, gm.Task.AssignedTo)) {
+				if gm.Task.ID == TutorialTaskID {
+					continue // each node manages its own tutorial independently
+				}
 				d.Store.InsertTask(gm.Task)
+				// Auto-approve simple-mode tasks when this node is the author
+				if gm.Task.Mode == "simple" && gm.Task.Status == "submitted" &&
+					gm.Task.AuthorID == d.Node.PeerID().String() &&
+					gm.Task.AssignedTo != "" && gm.Task.AssignedTo != gm.Task.AuthorID {
+					go d.autoApproveSimpleTask(ctx, gm.Task.ID)
+				}
 			}
 		case "submission":
 			if gm.Submission != nil && gossipAuthorOK(msg, gm.Submission.WorkerID) {
@@ -293,6 +305,61 @@ func (d *Daemon) handleTaskSub(ctx context.Context, sub *pubsub.Subscription) {
 			}
 		}
 	}
+}
+
+// autoApproveSimpleTask approves a simple-mode task when the author's node receives
+// the worker's claim. Handles credit settlement and reputation updates.
+func (d *Daemon) autoApproveSimpleTask(ctx context.Context, taskID string) {
+	t, err := d.Store.GetTask(taskID)
+	if err != nil || t == nil {
+		return
+	}
+	if t.Mode != "simple" || t.Status != "submitted" {
+		return
+	}
+	if t.AuthorID != d.Node.PeerID().String() {
+		return
+	}
+
+	if err := d.Store.ApproveTask(taskID); err != nil {
+		fmt.Printf("[auto-approve] task %s: approve failed: %v\n", taskID[:8], err)
+		return
+	}
+
+	// Credit settlement: unfreeze author's reward and pay the worker
+	if t.Reward > 0 && t.AssignedTo != "" && t.AssignedTo != t.AuthorID {
+		d.Store.UnfreezeCredits(t.AuthorID, t.Reward)
+		txnID := uuid.New().String()
+		d.Store.TransferCredits(txnID, t.AuthorID, t.AssignedTo, t.Reward, "task_reward", taskID)
+		d.publishCreditAudit(ctx, txnID, taskID, t.AuthorID, t.AssignedTo, t.Reward, "task_reward")
+	}
+
+	// Reputation and prestige
+	if t.AssignedTo != "" && t.AssignedTo != t.AuthorID {
+		d.Store.RecalcReputation(t.AssignedTo)
+		authorProfile, _ := d.Store.GetEnergyProfile(t.AuthorID)
+		evaluatorPrestige := 0.0
+		if authorProfile != nil {
+			evaluatorPrestige = authorProfile.Prestige
+		}
+		d.Store.AddPrestige(t.AssignedTo, 10.0, evaluatorPrestige)
+	}
+
+	// Broadcast the approved task
+	if updated, _ := d.Store.GetTask(taskID); updated != nil {
+		d.publishTaskUpdate(ctx, updated)
+	}
+
+	short := taskID
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	workerShort := t.AssignedTo
+	if len(workerShort) > 12 {
+		workerShort = workerShort[:12]
+	}
+	fmt.Printf("[auto-approve] task %s → worker %s (%d Shell, score %.2f)\n",
+		short, workerShort, t.Reward, t.SelfEvalScore)
 }
 
 func (d *Daemon) handleSwarmSub(ctx context.Context, sub *pubsub.Subscription) {
@@ -338,6 +405,11 @@ func (d *Daemon) publishTask(ctx context.Context, t *store.Task) error {
 	t.Status = "open"
 	t.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	t.UpdatedAt = t.CreatedAt
+
+	// Default mode is "simple" if not specified
+	if t.Mode == "" {
+		t.Mode = "simple"
+	}
 
 	// Apply default reward if none specified
 	if t.Reward <= 0 {
