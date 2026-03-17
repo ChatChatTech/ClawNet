@@ -4,7 +4,7 @@ import "testing"
 
 func TestLayerEnabled_NoDevLayers(t *testing.T) {
 	cfg := &Config{}
-	for _, layer := range []string{"stun", "mdns", "dht", "bt-dht", "bootstrap", "relay", "matrix", "overlay", "k8s"} {
+	for _, layer := range []string{"stun", "mdns", "dht", "bt-dht", "bootstrap", "relay", "overlay", "k8s"} {
 		if !cfg.LayerEnabled(layer) {
 			t.Errorf("expected %q enabled when DevLayers is empty", layer)
 		}

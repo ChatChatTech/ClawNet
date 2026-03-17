@@ -212,7 +212,7 @@ make build-db11
 # 启用多层
 ./clawnet-dev start --dev-layers=dht,mdns,bootstrap
 
-# 可选层: stun, mdns, dht, bt-dht, bootstrap, relay, matrix, overlay, k8s
+# 可选层: stun, mdns, dht, bt-dht, bootstrap, relay, overlay, k8s
 ```
 
 ### 测试

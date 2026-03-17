@@ -104,8 +104,10 @@ func (d *Daemon) sendDM(ctx context.Context, peerIDStr, body string) error {
 	}
 	wmData, _ := json.Marshal(wm)
 
-	// Try libp2p first
-	libp2pErr := d.sendDMViaLibp2p(ctx, pid, wmData)
+	// Try libp2p first with a short timeout so overlay fallback triggers quickly
+	libp2pCtx, libp2pCancel := context.WithTimeout(ctx, 10*time.Second)
+	libp2pErr := d.sendDMViaLibp2p(libp2pCtx, pid, wmData)
+	libp2pCancel()
 	if libp2pErr == nil {
 		dm := &store.DirectMessage{
 			ID: wm.ID, PeerID: peerIDStr, Direction: "sent",
@@ -142,7 +144,6 @@ func (d *Daemon) sendDMViaLibp2p(ctx context.Context, pid peer.ID, wmData []byte
 	if d.Crypto != nil {
 		encrypted, err := d.Crypto.Encrypt(pid, wmData)
 		if err != nil {
-			fmt.Printf("[crypto] encrypt failed, sending plaintext: %v\n", err)
 			data = wmData
 		} else {
 			data = encrypted

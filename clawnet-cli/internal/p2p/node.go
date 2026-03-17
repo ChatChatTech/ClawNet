@@ -27,7 +27,6 @@ import (
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/bootstrap"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/btdht"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
-	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/matrix"
 )
 
 const (
@@ -47,8 +46,6 @@ type Node struct {
 	Config          *config.Config
 	BwCounter       *metrics.BandwidthCounter
 	BTDHT           *btdht.Discovery
-	MatrixDiscovery *matrix.Discovery
-	MatrixTokenStore matrix.TokenStore // injected by daemon for DB-backed token storage
 	cancelFunc      context.CancelFunc
 
 	mu sync.RWMutex
@@ -195,8 +192,6 @@ func NewNode(ctx context.Context, priv crypto.PrivKey, cfg *config.Config) (*Nod
 		go node.discoverPeers(ctx)
 	}
 
-	// Layer 6: Matrix Discovery — deferred to StartMatrixDiscovery() after token store injection
-
 	// Auto-join configured topics
 	for _, topic := range cfg.TopicsAutoJoin {
 		if _, err := node.JoinTopic(topic); err != nil {
@@ -205,31 +200,6 @@ func NewNode(ctx context.Context, priv crypto.PrivKey, cfg *config.Config) (*Nod
 	}
 
 	return node, nil
-}
-
-// StartMatrixDiscovery initializes and runs Matrix-based peer discovery.
-// Must be called after setting MatrixTokenStore if DB-backed token persistence is desired.
-func (n *Node) StartMatrixDiscovery(ctx context.Context, priv crypto.PrivKey) {
-	cfg := n.Config
-	if !cfg.MatrixDiscovery.Enabled || !cfg.LayerEnabled("matrix") {
-		return
-	}
-	interval := time.Duration(cfg.MatrixDiscovery.AnnounceIntervalSec) * time.Second
-	md, err := matrix.NewDiscovery(priv, cfg.MatrixDiscovery.Homeservers, interval, "clawnet", n.MatrixTokenStore, func() []multiaddr.Multiaddr {
-		return n.Host.Addrs()
-	})
-	if err != nil {
-		fmt.Printf("[matrix] discovery init failed: %v (non-fatal)\n", err)
-		return
-	}
-	n.MatrixDiscovery = md
-	go md.Run(ctx, func(pi peer.AddrInfo) {
-		cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-		if err := n.Host.Connect(cctx, pi); err == nil {
-			fmt.Printf("[matrix] discovered and connected to %s\n", pi.ID.String()[:16])
-		}
-	})
 }
 
 func (n *Node) setupDHT(ctx context.Context) error {

@@ -17,7 +17,6 @@ func migrateJSONFiles(dataDir string, db *store.Store) {
 	migrateProfile(dataDir, db)
 	migratePeers(dataDir, db)
 	migratePoW(dataDir, db)
-	migrateMatrixTokens(dataDir, db)
 }
 
 func migrateProfile(dataDir string, db *store.Store) {
@@ -100,31 +99,3 @@ func migratePoW(dataDir string, db *store.Store) {
 	fmt.Println("[migrate] pow_proof.json → DB ✓")
 }
 
-func migrateMatrixTokens(dataDir string, db *store.Store) {
-	path := filepath.Join(dataDir, "matrix_tokens.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return
-	}
-	var raw map[string]struct {
-		AccessToken string `json:"access_token"`
-		UserID      string `json:"user_id"`
-	}
-	if json.Unmarshal(data, &raw) != nil {
-		return
-	}
-	tokens := make(map[string]store.MatrixToken, len(raw))
-	for hs, entry := range raw {
-		tokens[hs] = store.MatrixToken{
-			Homeserver:  hs,
-			AccessToken: entry.AccessToken,
-			UserID:      entry.UserID,
-		}
-	}
-	if err := db.SaveMatrixTokens(tokens); err != nil {
-		fmt.Printf("[migrate] matrix_tokens.json → DB failed: %v\n", err)
-		return
-	}
-	os.Rename(path, path+".migrated")
-	fmt.Printf("[migrate] matrix_tokens.json → DB ✓ (%d tokens)\n", len(tokens))
-}

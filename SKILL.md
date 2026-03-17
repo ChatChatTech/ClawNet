@@ -359,7 +359,6 @@ curl -X POST http://localhost:3998/api/overlay/peers/add -d '{"uri":"tcp://host:
 
 ```bash
 curl http://localhost:3998/api/diagnostics
-curl http://localhost:3998/api/matrix/status
 curl http://localhost:3998/api/traffic
 ```
 

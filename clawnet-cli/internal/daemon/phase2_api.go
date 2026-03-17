@@ -35,6 +35,8 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/tasks/{id}/approve", d.handleTaskApprove)
 	mux.HandleFunc("POST /api/tasks/{id}/reject", d.handleTaskReject)
 	mux.HandleFunc("POST /api/tasks/{id}/cancel", d.handleTaskCancel)
+	// Simple mode: worker claims and submits in one step
+	mux.HandleFunc("POST /api/tasks/{id}/claim", d.handleTaskClaim)
 	// Auction House: multi-worker submission & settlement
 	mux.HandleFunc("POST /api/tasks/{id}/work", d.handleTaskSubmitWork)
 	mux.HandleFunc("GET /api/tasks/{id}/submissions", d.handleTaskSubmissions)
@@ -184,6 +186,13 @@ func (d *Daemon) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	// Targeted task (optional — only specific peer can accept)
 	if v, ok := raw["target_peer"]; ok {
 		json.Unmarshal(v, &t.TargetPeer)
+	}
+	// Task mode: "simple" (default, first-come-first-served) or "auction" (bid/assign flow)
+	if v, ok := raw["mode"]; ok {
+		json.Unmarshal(v, &t.Mode)
+	}
+	if t.Mode != "auction" {
+		t.Mode = "simple"
 	}
 
 	if t.Title == "" {
@@ -493,6 +502,68 @@ func (d *Daemon) handleTaskCancel(w http.ResponseWriter, r *http.Request) {
 		d.publishTaskUpdate(d.ctx, t)
 	}
 	writeJSON(w, map[string]string{"status": "cancelled"})
+}
+
+// handleTaskClaim lets a worker claim a simple-mode task in one step:
+// sets assigned_to + result + self_eval_score, transitions open → submitted.
+// The author's node will auto-approve via gossip when it sees the submission.
+func (d *Daemon) handleTaskClaim(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("id")
+	t, err := d.Store.GetTask(taskID)
+	if err != nil || t == nil {
+		http.Error(w, `{"error":"task not found"}`, http.StatusNotFound)
+		return
+	}
+	if t.Mode != "simple" {
+		http.Error(w, `{"error":"task is not in simple mode — use bid/assign flow"}`, http.StatusBadRequest)
+		return
+	}
+	if t.Status != "open" {
+		http.Error(w, `{"error":"task is not open"}`, http.StatusConflict)
+		return
+	}
+	peerID := d.Node.PeerID().String()
+	if t.AuthorID == peerID {
+		http.Error(w, `{"error":"cannot claim your own task"}`, http.StatusForbidden)
+		return
+	}
+	if t.TargetPeer != "" && t.TargetPeer != peerID {
+		http.Error(w, `{"error":"this task is targeted to another peer"}`, http.StatusForbidden)
+		return
+	}
+
+	var body struct {
+		Result        string  `json:"result"`
+		SelfEvalScore float64 `json:"self_eval_score"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.Result == "" {
+		http.Error(w, `{"error":"result is required"}`, http.StatusBadRequest)
+		return
+	}
+	if body.SelfEvalScore < 0.6 {
+		http.Error(w, `{"error":"self_eval_score must be >= 0.6"}`, http.StatusBadRequest)
+		return
+	}
+
+	if err := d.Store.ClaimTask(taskID, peerID, body.Result, body.SelfEvalScore); err != nil {
+		if errors.Is(err, store.ErrTaskStateConflict) {
+			http.Error(w, `{"error":"task already claimed or not in simple mode"}`, http.StatusConflict)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Publish the updated task via gossip so the author's node can auto-approve
+	t, _ = d.Store.GetTask(taskID)
+	if t != nil {
+		d.publishTaskUpdate(d.ctx, t)
+	}
+	writeJSON(w, map[string]string{"status": "submitted", "task_id": taskID})
 }
 
 // ── Auction House handlers (multi-worker submit / pick winner) ──

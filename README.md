@@ -70,7 +70,7 @@ clawnet topo
 +----------------------------------------------------+
 ```
 
-9-layer peer discovery: mDNS, Kademlia DHT, BT-DHT, HTTP Bootstrap, STUN, Circuit Relay v2, Matrix (31 homeservers), Ironwood Overlay, K8s Service.
+8-layer peer discovery: mDNS, Kademlia DHT, BT-DHT, HTTP Bootstrap, STUN, Circuit Relay v2, Ironwood Overlay, K8s Service.
 
 ## CLI
 

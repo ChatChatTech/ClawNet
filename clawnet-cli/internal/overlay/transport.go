@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/Arceliar/ironwood/encrypted"
 	"github.com/Arceliar/ironwood/network"
 	"github.com/Arceliar/ironwood/types"
+	bfilter "github.com/bits-and-blooms/bloom/v3"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
@@ -20,6 +22,9 @@ import (
 const (
 	// MsgTypeDM is the prefix byte for DM messages sent over the overlay.
 	MsgTypeDM byte = 0x01
+
+	// MsgTypePEX is the prefix byte for peer exchange messages.
+	MsgTypePEX byte = 0x02
 )
 
 // Transport manages an Ironwood overlay network with link-level connection management.
@@ -37,8 +42,8 @@ type Transport struct {
 	// PeerMgr for optional health monitoring and disk persistence
 	PeerMgr *PeerManager
 
-	// onMessage callback for received datagrams
-	onMessage func(from ed25519.PublicKey, data []byte)
+	// handlers maps message type prefix bytes to application callbacks
+	handlers map[byte]func(from ed25519.PublicKey, data []byte)
 
 	// TUN device and IPv6 bridge
 	tun     *TUNDevice
@@ -138,8 +143,17 @@ func (t *Transport) Run(ctx context.Context) {
 		_ = t.links.add(uri, linkTypePersistent) // errors non-fatal (duplicate, bad URI)
 	}
 
+	// Debug: log all bloom lookups
+	t.pc.PacketConn.Debug.SetDebugLookupLogger(func(info network.DebugLookupInfo) {
+		fmt.Printf("[bloom-lookup] target=%x path=%v from=%x\n",
+			info.Target[:8], info.Path, info.Key[:8])
+	})
+
 	// Start receive loop
 	go t.receiveLoop()
+
+	// Start peer exchange
+	t.startPEX()
 
 	select {
 	case <-ctx.Done():
@@ -152,6 +166,7 @@ func (t *Transport) Run(ctx context.Context) {
 // Routes IPv6 packets (first nibble = 6) to TUN if active,
 // all other messages to the application handler.
 func (t *Transport) receiveLoop() {
+	fmt.Println("[overlay] receiveLoop started")
 	buf := make([]byte, 65535)
 	for {
 		select {
@@ -161,9 +176,14 @@ func (t *Transport) receiveLoop() {
 		}
 
 		n, addr, err := t.pc.ReadFrom(buf)
-		if err != nil || n == 0 {
+		if err != nil {
+			fmt.Printf("[overlay] ReadFrom error: %v\n", err)
 			continue
 		}
+		if n == 0 {
+			continue
+		}
+		fmt.Printf("[overlay] ReadFrom: %d bytes, type=0x%02x\n", n, buf[0])
 
 		a, ok := addr.(types.Addr)
 		if !ok {
@@ -179,21 +199,198 @@ func (t *Transport) receiveLoop() {
 			continue
 		}
 
-		// Application messages → handler
-		if t.onMessage != nil {
+		// Application messages → dispatch by message type prefix
+		if n > 0 {
 			data := make([]byte, n)
 			copy(data, buf[:n])
-			t.onMessage(from, data)
+			if h, ok := t.handlers[data[0]]; ok {
+				h(from, data)
+			}
 		}
 	}
 }
 
-// SetMessageHandler sets the callback for received messages.
+// SetMessageHandler sets a handler for a specific message type prefix byte.
+// Use MsgTypeDM, MsgTypePEX, etc. as the msgType.
 func (t *Transport) SetMessageHandler(fn func(from ed25519.PublicKey, data []byte)) {
-	t.onMessage = fn
+	// Legacy API: registers as a catch-all for MsgTypeDM
+	t.RegisterHandler(MsgTypeDM, fn)
+}
+
+// RegisterHandler registers a handler for a specific message type byte.
+func (t *Transport) RegisterHandler(msgType byte, fn func(from ed25519.PublicKey, data []byte)) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.handlers == nil {
+		t.handlers = make(map[byte]func(from ed25519.PublicKey, data []byte))
+	}
+	t.handlers[msgType] = fn
+}
+
+// ── Peer Exchange (PEX) ──
+
+// pexMessage is the JSON payload for peer exchange.
+type pexMessage struct {
+	Peers []string `json:"peers"` // list of peer URIs (e.g. "tcp://host:port")
+}
+
+// startPEX registers the PEX handler and starts the periodic exchange loop.
+func (t *Transport) startPEX() {
+	t.RegisterHandler(MsgTypePEX, t.handlePEX)
+	go t.pexLoop()
+}
+
+// pexLoop periodically sends our connected peer URIs to all direct neighbors.
+func (t *Transport) pexLoop() {
+	// Wait a bit after startup for links to establish
+	select {
+	case <-t.ctx.Done():
+		return
+	case <-time.After(30 * time.Second):
+	}
+
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	t.sendPEX()
+	for {
+		select {
+		case <-t.ctx.Done():
+			return
+		case <-ticker.C:
+			t.sendPEX()
+		}
+	}
+}
+
+// sendPEX broadcasts our known alive peer URIs to all directly connected overlay peers.
+func (t *Transport) sendPEX() {
+	peers := t.links.GetPeers()
+
+	// Collect URIs of peers that are Up and have a known URI
+	var uris []string
+	for _, p := range peers {
+		if p.Up && p.URI != "" {
+			uris = append(uris, p.URI)
+		}
+	}
+	if len(uris) == 0 {
+		fmt.Println("[pex] send: no alive peers with URIs, skipping")
+		return
+	}
+
+	// Cap at 20 peers per PEX message
+	if len(uris) > 20 {
+		uris = uris[:20]
+	}
+
+	msg := pexMessage{Peers: uris}
+	body, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+	payload := make([]byte, 1+len(body))
+	payload[0] = MsgTypePEX
+	copy(payload[1:], body)
+
+	// Pre-warm paths via SendLookup for direct link peers
+	for _, p := range peers {
+		if !p.Up || p.Key == "" {
+			continue
+		}
+		keyBytes, err := hex.DecodeString(p.Key)
+		if err != nil || len(keyBytes) != ed25519.PublicKeySize {
+			continue
+		}
+		t.pc.PacketConn.SendLookup(ed25519.PublicKey(keyBytes))
+	}
+
+	// Brief delay to allow path establishment
+	time.Sleep(3 * time.Second)
+
+	// Report session state before sending
+	sessions := t.pc.Debug.GetSessions()
+	fmt.Printf("[pex] sessions before send: %d\n", len(sessions))
+
+	// Send to each directly connected peer via raw WriteTo
+	sent := 0
+	for _, p := range peers {
+		if !p.Up || p.Key == "" {
+			continue
+		}
+		keyBytes, err := hex.DecodeString(p.Key)
+		if err != nil || len(keyBytes) != ed25519.PublicKeySize {
+			continue
+		}
+		if _, err := t.pc.WriteTo(payload, types.Addr(keyBytes)); err == nil {
+			sent++
+		}
+	}
+	fmt.Printf("[pex] sent %d URIs to %d/%d peers\n", len(uris), sent, len(peers))
+
+	// Check sessions after sending
+	time.Sleep(5 * time.Second)
+	sessions = t.pc.Debug.GetSessions()
+	fmt.Printf("[pex] sessions after send: %d\n", len(sessions))
+	for _, s := range sessions {
+		fmt.Printf("[pex] session: %s\n", hex.EncodeToString(s.Key[:8]))
+	}
+}
+
+// handlePEX processes an incoming peer exchange message.
+func (t *Transport) handlePEX(from ed25519.PublicKey, data []byte) {
+	if len(data) < 2 {
+		return
+	}
+
+	var msg pexMessage
+	if err := json.Unmarshal(data[1:], &msg); err != nil {
+		fmt.Printf("[pex] recv: unmarshal error from %s: %v\n", hex.EncodeToString(from[:8]), err)
+		return
+	}
+	fmt.Printf("[pex] recv: %d URIs from %s\n", len(msg.Peers), hex.EncodeToString(from[:8]))
+
+	// Collect currently known URIs to avoid duplicates
+	known := make(map[string]struct{})
+	for _, p := range t.links.GetPeers() {
+		if p.URI != "" {
+			known[p.URI] = struct{}{}
+		}
+	}
+	for _, uri := range t.staticPeers {
+		known[uri] = struct{}{}
+	}
+
+	added := 0
+	for _, uri := range msg.Peers {
+		// Basic validation
+		if !strings.HasPrefix(uri, "tcp://") && !strings.HasPrefix(uri, "tls://") {
+			continue
+		}
+		if _, exists := known[uri]; exists {
+			continue
+		}
+		// Add as ephemeral link (no auto-reconnect beyond initial attempt)
+		if err := t.links.add(uri, linkTypeEphemeral); err == nil {
+			added++
+			// Track in PeerManager if available
+			if t.PeerMgr != nil {
+				t.PeerMgr.AddDiscoveredPeer(uri)
+			}
+		}
+		if added >= 5 {
+			break // Don't add too many at once
+		}
+	}
+
+	if added > 0 {
+		fmt.Printf("[pex] added %d peers from %s\n", added, hex.EncodeToString(from[:8]))
+	}
 }
 
 // Send sends a datagram to a peer via the Ironwood overlay.
+// Retries a few times with short delays because Ironwood's tree routing
+// may drop the first packet while establishing a path to the destination.
 func (t *Transport) Send(ctx context.Context, pid peer.ID, data []byte) error {
 	pub, err := pid.ExtractPublicKey()
 	if err != nil {
@@ -207,8 +404,33 @@ func (t *Transport) Send(ctx context.Context, pid peer.ID, data []byte) error {
 		return fmt.Errorf("unexpected public key size: %d", len(rawPub))
 	}
 	destAddr := types.Addr(rawPub)
-	_, err = t.pc.WriteTo(data, destAddr)
-	return err
+
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(500 * time.Millisecond):
+			}
+		}
+		_, err := t.pc.WriteTo(data, destAddr)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if attempt == 0 {
+			// Give the first packet time to trigger session setup
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(200 * time.Millisecond):
+			}
+			continue // always send at least twice
+		}
+		return nil
+	}
+	return lastErr
 }
 
 // AddPeer adds a persistent peer by URI. The link auto-reconnects with backoff.
@@ -376,7 +598,10 @@ func (t *Transport) RegisterClawPeer(key ed25519.PublicKey) {
 	t.clawPeers.Store(k, struct{}{})
 	// Also populate keyStore for TUN address resolution
 	if t.ipv6rwc != nil {
-		t.ipv6rwc.keyStore.update(key)
+		buffered, _ := t.ipv6rwc.keyStore.update(key)
+		if buffered != nil {
+			_, _ = t.pc.WriteTo(buffered, types.Addr(key))
+		}
 	}
 }
 
@@ -498,4 +723,23 @@ func (t *Transport) GetDebugInfo() *DebugInfo {
 	}
 
 	return info
+}
+
+// TestBloomFor checks if a specific destination key can be found in any peer's
+// received bloom filter. Returns matching peer keys (for diagnostics).
+func (t *Transport) TestBloomFor(destKey ed25519.PublicKey) map[string]bool {
+	if t == nil || t.pc == nil {
+		return nil
+	}
+	xform := SubnetKeyTransform(destKey)
+	blooms := t.pc.PacketConn.Debug.GetBlooms()
+	result := make(map[string]bool, len(blooms))
+	for _, b := range blooms {
+		// Reconstruct bloom filter from raw uint64 data (m=8192, k=8)
+		f := bfilter.From(b.Recv[:], 8)
+		match := f.Test(xform)
+		key := hex.EncodeToString(b.Key[:8])
+		result[key] = match
+	}
+	return result
 }

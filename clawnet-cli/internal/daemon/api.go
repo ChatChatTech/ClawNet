@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -67,13 +68,11 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 	// Diagnostics
 	mux.HandleFunc("GET /api/diagnostics", d.handleDiagnostics)
 
-	// Matrix Discovery status
-	mux.HandleFunc("GET /api/matrix/status", d.handleMatrixStatus)
-
 	// Overlay (Ironwood) transport status
 	mux.HandleFunc("GET /api/overlay/status", d.handleOverlayStatus)
 	mux.HandleFunc("GET /api/overlay/tree", d.handleOverlayTree)
 	mux.HandleFunc("GET /api/overlay/peers/geo", d.handleOverlayPeersGeo)
+	mux.HandleFunc("GET /api/overlay/bloom-test", d.handleOverlayBloomTest)
 
 	// Overlay peer management
 	mux.HandleFunc("GET /api/overlay/peers", d.handleOverlayPeersList)
@@ -945,14 +944,6 @@ func (d *Daemon) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 		"bandwidth_out":     bwStats.TotalOut,
 	}
 
-	// Matrix Discovery status
-	if d.Node.MatrixDiscovery != nil {
-		diag["matrix_homeservers"] = d.Node.MatrixDiscovery.ConnectedHomeservers()
-		diag["matrix_rooms"] = d.Node.MatrixDiscovery.JoinedRooms()
-	} else {
-		diag["matrix_homeservers"] = 0
-	}
-
 	// Overlay (Ironwood) transport status
 	if d.Overlay != nil {
 		diag["overlay_peers"] = d.Overlay.PeerCount()
@@ -968,21 +959,6 @@ func (d *Daemon) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, diag)
-}
-
-// handleMatrixStatus returns Matrix Discovery status.
-func (d *Daemon) handleMatrixStatus(w http.ResponseWriter, r *http.Request) {
-	status := map[string]any{
-		"enabled": d.Config.MatrixDiscovery.Enabled,
-	}
-	if d.Node.MatrixDiscovery != nil {
-		status["connected_homeservers"] = d.Node.MatrixDiscovery.ConnectedHomeservers()
-		status["joined_rooms"] = d.Node.MatrixDiscovery.JoinedRooms()
-	} else {
-		status["connected_homeservers"] = 0
-		status["joined_rooms"] = 0
-	}
-	writeJSON(w, status)
 }
 
 // handleOverlayStatus returns Ironwood overlay transport status with full debug info.
@@ -1024,6 +1000,38 @@ func (d *Daemon) handleOverlayTree(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{
 		"self": debugInfo.Self,
 		"tree": debugInfo.Tree,
+	})
+}
+
+// handleOverlayBloomTest tests if a destination key is present in any peer's
+// bloom filter. GET /api/overlay/bloom-test?key=<hex-encoded-ed25519-pubkey>
+func (d *Daemon) handleOverlayBloomTest(w http.ResponseWriter, r *http.Request) {
+	if d.Overlay == nil {
+		writeJSON(w, map[string]any{"error": "overlay not enabled"})
+		return
+	}
+	keyHex := r.URL.Query().Get("key")
+	if keyHex == "" {
+		writeJSON(w, map[string]any{"error": "missing key parameter"})
+		return
+	}
+	keyBytes, err := hex.DecodeString(keyHex)
+	if err != nil || len(keyBytes) != 32 {
+		writeJSON(w, map[string]any{"error": "invalid key (need 64 hex chars)"})
+		return
+	}
+	result := d.Overlay.TestBloomFor(keyBytes)
+	matches := []string{}
+	for k, v := range result {
+		if v {
+			matches = append(matches, k)
+		}
+	}
+	writeJSON(w, map[string]any{
+		"target_key":     keyHex[:16],
+		"bloom_matches":  matches,
+		"total_peers":    len(result),
+		"matching_peers": len(matches),
 	})
 }
 

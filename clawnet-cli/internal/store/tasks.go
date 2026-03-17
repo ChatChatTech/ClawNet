@@ -65,6 +65,8 @@ type Task struct {
 	TargetPeer  string  `json:"target_peer,omitempty"` // if set, only this peer can bid/accept
 	BidCloseAt  string  `json:"bid_close_at,omitempty"`  // deterministic bid close time
 	WorkDeadline string `json:"work_deadline,omitempty"` // submission deadline
+	Mode         string `json:"mode"`                    // "simple" (default) or "auction"
+	SelfEvalScore float64 `json:"self_eval_score,omitempty"` // worker's self-evaluation score (0.0-1.0)
 	CreatedAt   string  `json:"created_at"`
 	UpdatedAt   string  `json:"updated_at"`
 	// Nutshell integration (optional — populated when task originates from a .nut bundle)
@@ -89,8 +91,8 @@ func (s *Store) InsertTask(t *Task) error {
 	_, err := s.DB.Exec(
 		`INSERT INTO tasks (id, author_id, author_name, title, description, tags, deadline, reward, status,
 		                     assigned_to, result, target_peer, nutshell_hash, nutshell_id, bundle_type,
-		                     bid_close_at, work_deadline)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                     bid_close_at, work_deadline, mode, self_eval_score)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   title = excluded.title, description = excluded.description,
 		   tags = excluded.tags, deadline = excluded.deadline,
@@ -102,10 +104,12 @@ func (s *Store) InsertTask(t *Task) error {
 		   bundle_type = excluded.bundle_type,
 		   bid_close_at = COALESCE(NULLIF(excluded.bid_close_at, ''), tasks.bid_close_at),
 		   work_deadline = COALESCE(NULLIF(excluded.work_deadline, ''), tasks.work_deadline),
+		   mode = COALESCE(NULLIF(excluded.mode, ''), tasks.mode),
+		   self_eval_score = CASE WHEN excluded.self_eval_score > 0 THEN excluded.self_eval_score ELSE tasks.self_eval_score END,
 		   updated_at = datetime('now')`,
 		t.ID, t.AuthorID, t.AuthorName, t.Title, t.Description, t.Tags, t.Deadline, t.Reward, t.Status,
 		t.AssignedTo, t.Result, t.TargetPeer, t.NutshellHash, t.NutshellID, t.BundleType,
-		t.BidCloseAt, t.WorkDeadline,
+		t.BidCloseAt, t.WorkDeadline, t.Mode, t.SelfEvalScore,
 	)
 	return err
 }
@@ -115,14 +119,16 @@ func (s *Store) GetTask(id string) (*Task, error) {
 	row := s.DB.QueryRow(
 		`SELECT id, author_id, author_name, title, description, tags, deadline, reward, status,
 		        assigned_to, result, target_peer, created_at, updated_at,
-		        nutshell_hash, nutshell_id, bundle_type, bid_close_at, work_deadline
+		        nutshell_hash, nutshell_id, bundle_type, bid_close_at, work_deadline,
+		        mode, self_eval_score
 		 FROM tasks WHERE id = ?`, id,
 	)
 	t := &Task{}
 	err := row.Scan(&t.ID, &t.AuthorID, &t.AuthorName, &t.Title, &t.Description,
 		&t.Tags, &t.Deadline, &t.Reward, &t.Status, &t.AssignedTo, &t.Result, &t.TargetPeer,
 		&t.CreatedAt, &t.UpdatedAt,
-		&t.NutshellHash, &t.NutshellID, &t.BundleType, &t.BidCloseAt, &t.WorkDeadline)
+		&t.NutshellHash, &t.NutshellID, &t.BundleType, &t.BidCloseAt, &t.WorkDeadline,
+		&t.Mode, &t.SelfEvalScore)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -138,7 +144,8 @@ func (s *Store) ListTasks(status string, limit, offset int) ([]*Task, error) {
 		rows, err = s.DB.Query(
 			`SELECT t.id, t.author_id, t.author_name, t.title, t.description, t.tags, t.deadline, t.reward, t.status,
 			        t.assigned_to, t.result, t.target_peer, t.created_at, t.updated_at,
-			        t.nutshell_hash, t.nutshell_id, t.bundle_type, t.bid_close_at, t.work_deadline
+			        t.nutshell_hash, t.nutshell_id, t.bundle_type, t.bid_close_at, t.work_deadline,
+			        t.mode, t.self_eval_score
 			 FROM tasks t
 			 LEFT JOIN credit_accounts c ON t.author_id = c.peer_id
 			 WHERE t.status = ?
@@ -149,7 +156,8 @@ func (s *Store) ListTasks(status string, limit, offset int) ([]*Task, error) {
 		rows, err = s.DB.Query(
 			`SELECT t.id, t.author_id, t.author_name, t.title, t.description, t.tags, t.deadline, t.reward, t.status,
 			        t.assigned_to, t.result, t.target_peer, t.created_at, t.updated_at,
-			        t.nutshell_hash, t.nutshell_id, t.bundle_type, t.bid_close_at, t.work_deadline
+			        t.nutshell_hash, t.nutshell_id, t.bundle_type, t.bid_close_at, t.work_deadline,
+			        t.mode, t.self_eval_score
 			 FROM tasks t
 			 LEFT JOIN credit_accounts c ON t.author_id = c.peer_id
 			 ORDER BY COALESCE(c.balance, 0) DESC, t.created_at DESC LIMIT ? OFFSET ?`,
@@ -167,7 +175,8 @@ func (s *Store) ListTasks(status string, limit, offset int) ([]*Task, error) {
 		if err := rows.Scan(&t.ID, &t.AuthorID, &t.AuthorName, &t.Title, &t.Description,
 			&t.Tags, &t.Deadline, &t.Reward, &t.Status, &t.AssignedTo, &t.Result, &t.TargetPeer,
 			&t.CreatedAt, &t.UpdatedAt,
-			&t.NutshellHash, &t.NutshellID, &t.BundleType, &t.BidCloseAt, &t.WorkDeadline); err != nil {
+			&t.NutshellHash, &t.NutshellID, &t.BundleType, &t.BidCloseAt, &t.WorkDeadline,
+			&t.Mode, &t.SelfEvalScore); err != nil {
 			return nil, err
 		}
 		tasks = append(tasks, t)
@@ -249,6 +258,25 @@ func (s *Store) ApproveTask(taskID string) error {
 		`UPDATE tasks SET status = 'approved', updated_at = datetime('now')
 		 WHERE id = ? AND status = 'submitted'`,
 		taskID,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrTaskStateConflict
+	}
+	return nil
+}
+
+// ClaimTask allows a worker to claim a simple-mode task: atomically sets
+// assigned_to, result, self_eval_score and transitions status from open to submitted.
+func (s *Store) ClaimTask(taskID, workerID, result string, selfEval float64) error {
+	res, err := s.DB.Exec(
+		`UPDATE tasks SET status = 'submitted', assigned_to = ?, result = ?,
+		        self_eval_score = ?, updated_at = datetime('now')
+		 WHERE id = ? AND mode = 'simple' AND status = 'open'`,
+		workerID, result, selfEval, taskID,
 	)
 	if err != nil {
 		return err
@@ -411,7 +439,7 @@ func (s *Store) ListSettleableTasks() ([]*Task, error) {
 		`SELECT t.id, t.author_id, t.author_name, t.title, t.description, t.tags, t.deadline,
 		        t.reward, t.status, t.assigned_to, t.result, t.target_peer,
 		        t.created_at, t.updated_at, t.nutshell_hash, t.nutshell_id, t.bundle_type,
-		        t.bid_close_at, t.work_deadline
+		        t.bid_close_at, t.work_deadline, t.mode, t.self_eval_score
 		 FROM tasks t
 		 WHERE t.status = 'open' AND t.work_deadline != '' AND t.work_deadline <= ?
 		   AND EXISTS (SELECT 1 FROM task_submissions s WHERE s.task_id = t.id)`,
@@ -427,7 +455,8 @@ func (s *Store) ListSettleableTasks() ([]*Task, error) {
 		if err := rows.Scan(&t.ID, &t.AuthorID, &t.AuthorName, &t.Title, &t.Description,
 			&t.Tags, &t.Deadline, &t.Reward, &t.Status, &t.AssignedTo, &t.Result, &t.TargetPeer,
 			&t.CreatedAt, &t.UpdatedAt,
-			&t.NutshellHash, &t.NutshellID, &t.BundleType, &t.BidCloseAt, &t.WorkDeadline); err != nil {
+			&t.NutshellHash, &t.NutshellID, &t.BundleType, &t.BidCloseAt, &t.WorkDeadline,
+			&t.Mode, &t.SelfEvalScore); err != nil {
 			return nil, err
 		}
 		tasks = append(tasks, t)

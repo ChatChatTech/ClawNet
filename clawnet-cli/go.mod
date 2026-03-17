@@ -3,7 +3,7 @@ module github.com/ChatChatTech/ClawNet/clawnet-cli
 go 1.26.1
 
 require (
-	github.com/Arceliar/ironwood v0.0.0-20260117132459-7017dbc41d8e
+	github.com/Arceliar/ironwood v0.0.0-20241213013129-743fe2fccbd3
 	github.com/anacrolix/dht/v2 v2.23.0
 	github.com/google/uuid v1.6.0
 	github.com/ip2location/ip2location-go/v9 v9.8.0

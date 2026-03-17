@@ -138,10 +138,7 @@ func (d *Daemon) handleTutorialComplete(w http.ResponseWriter, r *http.Request) 
 	txnID := fmt.Sprintf("tutorial-reward-%s", selfID)
 	d.Store.AddCredits(txnID, selfID, TutorialReward, "tutorial_onboarding_reward")
 
-	// 5. Broadcast task update to network
-	go d.publishTaskUpdate(d.ctx, task)
-
-	// 6. Broadcast resume to network
+	// 5. Broadcast resume to network (skip task update — tutorial is per-node)
 	go d.publishResume(d.ctx, resume)
 
 	writeJSON(w, map[string]any{
