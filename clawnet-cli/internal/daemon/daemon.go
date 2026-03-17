@@ -26,7 +26,7 @@ import (
 	"github.com/Arceliar/ironwood/network"
 )
 
-const Version = "0.9.8"
+const Version = "0.9.9"
 
 // Daemon holds the running node and all services.
 type Daemon struct {
@@ -42,12 +42,15 @@ type Daemon struct {
 	ctx        context.Context
 	PeerMottos      sync.Map // peer_id -> string
 	PeerAgentNames  sync.Map // peer_id -> string
+	PeerRoles       sync.Map // peer_id -> string
 	hotPeers        sync.Map // peer_id -> hotPeer (for reconnect)
 	rxBytes    atomic.Uint64
 	txBytes    atomic.Uint64
 	nicName    string
 	hbState    *heartbeatState
 	geoCache   *overlayGeoCache
+	EchoBuf    *echoBuf // ring buffer for gossip echoes
+	coins      *coinState
 }
 
 // getTrafficBytes returns cumulative rx/tx counters from libp2p bandwidth.
@@ -202,6 +205,7 @@ func Start(foreground bool, devLayers []string) error {
 		DataDir:   dataDir,
 		StartedAt: time.Now(),
 		ctx:       ctx,
+		coins:     newCoinState(),
 	}
 
 	// Start overlay transport (if enabled)
@@ -263,6 +267,9 @@ func Start(foreground bool, devLayers []string) error {
 	// Start Phase 2 gossip handlers (tasks, swarm)
 	d.startPhase2Gossip(ctx)
 
+	// Start action echo gossip (lightweight event broadcasting)
+	d.startEchoHandler(ctx)
+
 	// Start prediction settlement loop (auto-settle expired pending predictions)
 	go d.predictionSettlementLoop(ctx)
 
@@ -316,8 +323,14 @@ func Start(foreground bool, devLayers []string) error {
 	// Publish profile to DHT and start periodic refresh
 	d.startProfilePublisher(ctx)
 
+	// Start intuitive design event pruning + achievement check loop
+	d.startEventPruneLoop(ctx)
+
 	// Start heartbeat (periodic inbox/feed/tasks check)
 	d.startHeartbeat(ctx)
+
+	// Start offline operation retry loop
+	d.startOfflineSyncLoop(ctx)
 
 	fmt.Printf("API server: http://localhost:%d\n", cfg.WebUIPort)
 	fmt.Printf("Node is running. Press Ctrl+C to stop.\n")
@@ -348,6 +361,7 @@ func loadProfile(db *store.Store) *config.Profile {
 		Capabilities: pe.Capabilities,
 		Bio:          pe.Bio,
 		Motto:        pe.Motto,
+		Role:         pe.Role,
 		GeoCity:      pe.GeoCity,
 		GeoLatFuzzy:  pe.GeoLatFuzzy,
 		GeoLonFuzzy:  pe.GeoLonFuzzy,
@@ -365,6 +379,7 @@ func (d *Daemon) saveProfile() error {
 		Capabilities: p.Capabilities,
 		Bio:          p.Bio,
 		Motto:        p.Motto,
+		Role:         p.Role,
 		GeoCity:      p.GeoCity,
 		GeoLatFuzzy:  p.GeoLatFuzzy,
 		GeoLonFuzzy:  p.GeoLonFuzzy,

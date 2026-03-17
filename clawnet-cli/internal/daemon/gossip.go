@@ -47,6 +47,7 @@ type GossipMottoMsg struct {
 	PeerID    string `json:"peer_id"`
 	AgentName string `json:"agent_name"`
 	Motto     string `json:"motto"`
+	Role      string `json:"role,omitempty"`
 }
 
 // startGossipHandlers subscribes to knowledge and topic GossipSub topics and processes incoming messages.
@@ -125,6 +126,9 @@ func (d *Daemon) handleMottoSub(ctx context.Context, sub *pubsub.Subscription) {
 			if gm.AgentName != "" {
 				d.PeerAgentNames.Store(gm.PeerID, gm.AgentName)
 			}
+			if gm.Role != "" {
+				d.PeerRoles.Store(gm.PeerID, gm.Role)
+			}
 		}
 	}
 }
@@ -135,6 +139,7 @@ func (d *Daemon) publishMotto(ctx context.Context, motto string) {
 		PeerID:    d.Node.PeerID().String(),
 		AgentName: d.Profile.AgentName,
 		Motto:     motto,
+		Role:      d.Profile.Role,
 	}
 	data, err := json.Marshal(gm)
 	if err != nil {

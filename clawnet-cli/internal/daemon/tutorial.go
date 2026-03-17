@@ -141,6 +141,11 @@ func (d *Daemon) handleTutorialComplete(w http.ResponseWriter, r *http.Request) 
 	// 5. Broadcast resume to network (skip task update — tutorial is per-node)
 	go d.publishResume(d.ctx, resume)
 
+	// 6. Complete "tutorial" milestone (milestone reward is already covered by TutorialReward)
+	d.Store.CompleteMilestone(selfID, "tutorial")
+	d.RecordEvent("tutorial_completed", selfID, TutorialTaskID, "Completed onboarding tutorial")
+	d.CheckAchievements()
+
 	writeJSON(w, map[string]any{
 		"status":       "completed",
 		"task_id":      TutorialTaskID,

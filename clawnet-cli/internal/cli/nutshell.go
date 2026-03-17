@@ -91,6 +91,22 @@ func nutshellInstall(upgrade bool) error {
 		return fmt.Errorf("fetch nutshell release: %w", err)
 	}
 
+	// Compare versions before downloading
+	if upgrade {
+		if installed := installedNutshellVersion(); installed != "" {
+			latestVer := strings.TrimPrefix(release.TagName, "v")
+			if installed == latestVer {
+				fmt.Printf("Nutshell is already up to date (v%s).\n", installed)
+				return nil
+			}
+			fmt.Printf("Upgrading Nutshell v%s → %s...\n", installed, release.TagName)
+		} else {
+			fmt.Printf("Upgrading Nutshell to %s...\n", release.TagName)
+		}
+	} else {
+		fmt.Printf("Installing Nutshell %s...\n", release.TagName)
+	}
+
 	// Find matching asset
 	osName := runtime.GOOS
 	archName := runtime.GOARCH
@@ -114,12 +130,6 @@ func nutshellInstall(upgrade bool) error {
 	}
 	if asset == nil {
 		return fmt.Errorf("no nutshell binary found for %s/%s in release %s", osName, archName, release.TagName)
-	}
-
-	if upgrade {
-		fmt.Printf("Upgrading Nutshell to %s...\n", release.TagName)
-	} else {
-		fmt.Printf("Installing Nutshell %s...\n", release.TagName)
 	}
 	fmt.Printf("Downloading %s (%d bytes)...\n", asset.Name, asset.Size)
 
@@ -157,6 +167,23 @@ func nutshellUninstall() error {
 	}
 	fmt.Println("Nutshell has been uninstalled.")
 	return nil
+}
+
+// installedNutshellVersion returns the installed nutshell version string (e.g. "0.2.4"), or empty if unavailable.
+func installedNutshellVersion() string {
+	path, err := exec.LookPath(nutshellBinName)
+	if err != nil {
+		return ""
+	}
+	out, err := exec.Command(path, "version").CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	// Expected output: "nutshell v0.2.4\n"
+	s := strings.TrimSpace(string(out))
+	s = strings.TrimPrefix(s, "nutshell v")
+	s = strings.TrimPrefix(s, "nutshell ")
+	return s
 }
 
 // nutshellVersion prints the installed nutshell version.

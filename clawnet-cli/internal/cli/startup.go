@@ -266,7 +266,8 @@ func needsDaemon(cmd string) bool {
 	switch cmd {
 	case "i", "init", "v", "version", "help", "update",
 		"export", "import", "nuke", "nut", "nutshell",
-		"geo-upgrade", "up", "start", "log", "logs":
+		"geo-upgrade", "up", "start", "restart", "log", "logs",
+		"skill":
 		return false
 	default:
 		return true
