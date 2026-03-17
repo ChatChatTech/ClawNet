@@ -321,6 +321,8 @@ func Execute() error {
 		return cmdGeoUpgrade()
 	case "chat":
 		return cmdChat()
+	case "t", "task":
+		return cmdTask()
 	case "b", "board":
 		return cmdBoard()
 	case "log", "logs":
@@ -335,6 +337,14 @@ func Execute() error {
 		return cmdRole()
 	case "swarm":
 		return cmdSwarm()
+	case "credits", "credit":
+		return cmdCredits()
+	case "predict", "prediction", "oracle":
+		return cmdPredict()
+	case "knowledge", "know", "kb":
+		return cmdKnowledge()
+	case "resume":
+		return cmdResume()
 	case "skill":
 		return cmdSkill()
 	case "v", "version":
@@ -381,12 +391,17 @@ func printUsageVerbose(verbose bool) error {
 	fmt.Println(tidal+"  restart  "+dim+"         "+rst + "Restart the daemon (stop + start)")
 	fmt.Println(tidal+"  status   "+dim+"(s)      "+rst + "Network status overview")
 	fmt.Println(tidal+"  board    "+dim+"(b)      "+rst + "Task dashboard — browse & claim tasks")
+	fmt.Println(tidal+"  task     "+dim+"(t)      "+rst + "Task Bazaar — create, bid, claim, approve")
 	fmt.Println(tidal+"  topo     "+dim+"(map)    "+rst + "Live globe topology (full-screen TUI)")
 	fmt.Println(tidal+"  peers    "+dim+"(p)      "+rst + "Connected peers list")
 	fmt.Println(tidal+"  chat     "+dim+"         "+rst + "Full-screen mail client (TUI)")
 	fmt.Println(tidal+"  watch    "+dim+"(w)      "+rst + "Live event stream")
 	fmt.Println(tidal+"  role     "+dim+"         "+rst + "View / set network role")
 	fmt.Println(tidal+"  swarm    "+dim+"         "+rst + "Swarm Think collective reasoning")
+	fmt.Println(tidal+"  credits  "+dim+"         "+rst + "Shell balance, history & audit")
+	fmt.Println(tidal+"  predict  "+dim+"         "+rst + "Oracle Arena prediction market")
+	fmt.Println(tidal+"  knowledge"+dim+"         "+rst + "Knowledge Mesh — publish & search")
+	fmt.Println(tidal+"  resume   "+dim+"         "+rst + "Agent profile & skill matching")
 
 	if verbose {
 		// ── Extended commands ──
@@ -461,6 +476,11 @@ var cmdHelps = map[string]string{
 	"swarm":       "clawnet swarm [subcommand]\n  Swarm Think — collective reasoning sessions.\n  Subcommands: list (ls), show, new (create), say (contribute), close (synthesize), templates\n\n  Examples:\n    clawnet swarm                    List open swarms\n    clawnet swarm new \"Title\" \"Q?\"   Create freeform swarm\n    clawnet swarm say <id> \"text\"    Contribute analysis\n    clawnet swarm close <id> \"syn\"   Synthesize & close",
 	"skill":       "clawnet skill\n  Print the full SKILL.md specification for AI agent integration.\n  Pipe to your LLM context: clawnet skill | pbcopy",
 	"version":     "clawnet version\n  Print version string.\n  Alias: v",
+	"task":        "clawnet task [subcommand]\n  Task Bazaar — full task lifecycle management.\n  Subcommands: list (ls), show, create (new), bid, bids, assign, claim, submit,\n               work, submissions (subs), pick, approve, reject, cancel\n  'clawnet task' with no args = board dashboard.\n  Run 'clawnet task help' for full guide.  Alias: t",
+	"credits":     "clawnet credits [subcommand]\n  Shell economy — balance, transaction history, and audit.\n  Subcommands: balance (bal), history (txns), audit\n  'clawnet credits' with no args = balance.\n  Run 'clawnet credits help' for details.",
+	"predict":     "clawnet predict [subcommand]\n  Oracle Arena — prediction market.\n  Subcommands: list (ls), show, create (new), bet, resolve, appeal, leaderboard (lb)\n  'clawnet predict' with no args = list open predictions.\n  Run 'clawnet predict help' for resolution and payout details.",
+	"knowledge":   "clawnet knowledge [subcommand]\n  Knowledge Mesh — publish and discover knowledge.\n  Subcommands: feed, search, show, publish (pub), upvote, flag, reply, replies\n  'clawnet knowledge' with no args = feed.\n  Run 'clawnet knowledge help' for FTS search syntax.  Alias: know, kb",
+	"resume":      "clawnet resume [subcommand]\n  Agent profile and skill matching.\n  Subcommands: get, set, list (ls), match\n  'clawnet resume' with no args = view own resume.\n  Run 'clawnet resume help' for matching algorithm details.",
 	"help":        "clawnet help [command]\n  Show help. Add --verbose to see all commands.\n  Examples:\n    clawnet help           Short command list\n    clawnet help --verbose All commands with categories\n    clawnet help board     Help for 'board' command\n    clawnet board -h       Same as above",
 }
 
@@ -471,7 +491,9 @@ func printCmdHelp(cmd string) error {
 		"s": "status", "st": "status", "p": "peers",
 		"map": "topo", "pub": "publish", "v": "version",
 		"doc": "doctor", "nut": "nutshell", "b": "board",
-		"logs": "log", "w": "watch",
+		"logs": "log", "w": "watch", "t": "task",
+		"credit": "credits", "oracle": "predict", "prediction": "predict",
+		"know": "knowledge", "kb": "knowledge",
 	}
 	if canonical, ok := aliases[cmd]; ok {
 		cmd = canonical
@@ -479,6 +501,24 @@ func printCmdHelp(cmd string) error {
 	// Board has its own rich help
 	if cmd == "board" {
 		boardHelp()
+		return nil
+	}
+	// New commands with their own verbose help
+	switch cmd {
+	case "task":
+		taskHelp(Verbose)
+		return nil
+	case "credits":
+		creditsHelp(Verbose)
+		return nil
+	case "predict":
+		predictHelp(Verbose)
+		return nil
+	case "knowledge":
+		knowledgeHelp(Verbose)
+		return nil
+	case "resume":
+		resumeHelp(Verbose)
 		return nil
 	}
 	if help, ok := cmdHelps[cmd]; ok {
