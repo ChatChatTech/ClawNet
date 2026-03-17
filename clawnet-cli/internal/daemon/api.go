@@ -58,6 +58,7 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 	mux.HandleFunc("POST /api/dm/send", d.handleDMSend)
 	mux.HandleFunc("GET /api/dm/inbox", d.handleDMInbox)
 	mux.HandleFunc("GET /api/dm/thread/{peer_id}", d.handleDMThread)
+	mux.HandleFunc("DELETE /api/dm/thread/{peer_id}", d.handleDMDelete)
 
 	// Chat — random peer matching
 	mux.HandleFunc("GET /api/chat/match", d.handleChatMatch)
@@ -90,6 +91,9 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 
 	// Phase 2 routes
 	d.RegisterPhase2Routes(mux)
+
+	// Intuitive design routes (milestones, achievements, watch, endpoints)
+	d.RegisterIntuitiveRoutes(mux)
 
 	// Wrap mux with localhost access guard.
 	handler := localhostGuard(mux)
@@ -147,6 +151,28 @@ func (d *Daemon) handleStatus(w http.ResponseWriter, r *http.Request) {
 		status["overlay_molted"] = d.Overlay.IsMolted()
 		status["overlay_tun"] = d.Overlay.TUNName()
 	}
+
+	// P0: Next Action hint
+	status["next_action"] = d.nextAction()
+	// P1: Milestone progress
+	status["milestones"] = d.milestoneProgress()
+	// P1: Achievement count
+	peerID := d.Node.PeerID().String()
+	status["achievements"] = d.Store.AchievementCount(peerID)
+	// P2: Pending offline operations
+	if pc := d.Store.PendingOpCount(); pc > 0 {
+		status["pending_ops"] = pc
+	}
+	// P3: Role template
+	if d.Profile.Role != "" {
+		status["role"] = d.Profile.Role
+	}
+	// P3: Credit balance for zero-balance hints
+	peerIDStr := d.Node.PeerID().String()
+	if ep, err := d.Store.GetEnergyProfile(peerIDStr); err == nil && ep != nil {
+		status["balance"] = ep.Energy
+	}
+
 	writeJSON(w, status)
 }
 
@@ -197,6 +223,7 @@ func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
 		PeerID         string       `json:"peer_id"`
 		ShortID        string       `json:"short_id"`
 		AgentName      string       `json:"agent_name,omitempty"`
+		Role           string       `json:"role,omitempty"`
 		Location       string       `json:"location"`
 		Geo            *geo.GeoInfo `json:"geo,omitempty"`
 		IsSelf         bool         `json:"is_self"`
@@ -215,6 +242,7 @@ func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
 	if d.Profile != nil {
 		selfEntry.Motto = d.Profile.Motto
 		selfEntry.AgentName = d.Profile.AgentName
+		selfEntry.Role = d.Profile.Role
 	}
 	if rep, err := d.Store.GetReputation(selfID); err == nil {
 		selfEntry.Reputation = rep.Score
@@ -268,6 +296,9 @@ func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
 		}
 		if n, ok := d.PeerAgentNames.Load(pid); ok {
 			entry.AgentName = n.(string)
+		}
+		if rl, ok := d.PeerRoles.Load(pid); ok {
+			entry.Role = rl.(string)
 		}
 		if bw := d.Node.BwCounter; bw != nil {
 			st := bw.GetBandwidthForPeer(p)
@@ -457,7 +488,18 @@ func (d *Daemon) handlePostKnowledge(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, entry)
+
+	// Milestone: first knowledge entry
+	reward := d.CheckAndCompleteMilestone("first_knowledge")
+	d.RecordEvent("knowledge_published", d.Node.PeerID().String(), entry.ID, entry.Title)
+	d.BroadcastEcho(r.Context(), "knowledge_published", entry.Title, fmt.Sprintf("%s shared: %s", d.Profile.AgentName, entry.Title))
+
+	resp := map[string]any{"entry": entry}
+	if reward > 0 {
+		resp["milestone_completed"] = "first_knowledge"
+		resp["milestone_reward"] = reward
+	}
+	writeJSON(w, resp)
 }
 
 func (d *Daemon) handleKnowledgeFeed(w http.ResponseWriter, r *http.Request) {
@@ -625,7 +667,17 @@ func (d *Daemon) handlePostTopicMessage(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, map[string]string{"status": "sent"})
+
+	// Milestone: first topic message
+	reward := d.CheckAndCompleteMilestone("first_topic")
+	d.RecordEvent("topic_message", d.Node.PeerID().String(), name, body.Body)
+
+	resp := map[string]any{"status": "sent"}
+	if reward > 0 {
+		resp["milestone_completed"] = "first_topic"
+		resp["milestone_reward"] = reward
+	}
+	writeJSON(w, resp)
 }
 
 func (d *Daemon) handleGetTopicMessages(w http.ResponseWriter, r *http.Request) {
@@ -692,6 +744,15 @@ func (d *Daemon) handleDMThread(w http.ResponseWriter, r *http.Request) {
 	// Mark as read
 	d.Store.MarkDMRead(peerID)
 	writeJSON(w, msgs)
+}
+
+func (d *Daemon) handleDMDelete(w http.ResponseWriter, r *http.Request) {
+	peerID := r.PathValue("peer_id")
+	if err := d.Store.DeleteDMThread(peerID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"status": "ok"})
 }
 
 // ── Chat matching ──

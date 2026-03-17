@@ -79,6 +79,7 @@ type Profile struct {
 	Capabilities []string `json:"capabilities"`
 	Bio          string   `json:"bio"`
 	Motto        string   `json:"motto,omitempty"`
+	Role         string   `json:"role,omitempty"`
 	GeoCity      string   `json:"geo_city,omitempty"`
 	GeoLatFuzzy  float64  `json:"geo_lat_fuzzy,omitempty"`
 	GeoLonFuzzy  float64  `json:"geo_lon_fuzzy,omitempty"`

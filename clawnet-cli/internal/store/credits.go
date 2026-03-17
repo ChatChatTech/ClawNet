@@ -5,7 +5,7 @@ import (
 	"math"
 )
 
-// CreditAccount represents a peer's Shell (贝壳) account.
+// CreditAccount represents a peer's Shell account.
 type CreditAccount struct {
 	PeerID       string `json:"peer_id"`
 	Balance      int64  `json:"balance"`
@@ -254,8 +254,8 @@ func (s *Store) ListCreditAudit(limit, offset int) ([]*CreditAuditRecord, error)
 // LobsterTier represents a node's rank in the network, themed after lobster rarity.
 type LobsterTier struct {
 	Level     int    `json:"level"`
-	Name      string `json:"name"`
-	NameEN    string `json:"name_en"`
+	Name      string `json:"name"`      // English (primary display)
+	NameZH    string `json:"name_zh"`   // Chinese (for i18n)
 	Emoji     string `json:"emoji"`
 	MinEnergy int64  `json:"min_energy"`
 }
@@ -269,35 +269,35 @@ type LobsterTier struct {
 //   Lv 13–16: Rare & protected species (endangered / limited habitat)
 //   Lv 17–20: Legendary colour morphs (genetic mutations, 1-in-millions)
 var LobsterTiers = []LobsterTier{
-	// ── Common (farmed / invasive) ── 新手阶段，PoW 之前 ──
-	{Level: 1, Name: "克氏原螯虾", NameEN: "Red Swamp Crayfish", Emoji: "🦐", MinEnergy: 0},                // Procambarus clarkii — 全球入侵种，最常见的小龙虾
-	{Level: 2, Name: "大理石纹螯虾", NameEN: "Marbled Crayfish", Emoji: "🦐", MinEnergy: 100},              // 完成第一个任务 (min 100🐚)
-	{Level: 3, Name: "信号小龙虾", NameEN: "Signal Crayfish", Emoji: "🦐", MinEnergy: 500},                 // 几个任务的积累
-	{Level: 4, Name: "红螯螯虾", NameEN: "Red Claw Crayfish", Emoji: "🦐", MinEnergy: 1500},                // 初步参与者
+	// ── Common (farmed / invasive) — pre-PoW stage ──
+	{Level: 1, Name: "Red Swamp Crayfish", NameZH: "克氏原螯虾", Emoji: "🦐", MinEnergy: 0},                // Procambarus clarkii — most common worldwide
+	{Level: 2, Name: "Marbled Crayfish", NameZH: "大理石纹螯虾", Emoji: "🦐", MinEnergy: 100},              // First task completed (min 100🐚)
+	{Level: 3, Name: "Signal Crayfish", NameZH: "信号小龙虾", Emoji: "🦐", MinEnergy: 500},                 // A few tasks accumulated
+	{Level: 4, Name: "Red Claw Crayfish", NameZH: "红螯螯虾", Emoji: "🦐", MinEnergy: 1500},                // Early participant
 
-	// ── Commercial (restaurant-grade) ── PoW + 入门阶段 ──
-	{Level: 5, Name: "波士顿龙虾", NameEN: "American Lobster", Emoji: "🦞", MinEnergy: 3000},               // PoW 授予 (4200🐚) 到此档
-	{Level: 6, Name: "欧洲龙虾", NameEN: "European Lobster", Emoji: "🦞", MinEnergy: 5000},                 // 稍有活动
-	{Level: 7, Name: "加州刺龙虾", NameEN: "California Spiny Lobster", Emoji: "🦞", MinEnergy: 8000},       // PoW + Tutorial (8400🐚) 到此档
-	{Level: 8, Name: "日本伊势龙虾", NameEN: "Japanese Spiny Lobster", Emoji: "🦞", MinEnergy: 15000},      // 活跃一个月
+	// ── Commercial (restaurant-grade) — PoW + onboarding stage ──
+	{Level: 5, Name: "American Lobster", NameZH: "波士顿龙虾", Emoji: "🦞", MinEnergy: 3000},               // PoW grant (4200🐚) reaches this tier
+	{Level: 6, Name: "European Lobster", NameZH: "欧洲龙虾", Emoji: "🦞", MinEnergy: 5000},                 // Some activity
+	{Level: 7, Name: "California Spiny Lobster", NameZH: "加州刺龙虾", Emoji: "🦞", MinEnergy: 8000},       // PoW + tutorial (8400🐚) reaches this tier
+	{Level: 8, Name: "Japanese Spiny Lobster", NameZH: "日本伊势龙虾", Emoji: "🦞", MinEnergy: 15000},      // Active for a month
 
-	// ── Prized (high-value / restricted range) ── 资深参与者 ──
-	{Level: 9, Name: "锦绣龙虾", NameEN: "Ornate Spiny Lobster", Emoji: "🦞", MinEnergy: 30000},            // 数月活跃
-	{Level: 10, Name: "澳洲岩龙虾", NameEN: "Southern Rock Lobster", Emoji: "🦞", MinEnergy: 50000},       // 半年活跃 (≈¥50,000)
-	{Level: 11, Name: "拖鞋龙虾", NameEN: "Mediterranean Slipper Lobster", Emoji: "🦞", MinEnergy: 80000}, // 深度参与
-	{Level: 12, Name: "吉普斯兰刺螯虾", NameEN: "Gippsland Spiny Crayfish", Emoji: "🦞", MinEnergy: 150000}, // 年度贡献者
+	// ── Prized (high-value / restricted range) — veteran participant ──
+	{Level: 9, Name: "Ornate Spiny Lobster", NameZH: "锦绣龙虾", Emoji: "🦞", MinEnergy: 30000},            // Active for months
+	{Level: 10, Name: "Southern Rock Lobster", NameZH: "澳洲岩龙虾", Emoji: "🦞", MinEnergy: 50000},       // Active for half a year
+	{Level: 11, Name: "Mediterranean Slipper Lobster", NameZH: "拖鞋龙虾", Emoji: "🦞", MinEnergy: 80000}, // Deep participation
+	{Level: 12, Name: "Gippsland Spiny Crayfish", NameZH: "吉普斯兰刺螯虾", Emoji: "🦞", MinEnergy: 150000}, // Annual contributor
 
-	// ── Rare & protected (endangered / limited habitat) ── 顶级贡献者 ──
-	{Level: 13, Name: "默里河螯虾", NameEN: "Murray Crayfish", Emoji: "🦞", MinEnergy: 250000},              // 核心贡献者 (≈¥250,000)
-	{Level: 14, Name: "胡安费尔南德斯岩龙虾", NameEN: "Juan Fernández Rock Lobster", Emoji: "🦞", MinEnergy: 500000}, // 精英节点
-	{Level: 15, Name: "塔斯马尼亚巨螯虾", NameEN: "Tasmanian Giant Crayfish", Emoji: "🦞", MinEnergy: 1000000},     // 鲸鱼领域 (¥1M)
-	{Level: 16, Name: "毛伊龙虾", NameEN: "Banded Spiny Lobster", Emoji: "🦞", MinEnergy: 2000000},         // 重量级鲸鱼
+	// ── Rare & protected (endangered / limited habitat) — top contributor ──
+	{Level: 13, Name: "Murray Crayfish", NameZH: "默里河螯虾", Emoji: "🦞", MinEnergy: 250000},              // Core contributor
+	{Level: 14, Name: "Juan Fernández Rock Lobster", NameZH: "胡安费尔南德斯岩龙虾", Emoji: "🦞", MinEnergy: 500000}, // Elite node
+	{Level: 15, Name: "Tasmanian Giant Crayfish", NameZH: "塔斯马尼亚巨螯虾", Emoji: "🦞", MinEnergy: 1000000},     // Whale territory (1M)
+	{Level: 16, Name: "Banded Spiny Lobster", NameZH: "毛伊龙虾", Emoji: "🦞", MinEnergy: 2000000},         // Heavy-weight whale
 
-	// ── Legendary colour morphs (genetic mutations, 1-in-millions) ── 网络传奇 ──
-	{Level: 17, Name: "蓝龙虾", NameEN: "Blue Lobster", Emoji: "💎", MinEnergy: 5000000},                    // 网络传奇 (¥5M)
-	{Level: 18, Name: "双色龙虾", NameEN: "Split-Colored Lobster", Emoji: "🌗", MinEnergy: 10000000},       // 1000 万
-	{Level: 19, Name: "白化龙虾", NameEN: "Albino Lobster", Emoji: "🤍", MinEnergy: 30000000},              // 3000 万
-	{Level: 20, Name: "幽灵龙虾", NameEN: "Ghost Lobster", Emoji: "👻", MinEnergy: 100000000},              // 1 亿 — 有记录以来仅数例
+	// ── Legendary colour morphs (genetic mutations, 1-in-millions) — network legend ──
+	{Level: 17, Name: "Blue Lobster", NameZH: "蓝龙虾", Emoji: "💎", MinEnergy: 5000000},                    // Network legend (5M)
+	{Level: 18, Name: "Split-Colored Lobster", NameZH: "双色龙虾", Emoji: "🌗", MinEnergy: 10000000},       // 10M
+	{Level: 19, Name: "Albino Lobster", NameZH: "白化龙虾", Emoji: "🤍", MinEnergy: 30000000},              // 30M
+	{Level: 20, Name: "Ghost Lobster", NameZH: "幽灵龙虾", Emoji: "👻", MinEnergy: 100000000},              // 100M — only a few ever recorded
 }
 
 // GetTier returns the lobster tier for a given energy balance.

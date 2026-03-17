@@ -90,6 +90,11 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	// Tutorial (built-in onboarding task)
 	mux.HandleFunc("POST /api/tutorial/complete", d.handleTutorialComplete)
 	mux.HandleFunc("GET /api/tutorial/status", d.handleTutorialStatus)
+
+	// Topo coin system (daemon-internal state machine, no nonces exposed)
+	mux.HandleFunc("GET /api/topo/coin-state", d.handleCoinState)
+	mux.HandleFunc("POST /api/topo/coin-grab", d.handleCoinGrab)
+	mux.HandleFunc("POST /api/topo/coin-redeem", d.handleCoinRedeemV2)
 }
 
 // ── Credits handlers ──
@@ -196,32 +201,67 @@ func (d *Daemon) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if t.Title == "" {
-		http.Error(w, `{"error":"title is required"}`, http.StatusBadRequest)
+		apiError(w, http.StatusBadRequest, "title_required",
+			withMessage("Task title is required."),
+			withSuggestion("Provide a clear title describing what the agent should do."))
 		return
 	}
-	if t.Reward < 100 {
-		http.Error(w, `{"error":"minimum reward is 100 Shell"}`, http.StatusBadRequest)
+	if t.Reward < 0 {
+		apiError(w, http.StatusBadRequest, "invalid_reward",
+			withMessage("Reward cannot be negative."))
 		return
 	}
 
-	// Deduct 5% task fee (deflationary burn) before publishing
-	fee := t.Reward * 5 / 100
 	fromPeer := d.Node.PeerID().String()
-	feeTxnID := uuid.New().String()
-	if err := d.Store.TransferCredits(feeTxnID, fromPeer, "system_burn", fee, "task_fee", ""); err != nil {
-		if err == store.ErrInsufficientCredits {
-			http.Error(w, `{"error":"insufficient Shell to cover 5% task fee"}`, http.StatusBadRequest)
+
+	// Zero-reward tasks: no fee, published as "help wanted"
+	if t.Reward > 0 {
+		if t.Reward < 100 {
+			apiError(w, http.StatusBadRequest, "reward_too_low",
+				withMessage("Minimum reward is 100 Shell (or 0 for help-wanted tasks)."),
+				withSuggestion("Set reward >= 100 to attract workers, or 0 for free collaboration."),
+				withHelp("GET /api/credits/balance"))
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+
+		// Deduct 5% task fee (deflationary burn) before publishing
+		fee := t.Reward * 5 / 100
+		feeTxnID := uuid.New().String()
+		if err := d.Store.TransferCredits(feeTxnID, fromPeer, "system_burn", fee, "task_fee", ""); err != nil {
+			if err == store.ErrInsufficientCredits {
+				profile, _ := d.Store.GetEnergyProfile(fromPeer)
+				bal := int64(0)
+				if profile != nil {
+					bal = profile.Energy
+				}
+				apiError(w, http.StatusBadRequest, "insufficient_balance",
+					withMessage(fmt.Sprintf("Need %d Shell (reward %d + 5%% fee %d) but balance is %d.", t.Reward+fee, t.Reward, fee, bal)),
+					withBalance(bal, t.Reward+fee),
+					withSuggestion("Claim and complete a task to earn Shell, or publish a 0-reward help-wanted task."),
+					withHelp("GET /api/tasks?status=open"))
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if err := d.publishTask(d.ctx, &t); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, t)
+
+	// P1: Check milestone + record event
+	milestoneReward := d.CheckAndCompleteMilestone("first_task_publish")
+	d.RecordEvent("task_published", fromPeer, t.ID, fmt.Sprintf("%s published '%s' (%d Shell)", d.Profile.AgentName, t.Title, t.Reward))
+	d.BroadcastEcho(r.Context(), "task_published", t.Title, fmt.Sprintf("%s published '%s' (%d Shell)", d.Profile.AgentName, t.Title, t.Reward))
+
+	resp := map[string]any{"task": t}
+	if milestoneReward > 0 {
+		resp["milestone_completed"] = "first_task_publish"
+		resp["milestone_reward"] = milestoneReward
+	}
+	writeJSON(w, resp)
 }
 
 func (d *Daemon) handleListTasks(w http.ResponseWriter, r *http.Request) {
@@ -433,7 +473,33 @@ func (d *Daemon) handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 	if t != nil {
 		d.publishTaskUpdate(d.ctx, t)
 	}
-	writeJSON(w, map[string]string{"status": "approved"})
+
+	// P0: Enhanced settlement receipt
+	receipt := map[string]any{
+		"status":      "approved",
+		"task_id":     taskID,
+		"reward_paid": t.Reward,
+	}
+	if t != nil && t.Reward > 0 {
+		fee := t.Reward * 5 / 100
+		receipt["fee_burned"] = fee
+		// Get updated balances
+		if workerProfile, err := d.Store.GetEnergyProfile(t.AssignedTo); err == nil && workerProfile != nil {
+			receipt["worker_new_balance"] = workerProfile.Energy
+		}
+		if authorProfile, err := d.Store.GetEnergyProfile(t.AuthorID); err == nil && authorProfile != nil {
+			receipt["publisher_new_balance"] = authorProfile.Energy
+		}
+	}
+
+	// Record event
+	if t != nil {
+		d.RecordEvent("task_approved", d.Node.PeerID().String(), taskID,
+			fmt.Sprintf("Task '%s' approved — %d Shell paid to worker", t.Title, t.Reward))
+		d.BroadcastEcho(r.Context(), "task_approved", t.Title, fmt.Sprintf("Task '%s' approved — %d Shell paid", t.Title, t.Reward))
+	}
+
+	writeJSON(w, receipt)
 }
 
 func (d *Daemon) handleTaskReject(w http.ResponseWriter, r *http.Request) {
@@ -563,7 +629,18 @@ func (d *Daemon) handleTaskClaim(w http.ResponseWriter, r *http.Request) {
 	if t != nil {
 		d.publishTaskUpdate(d.ctx, t)
 	}
-	writeJSON(w, map[string]string{"status": "submitted", "task_id": taskID})
+
+	// P1: Check milestone + record event
+	milestoneReward := d.CheckAndCompleteMilestone("first_task_claim")
+	d.RecordEvent("task_claimed", peerID, taskID, fmt.Sprintf("%s claimed '%s'", d.Profile.AgentName, t.Title))
+	d.BroadcastEcho(r.Context(), "task_claimed", t.Title, fmt.Sprintf("%s claimed '%s'", d.Profile.AgentName, t.Title))
+
+	resp := map[string]any{"status": "submitted", "task_id": taskID}
+	if milestoneReward > 0 {
+		resp["milestone_completed"] = "first_task_claim"
+		resp["milestone_reward"] = milestoneReward
+	}
+	writeJSON(w, resp)
 }
 
 // ── Auction House handlers (multi-worker submit / pick winner) ──
@@ -746,9 +823,16 @@ func (d *Daemon) handleCreateSwarm(w http.ResponseWriter, r *http.Request) {
 
 func (d *Daemon) handleListSwarms(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
+	q := r.URL.Query().Get("q")
 	limit := queryInt(r, "limit", 50)
 	offset := queryInt(r, "offset", 0)
-	swarms, err := d.Store.ListSwarms(status, limit, offset)
+	var swarms []*store.Swarm
+	var err error
+	if q != "" {
+		swarms, err = d.Store.SearchSwarms(q, limit, offset)
+	} else {
+		swarms, err = d.Store.ListSwarms(status, limit, offset)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -795,7 +879,17 @@ func (d *Daemon) handleSwarmContribute(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, c)
+
+	// Milestone: first swarm contribution
+	reward := d.CheckAndCompleteMilestone("first_swarm")
+	d.RecordEvent("swarm_contribution", d.Node.PeerID().String(), swarmID, body.Body)
+
+	resp := map[string]any{"contribution": c}
+	if reward > 0 {
+		resp["milestone_completed"] = "first_swarm"
+		resp["milestone_reward"] = reward
+	}
+	writeJSON(w, resp)
 }
 
 func (d *Daemon) handleSwarmContributions(w http.ResponseWriter, r *http.Request) {

@@ -10,6 +10,7 @@ type ProfileEntry struct {
 	Capabilities []string `json:"capabilities"`
 	Bio          string   `json:"bio"`
 	Motto        string   `json:"motto"`
+	Role         string   `json:"role"`
 	GeoCity      string   `json:"geo_city"`
 	GeoLatFuzzy  float64  `json:"geo_lat_fuzzy"`
 	GeoLonFuzzy  float64  `json:"geo_lon_fuzzy"`

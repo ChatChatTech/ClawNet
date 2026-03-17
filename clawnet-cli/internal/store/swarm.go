@@ -18,6 +18,8 @@ type Swarm struct {
 	Synthesis       string `json:"synthesis"`
 	CreatedAt       string `json:"created_at"`
 	UpdatedAt       string `json:"updated_at"`
+	ContribCount    int    `json:"contrib_count"`    // number of contributions
+	LastActivity    string `json:"last_activity"`    // most recent activity timestamp
 }
 
 // SwarmContribution is a single contribution to a Swarm Think session.
@@ -134,20 +136,25 @@ func (s *Store) GetSwarm(id string) (*Swarm, error) {
 }
 
 // ListSwarms returns swarm sessions with optional status filter.
+// Sorted by most recent activity (latest contribution or update) first,
+// then by contribution count descending.
 func (s *Store) ListSwarms(status string, limit, offset int) ([]*Swarm, error) {
 	var rows *sql.Rows
 	var err error
-	q := `SELECT id, creator_id, creator_name, title, question,
-	             COALESCE(template_type,'freeform'),
-	             COALESCE(domains,'[]'), COALESCE(max_participants,0),
-	             COALESCE(duration_min,0), COALESCE(deadline,''),
-	             status, synthesis, created_at, updated_at
-	      FROM swarms`
+	q := `SELECT s.id, s.creator_id, s.creator_name, s.title, s.question,
+	             COALESCE(s.template_type,'freeform'),
+	             COALESCE(s.domains,'[]'), COALESCE(s.max_participants,0),
+	             COALESCE(s.duration_min,0), COALESCE(s.deadline,''),
+	             s.status, s.synthesis, s.created_at, s.updated_at,
+	             COUNT(c.id) AS contrib_count,
+	             COALESCE(MAX(c.created_at), s.updated_at) AS last_activity
+	      FROM swarms s
+	      LEFT JOIN swarm_contributions c ON c.swarm_id = s.id`
 	if status != "" {
-		rows, err = s.DB.Query(q+" WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+		rows, err = s.DB.Query(q+" WHERE s.status = ? GROUP BY s.id ORDER BY last_activity DESC, contrib_count DESC LIMIT ? OFFSET ?",
 			status, limit, offset)
 	} else {
-		rows, err = s.DB.Query(q+" ORDER BY created_at DESC LIMIT ? OFFSET ?",
+		rows, err = s.DB.Query(q+" GROUP BY s.id ORDER BY last_activity DESC, contrib_count DESC LIMIT ? OFFSET ?",
 			limit, offset)
 	}
 	if err != nil {
@@ -160,7 +167,50 @@ func (s *Store) ListSwarms(status string, limit, offset int) ([]*Swarm, error) {
 		sw := &Swarm{}
 		if err := rows.Scan(&sw.ID, &sw.CreatorID, &sw.CreatorName, &sw.Title, &sw.Question,
 			&sw.TemplateType, &sw.Domains, &sw.MaxParticipants, &sw.DurationMin, &sw.Deadline,
-			&sw.Status, &sw.Synthesis, &sw.CreatedAt, &sw.UpdatedAt); err != nil {
+			&sw.Status, &sw.Synthesis, &sw.CreatedAt, &sw.UpdatedAt,
+			&sw.ContribCount, &sw.LastActivity); err != nil {
+			return nil, err
+		}
+		swarms = append(swarms, sw)
+	}
+	return swarms, rows.Err()
+}
+
+// SearchSwarms searches swarms by keyword in title and contribution body.
+func (s *Store) SearchSwarms(query string, limit, offset int) ([]*Swarm, error) {
+	like := "%" + query + "%"
+	rows, err := s.DB.Query(
+		`SELECT s.id, s.creator_id, s.creator_name, s.title, s.question,
+		        COALESCE(s.template_type,'freeform'),
+		        COALESCE(s.domains,'[]'), COALESCE(s.max_participants,0),
+		        COALESCE(s.duration_min,0), COALESCE(s.deadline,''),
+		        s.status, s.synthesis, s.created_at, s.updated_at,
+		        COUNT(c.id) AS contrib_count,
+		        COALESCE(MAX(c.created_at), s.updated_at) AS last_activity
+		 FROM swarms s
+		 LEFT JOIN swarm_contributions c ON c.swarm_id = s.id
+		 WHERE s.id IN (
+		     SELECT DISTINCT s2.id FROM swarms s2
+		     LEFT JOIN swarm_contributions c2 ON c2.swarm_id = s2.id
+		     WHERE s2.title LIKE ? OR s2.question LIKE ? OR c2.body LIKE ?
+		 )
+		 GROUP BY s.id
+		 ORDER BY last_activity DESC, contrib_count DESC
+		 LIMIT ? OFFSET ?`,
+		like, like, like, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var swarms []*Swarm
+	for rows.Next() {
+		sw := &Swarm{}
+		if err := rows.Scan(&sw.ID, &sw.CreatorID, &sw.CreatorName, &sw.Title, &sw.Question,
+			&sw.TemplateType, &sw.Domains, &sw.MaxParticipants, &sw.DurationMin, &sw.Deadline,
+			&sw.Status, &sw.Synthesis, &sw.CreatedAt, &sw.UpdatedAt,
+			&sw.ContribCount, &sw.LastActivity); err != nil {
 			return nil, err
 		}
 		swarms = append(swarms, sw)

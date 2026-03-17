@@ -13,9 +13,14 @@ import (
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
 )
 
-const geoUpgradeFileName = "IP2LOCATION-LITE-DB5.IPV6.BIN"
+const (
+	geoUpgradeFileName = "IP2LOCATION-LITE-DB5.IPV6.BIN"
+	geoDBURL           = "https://clawnet.cc/IP2LOCATION-LITE-DB5.IPV6.BIN.zip"
+)
 
 func cmdGeoUpgrade() error {
+	force := len(os.Args) > 2 && (os.Args[2] == "--force" || os.Args[2] == "-f")
+
 	dataDir := config.DataDir()
 	geoDir := filepath.Join(dataDir, "data")
 	os.MkdirAll(geoDir, 0700)
@@ -24,34 +29,17 @@ func cmdGeoUpgrade() error {
 
 	// Check if already installed
 	if info, err := os.Stat(destPath); err == nil {
-		fmt.Printf("DB5.IPV6 already installed (%d bytes, modified %s)\n",
-			info.Size(), info.ModTime().Format("2006-01-02"))
-		fmt.Println("Reinstalling with latest version...")
-	}
-
-	// Download from GitHub release
-	fmt.Println("Fetching latest release...")
-	release, err := fetchLatestRelease()
-	if err != nil {
-		return fmt.Errorf("fetch release: %w", err)
-	}
-
-	var assetURL string
-	var assetSize int64
-	for _, a := range release.Assets {
-		if strings.Contains(a.Name, "DB5") && strings.Contains(a.Name, "IPV6") && strings.HasSuffix(a.Name, ".zip") {
-			assetURL = a.BrowserDownloadURL
-			assetSize = a.Size
-			break
+		if !force {
+			fmt.Printf("✅ DB5.IPV6 already installed (%d bytes, modified %s)\n",
+				info.Size(), info.ModTime().Format("2006-01-02"))
+			fmt.Println("Use --force to re-download.")
+			return nil
 		}
-	}
-	if assetURL == "" {
-		return fmt.Errorf("geo DB asset not found in release %s — please check https://github.com/ChatChatTech/ClawNet/releases",
-			release.TagName)
+		fmt.Printf("DB5.IPV6 exists (%d bytes), re-downloading with --force...\n", info.Size())
 	}
 
-	fmt.Printf("Downloading DB5.IPV6 (%d bytes) from %s...\n", assetSize, release.TagName)
-	if err := downloadAndExtractGeoDB(assetURL, destPath); err != nil {
+	fmt.Println("Downloading ClawNet Premium GeoDB...")
+	if err := downloadAndExtractGeoDB(geoDBURL, destPath); err != nil {
 		return err
 	}
 	return nil

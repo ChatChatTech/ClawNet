@@ -71,6 +71,12 @@ func (s *Store) UnreadDMCount() (int, error) {
 	return count, err
 }
 
+// DeleteDMThread deletes all messages with a specific peer.
+func (s *Store) DeleteDMThread(peerID string) error {
+	_, err := s.DB.Exec(`DELETE FROM direct_messages WHERE peer_id = ?`, peerID)
+	return err
+}
+
 func scanDMRows(rows interface {
 	Next() bool
 	Scan(dest ...any) error

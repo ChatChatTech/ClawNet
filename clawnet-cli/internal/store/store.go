@@ -368,6 +368,45 @@ func (s *Store) migrate() error {
 			FOREIGN KEY (task_id) REFERENCES tasks(id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_task_submissions ON task_submissions(task_id, submitted_at)`,
+
+		// Phase 9 — Milestones (progressive onboarding)
+		`CREATE TABLE IF NOT EXISTS milestones (
+			id          TEXT NOT NULL,
+			peer_id     TEXT NOT NULL,
+			completed_at TEXT NOT NULL DEFAULT (datetime('now')),
+			PRIMARY KEY (id, peer_id)
+		)`,
+
+		// Phase 9 — Achievements
+		`CREATE TABLE IF NOT EXISTS achievements (
+			id          TEXT NOT NULL,
+			peer_id     TEXT NOT NULL,
+			unlocked_at TEXT NOT NULL DEFAULT (datetime('now')),
+			PRIMARY KEY (id, peer_id)
+		)`,
+
+		// Phase 9 — Event log (for watch stream + digest)
+		`CREATE TABLE IF NOT EXISTS events (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			type       TEXT NOT NULL,
+			actor      TEXT NOT NULL DEFAULT '',
+			target     TEXT NOT NULL DEFAULT '',
+			detail     TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at)`,
+
+		// Phase 10 — Offline operation queue
+		`CREATE TABLE IF NOT EXISTS pending_ops (
+			id         TEXT PRIMARY KEY,
+			type       TEXT NOT NULL,
+			payload    TEXT NOT NULL DEFAULT '{}',
+			status     TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sent','failed')),
+			retries    INTEGER NOT NULL DEFAULT 0,
+			error      TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_pending_ops_status ON pending_ops(status)`,
 	}
 
 	for _, m := range migrations {
