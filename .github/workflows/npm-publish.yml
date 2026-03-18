@@ -25,7 +25,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
+
+      - name: Configure npm for provenance publishing
+        run: |
+          npm config set registry https://registry.npmjs.org/
 
       - name: Determine version
         id: version
@@ -103,8 +106,6 @@ jobs:
           done
 
       - name: Publish platform packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VER="${{ steps.version.outputs.version }}"
 
@@ -122,8 +123,6 @@ jobs:
           done
 
       - name: Publish main wrapper
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VER="${{ steps.version.outputs.version }}"
 
