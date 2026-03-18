@@ -638,17 +638,31 @@ func cmdStop() error {
 }
 
 func cmdRestart() error {
-	if isDaemonRunning() {
+	// Read the old PID before stopping so we can wait for the actual
+	// process to die — isDaemonRunning() is unreliable here because
+	// it returns false as soon as the API stops responding, even though
+	// the process may still be alive and holding the port.
+	dataDir := config.DataDir()
+	pidData, _ := os.ReadFile(filepath.Join(dataDir, "daemon.pid"))
+	oldPid, _ := strconv.Atoi(strings.TrimSpace(string(pidData)))
+
+	if oldPid > 0 && isDaemonRunning() {
 		if err := cmdStop(); err != nil {
 			return err
 		}
-		// Wait for daemon to stop (up to 5 seconds)
-		for i := 0; i < 50; i++ {
+		// Wait for process to actually terminate (up to 10 seconds)
+		for i := 0; i < 100; i++ {
 			time.Sleep(100 * time.Millisecond)
-			if !isDaemonRunning() {
+			proc, err := os.FindProcess(oldPid)
+			if err != nil {
 				break
 			}
+			if proc.Signal(syscall.Signal(0)) != nil {
+				break // process is dead
+			}
 		}
+		// Remove stale PID file so new daemon writes a fresh one
+		os.Remove(filepath.Join(dataDir, "daemon.pid"))
 	}
 	return cmdStart()
 }
