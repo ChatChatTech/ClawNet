@@ -6,7 +6,7 @@ set -euo pipefail
 # Single source of truth: daemon.go → propagate everywhere
 #
 # Usage:
-#   ./scripts/bump-version.sh 1.0.0-beta.3
+#   ./scripts/bump-version.sh 1.0.0-beta.4
 #   ./scripts/bump-version.sh          # show current version
 # ============================================================
 

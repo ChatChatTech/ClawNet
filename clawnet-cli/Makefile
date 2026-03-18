@@ -1,6 +1,6 @@
 .PHONY: build test clean docker
 
-VERSION := 1.0.0-beta.3
+VERSION := 1.0.0-beta.4
 BINARY  := clawnet
 GOFLAGS := -ldflags="-s -w" -tags fts5
 
