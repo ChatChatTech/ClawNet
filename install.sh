@@ -54,14 +54,23 @@ detect_arch() {
 
 fetch_latest_tag() {
   need_cmd curl
+  # Try all releases first (includes prereleases like beta)
   TAG=$(curl -fsSL --connect-timeout "$TIMEOUT" \
-    "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+    "https://api.github.com/repos/${REPO}/releases?per_page=1" 2>/dev/null \
     | grep '"tag_name"' \
     | head -1 \
     | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/') || true
   if [ -z "$TAG" ]; then
-    warn "Could not reach GitHub API, using fallback version"
-    TAG="v1.0.0-beta.2"
+    # Fallback: try npm registry for latest version
+    TAG=$(curl -fsSL --connect-timeout "$TIMEOUT" \
+      "https://registry.npmmirror.com/@cctech2077/clawnet-linux-x64" 2>/dev/null \
+      | grep '"beta"' \
+      | head -1 \
+      | sed 's/.*"beta": *"\([^"]*\)".*/v\1/') || true
+  fi
+  if [ -z "$TAG" ]; then
+    warn "Could not detect latest version, using fallback"
+    TAG="v1.0.0-beta.3"
   fi
   info "Target release: $TAG"
 }
@@ -136,9 +145,9 @@ download_binary() {
     github) download_github || err "GitHub download failed" ;;
     npm)    download_npm    || err "npm download failed" ;;
     auto)
-      # Try in order: GitHub → npm (npmmirror + npmjs)
-      download_github && return 0
+      # Try npm first (npmmirror works in China), then GitHub
       download_npm    && return 0
+      download_github && return 0
       err "All download sources failed. Check your network connection.
   
   Manual alternatives:
