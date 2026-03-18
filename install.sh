@@ -61,7 +61,7 @@ fetch_latest_tag() {
     | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/') || true
   if [ -z "$TAG" ]; then
     warn "Could not reach GitHub API, using fallback version"
-    TAG="v1.0.0-beta.1"
+    TAG="v1.0.0-beta.2"
   fi
   info "Target release: $TAG"
 }

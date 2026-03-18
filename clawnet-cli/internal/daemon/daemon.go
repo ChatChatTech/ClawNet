@@ -26,7 +26,7 @@ import (
 	"github.com/Arceliar/ironwood/network"
 )
 
-const Version = "1.0.0-beta.1"
+const Version = "1.0.0-beta.2"
 
 // Daemon holds the running node and all services.
 type Daemon struct {

@@ -1,0 +1,52 @@
+#!/usr/bin/env node
+"use strict";
+
+const { execFileSync } = require("child_process");
+const { join } = require("path");
+const { existsSync } = require("fs");
+
+const PLATFORMS = {
+  "linux-x64":    "@cctech2077/clawnet-linux-x64",
+  "linux-arm64":  "@cctech2077/clawnet-linux-arm64",
+  "darwin-x64":   "@cctech2077/clawnet-darwin-x64",
+  "darwin-arm64": "@cctech2077/clawnet-darwin-arm64",
+  "win32-x64":    "@cctech2077/clawnet-win32-x64",
+};
+
+const key = `${process.platform}-${process.arch}`;
+const pkg = PLATFORMS[key];
+
+if (!pkg) {
+  console.error(`ClawNet: unsupported platform ${key}`);
+  console.error(`Supported: ${Object.keys(PLATFORMS).join(", ")}`);
+  process.exit(1);
+}
+
+const isWindows = process.platform === "win32";
+const binName = isWindows ? "clawnet.exe" : "clawnet";
+
+// Try to find the native binary from the platform package
+let binPath;
+try {
+  binPath = require.resolve(`${pkg}/bin/${binName}`);
+} catch {
+  // Fallback: check if postinstall copied it locally
+  const local = join(__dirname, binName);
+  if (existsSync(local) && local !== __filename) {
+    binPath = local;
+  } else {
+    console.error(`ClawNet: platform package ${pkg} not installed.`);
+    console.error(`Try: npm install @cctech2077/clawnet`);
+    process.exit(1);
+  }
+}
+
+try {
+  const result = execFileSync(binPath, process.argv.slice(2), {
+    stdio: "inherit",
+    env: process.env,
+  });
+} catch (e) {
+  if (e.status !== null) process.exit(e.status);
+  throw e;
+}
