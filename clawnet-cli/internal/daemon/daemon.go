@@ -49,6 +49,7 @@ type Daemon struct {
 	nicName    string
 	hbState    *heartbeatState
 	geoCache   *overlayGeoCache
+	peerCache  *peerGeoCache
 	EchoBuf    *echoBuf // ring buffer for gossip echoes
 	coins      *coinState
 }
@@ -260,6 +261,10 @@ func Start(foreground bool, devLayers []string) error {
 	// Start API server
 	apiServer := d.StartAPI(ctx)
 	defer apiServer.Close()
+
+	// Start async geo cache for libp2p peers (eliminates topo flickering)
+	d.peerCache = newPeerGeoCache(d)
+	go d.peerCache.run(ctx.Done())
 
 	// Start GossipSub message handlers for knowledge and topic rooms
 	d.startGossipHandlers(ctx)

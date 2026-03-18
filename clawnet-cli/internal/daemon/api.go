@@ -218,6 +218,11 @@ func (d *Daemon) handlePeers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *Daemon) handlePeersGeo(w http.ResponseWriter, r *http.Request) {
+	if d.peerCache != nil {
+		writeJSON(w, d.peerCache.snapshot())
+		return
+	}
+	// Fallback: direct resolution (should not happen after daemon init)
 	peers := d.Node.ConnectedPeers()
 	type peerGeo struct {
 		PeerID         string       `json:"peer_id"`
