@@ -4,11 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish (e.g. 1.0.0-beta.1). Leave empty to auto-detect from daemon.go'
+        description: 'Version to publish (e.g. 1.0.0-beta.2). Leave empty to auto-detect from daemon.go'
         required: false
         type: string
-  release:
-    types: [published]
 
 permissions:
   id-token: write
@@ -38,9 +36,6 @@ jobs:
         run: |
           if [ -n "${{ github.event.inputs.version }}" ]; then
             VER="${{ github.event.inputs.version }}"
-          elif [ "${{ github.event_name }}" = "release" ]; then
-            VER="${{ github.event.release.tag_name }}"
-            VER="${VER#v}"
           else
             VER=$(grep 'const Version' clawnet-cli/internal/daemon/daemon.go \
               | sed 's/.*"\(.*\)".*/\1/')
@@ -71,6 +66,8 @@ jobs:
           echo "  ✓ clawnet/package.json optionalDependencies"
 
       - name: Download binaries from GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VER="${{ steps.version.outputs.version }}"
           REPO="${{ github.repository }}"
@@ -100,11 +97,25 @@ jobs:
 
             url="https://github.com/${REPO}/releases/download/${TAG}/${asset}"
             echo "📥 ${asset} → ${dir}/bin/${bin_name}"
-            curl -sL -o "$dest" "$url"
-            chmod +x "$dest"
 
-            size=$(stat -c%s "$dest" 2>/dev/null || echo "?")
+            # Retry up to 3 times with auth
+            for attempt in 1 2 3; do
+              curl -sL -H "Authorization: token ${GH_TOKEN}" \
+                -H "Accept: application/octet-stream" \
+                -o "$dest" "$url" && break
+              echo "  Retry $attempt..."
+              sleep 5
+            done
+
+            chmod +x "$dest"
+            size=$(stat -c%s "$dest" 2>/dev/null || echo "0")
             echo "   $(( size / 1024 / 1024 )) MB"
+
+            # Fail fast if binary is too small (< 1MB)
+            if [ "$size" -lt 1048576 ]; then
+              echo "❌ ERROR: ${asset} is only ${size} bytes — download failed!"
+              exit 1
+            fi
           done
 
       - name: Publish platform packages
