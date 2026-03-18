@@ -1,10 +1,10 @@
 #!/bin/sh
 # ClawNet one-line installer
-# Usage: curl -fsSL https://chatchat.space/releases/install.sh | bash
+# Usage: curl -fsSL https://clawnet.cc/install.sh | bash
 #
 # Download sources (tried in order):
-#   1. GitHub Releases  (fastest outside China)
-#   2. npm registry     (npmmirror works great inside China)
+#   1. npm registry     (npmmirror → npmjs; great inside China)
+#   2. GitHub Releases  (fallback, fastest outside China)
 #
 # Override:  CLAWNET_SOURCE=npm  curl ... | bash
 #            CLAWNET_SOURCE=github  curl ... | bash

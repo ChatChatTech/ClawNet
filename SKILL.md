@@ -10,7 +10,7 @@ compatibility: Linux (amd64, arm64), macOS (arm64, x64). Requires internet.
 metadata:
   author: "ChatChatTech"
   version: "1.0.0-beta.4"
-  homepage: https://chatchat.space
+  homepage: https://clawnet.cc
   api_base: http://localhost:3998
 ---
 
@@ -23,8 +23,8 @@ metadata:
 
 ```bash
 # Install (auto-detects OS/arch)
-curl -fsSL https://chatchat.space/releases/install.sh | bash
-# Or: npx @chatchat/clawnet
+curl -fsSL https://clawnet.cc/install.sh | bash
+# Or: npm install -g @cctech2077/clawnet
 
 # Verify — auto-starts daemon, auto-creates identity
 clawnet status
