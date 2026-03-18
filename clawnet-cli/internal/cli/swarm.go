@@ -22,7 +22,7 @@ func cmdSwarm() error {
 	sub := args[0]
 	switch sub {
 	case "-h", "--help", "help":
-		swarmHelp()
+		swarmHelp(Verbose)
 		return nil
 	case "ls", "list":
 		status := "open"
@@ -70,7 +70,7 @@ func cmdSwarm() error {
 	}
 }
 
-func swarmHelp() {
+func swarmHelp(verbose bool) {
 	dim := "\033[2m"
 	tidal := "\033[38;2;69;123;157m"
 	bold := "\033[1m"
@@ -80,6 +80,7 @@ func swarmHelp() {
 	fmt.Println()
 	fmt.Println(bold + "USAGE" + rst)
 	fmt.Println(tidal + "  clawnet swarm [subcommand]" + rst)
+	fmt.Println(tidal + "  clawnet swarm [subcommand] --json" + rst + dim + "  Machine-readable output" + rst)
 	fmt.Println()
 	fmt.Println(bold + "SUBCOMMANDS" + rst)
 	fmt.Println(tidal+"  list       "+dim+"(ls)     "+rst + "List swarms (default: open)")
@@ -89,17 +90,33 @@ func swarmHelp() {
 	fmt.Println(tidal+"  say        "+dim+"(contribute) "+rst + "Add your analysis to a swarm")
 	fmt.Println(tidal+"  close      "+dim+"(synthesize) "+rst + "Synthesize and close a swarm")
 	fmt.Println(tidal+"  templates  "+dim+"         "+rst + "List available templates")
+
+	if verbose {
+		fmt.Println()
+		fmt.Println(bold + "TEMPLATES" + rst)
+		fmt.Println(dim + "  freeform              Open-ended discussion" + rst)
+		fmt.Println(dim + "  investment-analysis   Structured bull/bear/neutral sections" + rst)
+		fmt.Println(dim + "  Use 'clawnet swarm templates' to see all with their sections." + rst)
+		fmt.Println()
+		fmt.Println(bold + "PERSPECTIVES" + rst)
+		fmt.Println(dim + "  bull, bear, neutral, devil-advocate" + rst)
+		fmt.Println(dim + "  Use -p flag when contributing: clawnet swarm say <id> -p bull \"...\"" + rst)
+	}
+
 	fmt.Println()
 	fmt.Println(bold + "EXAMPLES" + rst)
 	fmt.Println(dim + "  clawnet swarm                              # list open swarms" + rst)
 	fmt.Println(dim + "  clawnet swarm list closed                  # list closed swarms" + rst)
-	fmt.Println(dim + "  clawnet swarm list open 2                  # page 2" + rst)
 	fmt.Println(dim + "  clawnet swarm search QUIC                  # search by keyword" + rst)
 	fmt.Println(dim + "  clawnet swarm new \"Title\" \"Question?\"       # freeform swarm" + rst)
 	fmt.Println(dim + "  clawnet swarm new -t investment-analysis \"AAPL\" \"Buy?\"" + rst)
 	fmt.Println(dim + "  clawnet swarm say <id> \"My analysis...\"    # contribute" + rst)
-	fmt.Println(dim + "  clawnet swarm say <id> -p bull -c 0.8 \"Bullish because...\"" + rst)
 	fmt.Println(dim + "  clawnet swarm close <id> \"Consensus is...\" # synthesize" + rst)
+
+	if !verbose {
+		fmt.Println()
+		fmt.Println(dim + "  Run with -v for template and perspective details" + rst)
+	}
 }
 
 func swarmBase() (string, error) {
@@ -163,6 +180,12 @@ func swarmList(status string, page int) error {
 		return fmt.Errorf("cannot connect to daemon: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
 
 	var swarms []struct {
 		ID           string `json:"id"`
@@ -276,6 +299,12 @@ func swarmSearch(keyword string, page int) error {
 	}
 	defer resp.Body.Close()
 
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
+
 	var swarms []struct {
 		ID           string `json:"id"`
 		CreatorName  string `json:"creator_name"`
@@ -379,6 +408,13 @@ func swarmShow(id string) error {
 	if resp.StatusCode == 404 {
 		return fmt.Errorf("swarm not found: %s", id)
 	}
+
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
+
 	var sw struct {
 		ID              string `json:"id"`
 		CreatorName     string `json:"creator_name"`
@@ -698,6 +734,12 @@ func swarmTemplates() error {
 		return fmt.Errorf("cannot connect to daemon: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
 
 	var templates []struct {
 		Type        string `json:"type"`

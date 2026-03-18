@@ -61,6 +61,7 @@ func resumeHelp(verbose bool) {
 	fmt.Println(bold + "USAGE" + rst)
 	fmt.Println(tidal + "  clawnet resume" + rst + dim + "                   View own resume (default)" + rst)
 	fmt.Println(tidal + "  clawnet resume <subcommand>" + rst)
+	fmt.Println(tidal + "  clawnet resume <subcommand> --json" + rst + dim + "  Machine-readable output" + rst)
 	fmt.Println()
 	fmt.Println(bold + "SUBCOMMANDS" + rst)
 	fmt.Println(tidal+"  get      "+dim+"         "+rst + "View own or peer's resume")
@@ -107,6 +108,12 @@ func resumeGet(peerID string) error {
 	defer resp.Body.Close()
 	if resp.StatusCode == 404 {
 		return fmt.Errorf("resume not found")
+	}
+
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
 	}
 
 	var r struct {
@@ -233,6 +240,12 @@ func resumeList() error {
 	}
 	defer resp.Body.Close()
 
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
+
 	var resumes []struct {
 		PeerID      string `json:"peer_id"`
 		AgentName   string `json:"agent_name"`
@@ -288,6 +301,12 @@ func resumeMatch(taskID string) error {
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("error: %s", strings.TrimSpace(string(body)))
+	}
+
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
 	}
 
 	var matches []struct {
