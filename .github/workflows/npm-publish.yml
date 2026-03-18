@@ -1,0 +1,155 @@
+name: Publish npm packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 1.0.0-beta.1). Leave empty to auto-detect from daemon.go'
+        required: false
+        type: string
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VER="${{ github.event.inputs.version }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            VER="${{ github.event.release.tag_name }}"
+            VER="${VER#v}"  # strip leading v
+          else
+            VER=$(grep 'const Version' clawnet-cli/internal/daemon/daemon.go \
+              | sed 's/.*"\(.*\)".*/\1/')
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "📦 Publishing version: $VER"
+
+      - name: Bump package.json versions
+        run: |
+          VER="${{ steps.version.outputs.version }}"
+          cd npm
+
+          for pkg_json in \
+            clawnet/package.json \
+            clawnet-linux-x64/package.json \
+            clawnet-linux-arm64/package.json \
+            clawnet-darwin-x64/package.json \
+            clawnet-darwin-arm64/package.json \
+            clawnet-win32-x64/package.json; do
+            if [ -f "$pkg_json" ]; then
+              sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${VER}\"/" "$pkg_json"
+              echo "  ✓ $pkg_json"
+            fi
+          done
+
+          # Bump optionalDependencies in the main wrapper
+          sed -i "s/@cctech2077\/clawnet-\([^\"]*\)\": \"[^\"]*\"/@cctech2077\/clawnet-\1\": \"${VER}\"/g" \
+            clawnet/package.json
+          echo "  ✓ clawnet/package.json optionalDependencies"
+
+      - name: Download binaries from GitHub Release
+        run: |
+          VER="${{ steps.version.outputs.version }}"
+          REPO="${{ github.repository }}"
+          TAG="v${VER}"
+
+          declare -A ASSETS=(
+            ["clawnet-linux-x64"]="clawnet-linux-amd64"
+            ["clawnet-linux-arm64"]="clawnet-linux-arm64"
+            ["clawnet-darwin-x64"]="clawnet-darwin-amd64"
+            ["clawnet-darwin-arm64"]="clawnet-darwin-arm64"
+            ["clawnet-win32-x64"]="clawnet-windows-amd64.exe"
+          )
+
+          declare -A BIN_NAMES=(
+            ["clawnet-linux-x64"]="clawnet"
+            ["clawnet-linux-arm64"]="clawnet"
+            ["clawnet-darwin-x64"]="clawnet"
+            ["clawnet-darwin-arm64"]="clawnet"
+            ["clawnet-win32-x64"]="clawnet.exe"
+          )
+
+          for dir in "${!ASSETS[@]}"; do
+            asset="${ASSETS[$dir]}"
+            bin_name="${BIN_NAMES[$dir]}"
+            dest="npm/${dir}/bin/${bin_name}"
+            mkdir -p "$(dirname "$dest")"
+
+            url="https://github.com/${REPO}/releases/download/${TAG}/${asset}"
+            echo "📥 ${asset} → ${dir}/bin/${bin_name}"
+            curl -sL -o "$dest" "$url"
+            chmod +x "$dest"
+
+            size=$(stat -c%s "$dest" 2>/dev/null || echo "?")
+            echo "   $(( size / 1024 / 1024 )) MB"
+          done
+
+      - name: Publish platform packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VER="${{ steps.version.outputs.version }}"
+
+          # Determine npm tag
+          NPM_TAG="latest"
+          if echo "$VER" | grep -q "beta\|alpha\|rc"; then
+            NPM_TAG="beta"
+          fi
+
+          for dir in clawnet-linux-x64 clawnet-linux-arm64 clawnet-darwin-x64 clawnet-darwin-arm64 clawnet-win32-x64; do
+            echo "📦 Publishing @cctech2077/${dir}@${VER} (tag: ${NPM_TAG})..."
+            cd npm/${dir}
+            npm publish --access public --tag "$NPM_TAG" --provenance || echo "⚠️ Failed: $dir"
+            cd ../..
+          done
+
+      - name: Publish main wrapper
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VER="${{ steps.version.outputs.version }}"
+
+          NPM_TAG="latest"
+          if echo "$VER" | grep -q "beta\|alpha\|rc"; then
+            NPM_TAG="beta"
+          fi
+
+          echo "📦 Publishing @cctech2077/clawnet@${VER} (tag: ${NPM_TAG})..."
+          cd npm/clawnet
+          npm publish --access public --tag "$NPM_TAG" --provenance || echo "⚠️ Failed: clawnet"
+
+      - name: Verify
+        run: |
+          VER="${{ steps.version.outputs.version }}"
+          echo ""
+          echo "=== Verifying published packages ==="
+          sleep 5
+          for pkg in clawnet clawnet-linux-x64 clawnet-linux-arm64 clawnet-darwin-x64 clawnet-darwin-arm64 clawnet-win32-x64; do
+            ver=$(npm view @cctech2077/$pkg@$VER version 2>/dev/null || echo "")
+            if [ -n "$ver" ]; then
+              echo "  ✅ @cctech2077/$pkg@$ver"
+            else
+              echo "  ❌ @cctech2077/$pkg NOT YET VISIBLE (may take a minute)"
+            fi
+          done
+          echo ""
+          echo "Install:"
+          echo "  npm install -g @cctech2077/clawnet@${VER}"
+          echo "  npm install -g @cctech2077/clawnet@${VER} --registry https://registry.npmmirror.com"
