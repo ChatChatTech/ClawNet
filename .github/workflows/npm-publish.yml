@@ -10,22 +10,28 @@ on:
   release:
     types: [published]
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Check npm version
+        run: |
+          echo "Node: $(node -v)"
+          echo "npm:  $(npm -v)"
 
       - name: Determine version
         id: version
@@ -34,7 +40,7 @@ jobs:
             VER="${{ github.event.inputs.version }}"
           elif [ "${{ github.event_name }}" = "release" ]; then
             VER="${{ github.event.release.tag_name }}"
-            VER="${VER#v}"  # strip leading v
+            VER="${VER#v}"
           else
             VER=$(grep 'const Version' clawnet-cli/internal/daemon/daemon.go \
               | sed 's/.*"\(.*\)".*/\1/')
@@ -60,7 +66,6 @@ jobs:
             fi
           done
 
-          # Bump optionalDependencies in the main wrapper
           sed -i "s/@cctech2077\/clawnet-\([^\"]*\)\": \"[^\"]*\"/@cctech2077\/clawnet-\1\": \"${VER}\"/g" \
             clawnet/package.json
           echo "  ✓ clawnet/package.json optionalDependencies"
@@ -103,12 +108,9 @@ jobs:
           done
 
       - name: Publish platform packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VER="${{ steps.version.outputs.version }}"
 
-          # Determine npm tag
           NPM_TAG="latest"
           if echo "$VER" | grep -q "beta\|alpha\|rc"; then
             NPM_TAG="beta"
@@ -117,13 +119,11 @@ jobs:
           for dir in clawnet-linux-x64 clawnet-linux-arm64 clawnet-darwin-x64 clawnet-darwin-arm64 clawnet-win32-x64; do
             echo "📦 Publishing @cctech2077/${dir}@${VER} (tag: ${NPM_TAG})..."
             cd npm/${dir}
-            npm publish --access public --tag "$NPM_TAG" --provenance || echo "⚠️ Failed: $dir"
+            npm publish --access public --tag "$NPM_TAG" 2>&1 || echo "⚠️ Failed: $dir"
             cd ../..
           done
 
       - name: Publish main wrapper
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VER="${{ steps.version.outputs.version }}"
 
@@ -134,7 +134,7 @@ jobs:
 
           echo "📦 Publishing @cctech2077/clawnet@${VER} (tag: ${NPM_TAG})..."
           cd npm/clawnet
-          npm publish --access public --tag "$NPM_TAG" --provenance || echo "⚠️ Failed: clawnet"
+          npm publish --access public --tag "$NPM_TAG" 2>&1 || echo "⚠️ Failed: clawnet"
 
       - name: Verify
         run: |
