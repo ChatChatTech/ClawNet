@@ -511,7 +511,14 @@ func taskCreate(args []string) error {
 
 	// If --nut was specified and task created, upload the bundle via nutshell CLI
 	if nutDir != "" {
-		taskID, _ := result["task_id"].(string)
+		// API returns {"task": {"id": ...}} envelope
+		taskID := ""
+		if taskObj, ok := result["task"].(map[string]interface{}); ok {
+			taskID, _ = taskObj["id"].(string)
+		}
+		if taskID == "" {
+			taskID, _ = result["task_id"].(string)
+		}
 		if taskID == "" {
 			taskID, _ = result["id"].(string)
 		}
@@ -1111,10 +1118,19 @@ func taskPostReturn(url string, body map[string]interface{}, successMsg string) 
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(respBody, &result); err == nil {
-		for k, v := range result {
+		// API may wrap response in {"task": {...}} envelope — extract task fields
+		display := result
+		if taskObj, ok := result["task"].(map[string]interface{}); ok {
+			display = taskObj
+		}
+		for k, v := range display {
 			if k == "status" || k == "task_id" || k == "id" || k == "reward_paid" || k == "milestone_completed" {
 				fmt.Printf("  %s%s: %v%s\n", dim, k, v, rst)
 			}
+		}
+		// Also show top-level milestone info
+		if mc, ok := result["milestone_completed"]; ok {
+			fmt.Printf("  %smilestone_completed: %v%s\n", dim, mc, rst)
 		}
 	}
 	return result, nil
