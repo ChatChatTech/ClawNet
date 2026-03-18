@@ -1,0 +1,93 @@
+name: Cleanup old npm versions
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Specific version to unpublish (e.g. 0.0.0). Leave empty to remove all except latest.'
+        required: false
+        type: string
+      dry_run:
+        description: 'Dry run (only show what would be deleted)'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Cleanup old versions
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          PACKAGES=(
+            "@cctech2077/clawnet"
+            "@cctech2077/clawnet-linux-x64"
+            "@cctech2077/clawnet-linux-arm64"
+            "@cctech2077/clawnet-darwin-x64"
+            "@cctech2077/clawnet-darwin-arm64"
+            "@cctech2077/clawnet-win32-x64"
+          )
+
+          TARGET_VERSION="${{ github.event.inputs.version }}"
+          DRY_RUN="${{ github.event.inputs.dry_run }}"
+
+          for pkg in "${PACKAGES[@]}"; do
+            echo ""
+            echo "=== $pkg ==="
+
+            ALL_VERSIONS=$(npm view "$pkg" versions --json 2>/dev/null | jq -r '.[]' 2>/dev/null || echo "")
+            if [ -z "$ALL_VERSIONS" ]; then
+              echo "  No versions found, skipping"
+              continue
+            fi
+
+            LATEST=$(npm view "$pkg" dist-tags --json 2>/dev/null | jq -r '.latest // .beta // empty' 2>/dev/null || echo "")
+            echo "  Latest: $LATEST"
+            echo "  All versions: $(echo $ALL_VERSIONS | tr '\n' ' ')"
+
+            if [ -n "$TARGET_VERSION" ]; then
+              # Unpublish specific version
+              VERSIONS_TO_REMOVE="$TARGET_VERSION"
+            else
+              # Remove all except latest
+              VERSIONS_TO_REMOVE=$(echo "$ALL_VERSIONS" | grep -v "^${LATEST}$" || true)
+            fi
+
+            if [ -z "$VERSIONS_TO_REMOVE" ]; then
+              echo "  ✅ Nothing to remove"
+              continue
+            fi
+
+            for ver in $VERSIONS_TO_REMOVE; do
+              if [ "$ver" = "$LATEST" ]; then
+                echo "  ⏭️  Skipping $ver (latest)"
+                continue
+              fi
+
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "  🔍 Would unpublish ${pkg}@${ver}"
+              else
+                echo "  🗑️  Unpublishing ${pkg}@${ver}..."
+                npm unpublish "${pkg}@${ver}" 2>&1 || echo "  ⚠️ Failed to unpublish ${pkg}@${ver}"
+              fi
+            done
+          done
+
+          echo ""
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "=== DRY RUN complete. Set dry_run=false to actually delete. ==="
+          else
+            echo "=== Cleanup complete ==="
+          fi
