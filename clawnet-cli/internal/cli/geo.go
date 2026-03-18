@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/i18n"
 )
 
 const (
@@ -30,15 +31,14 @@ func cmdGeoUpgrade() error {
 	// Check if already installed
 	if info, err := os.Stat(destPath); err == nil {
 		if !force {
-			fmt.Printf("✅ DB5.IPV6 already installed (%d bytes, modified %s)\n",
-				info.Size(), info.ModTime().Format("2006-01-02"))
-			fmt.Println("Use --force to re-download.")
+			fmt.Println(i18n.Tf("geo.already_installed", info.Size(), info.ModTime().Format("2006-01-02")))
+			fmt.Println(i18n.T("geo.use_force"))
 			return nil
 		}
-		fmt.Printf("DB5.IPV6 exists (%d bytes), re-downloading with --force...\n", info.Size())
+		fmt.Println(i18n.Tf("geo.redownloading", info.Size()))
 	}
 
-	fmt.Println("Downloading ClawNet Premium GeoDB...")
+	fmt.Println(i18n.T("geo.downloading"))
 	if err := downloadAndExtractGeoDB(geoDBURL, destPath); err != nil {
 		return err
 	}
@@ -52,7 +52,7 @@ func downloadAndExtractGeoDB(url, destPath string) error {
 		return fmt.Errorf("download: %w", err)
 	}
 
-	fmt.Println("Extracting...")
+	fmt.Println(i18n.T("geo.extracting"))
 	if err := extractGeoBIN(zipPath, destPath); err != nil {
 		os.Remove(zipPath)
 		return fmt.Errorf("extract: %w", err)
@@ -60,8 +60,8 @@ func downloadAndExtractGeoDB(url, destPath string) error {
 	os.Remove(zipPath)
 
 	info, _ := os.Stat(destPath)
-	fmt.Printf("✅ Geo DB installed: %s (%d bytes)\n", filepath.Base(destPath), info.Size())
-	fmt.Println("Restart the daemon to use city-level geolocation.")
+	fmt.Println(i18n.Tf("geo.installed", filepath.Base(destPath), info.Size()))
+	fmt.Println(i18n.T("geo.restart_hint"))
 	return nil
 }
 
@@ -106,5 +106,5 @@ func extractGeoBIN(zipPath, destPath string) error {
 			return err
 		}
 	}
-	return fmt.Errorf("no .BIN file found in zip")
+	return fmt.Errorf("%s", i18n.T("geo.no_bin_in_zip"))
 }

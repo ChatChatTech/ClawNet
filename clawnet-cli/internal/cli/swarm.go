@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/i18n"
 )
 
 func cmdSwarm() error {
@@ -76,35 +77,35 @@ func swarmHelp(verbose bool) {
 	bold := "\033[1m"
 	rst := "\033[0m"
 
-	fmt.Println(bold + "clawnet swarm — Swarm Think collective reasoning" + rst)
+	fmt.Println(bold + i18n.T("help.swarm") + rst)
 	fmt.Println()
-	fmt.Println(bold + "USAGE" + rst)
+	fmt.Println(bold + i18n.T("common.usage") + rst)
 	fmt.Println(tidal + "  clawnet swarm [subcommand]" + rst)
-	fmt.Println(tidal + "  clawnet swarm [subcommand] --json" + rst + dim + "  Machine-readable output" + rst)
+	fmt.Println(tidal + "  clawnet swarm [subcommand] --json" + rst + dim + "  " + i18n.T("help.swarm.json") + rst)
 	fmt.Println()
-	fmt.Println(bold + "SUBCOMMANDS" + rst)
-	fmt.Println(tidal+"  list       "+dim+"(ls)     "+rst + "List swarms (default: open)")
-	fmt.Println(tidal+"  show       "+dim+"         "+rst + "Show swarm details + contributions")
-	fmt.Println(tidal+"  search     "+dim+"(find)   "+rst + "Search swarms by keyword")
-	fmt.Println(tidal+"  new        "+dim+"(create) "+rst + "Create a new swarm session")
-	fmt.Println(tidal+"  say        "+dim+"(contribute) "+rst + "Add your analysis to a swarm")
-	fmt.Println(tidal+"  close      "+dim+"(synthesize) "+rst + "Synthesize and close a swarm")
-	fmt.Println(tidal+"  templates  "+dim+"         "+rst + "List available templates")
+	fmt.Println(bold + i18n.T("help.swarm.subcmds") + rst)
+	fmt.Println(tidal+"  list       "+dim+"(ls)     "+rst + i18n.T("help.swarm.cmd_list"))
+	fmt.Println(tidal+"  show       "+dim+"         "+rst + i18n.T("help.swarm.cmd_show"))
+	fmt.Println(tidal+"  search     "+dim+"(find)   "+rst + i18n.T("help.swarm.cmd_search"))
+	fmt.Println(tidal+"  new        "+dim+"(create) "+rst + i18n.T("help.swarm.cmd_new"))
+	fmt.Println(tidal+"  say        "+dim+"(contribute) "+rst + i18n.T("help.swarm.cmd_say"))
+	fmt.Println(tidal+"  close      "+dim+"(synthesize) "+rst + i18n.T("help.swarm.cmd_close"))
+	fmt.Println(tidal+"  templates  "+dim+"         "+rst + i18n.T("help.swarm.cmd_templates"))
 
 	if verbose {
 		fmt.Println()
-		fmt.Println(bold + "TEMPLATES" + rst)
+		fmt.Println(bold + i18n.T("help.swarm.templates") + rst)
 		fmt.Println(dim + "  freeform              Open-ended discussion" + rst)
 		fmt.Println(dim + "  investment-analysis   Structured bull/bear/neutral sections" + rst)
 		fmt.Println(dim + "  Use 'clawnet swarm templates' to see all with their sections." + rst)
 		fmt.Println()
-		fmt.Println(bold + "PERSPECTIVES" + rst)
+		fmt.Println(bold + i18n.T("help.swarm.perspectives") + rst)
 		fmt.Println(dim + "  bull, bear, neutral, devil-advocate" + rst)
 		fmt.Println(dim + "  Use -p flag when contributing: clawnet swarm say <id> -p bull \"...\"" + rst)
 	}
 
 	fmt.Println()
-	fmt.Println(bold + "EXAMPLES" + rst)
+	fmt.Println(bold + i18n.T("common.examples") + rst)
 	fmt.Println(dim + "  clawnet swarm                              # list open swarms" + rst)
 	fmt.Println(dim + "  clawnet swarm list closed                  # list closed swarms" + rst)
 	fmt.Println(dim + "  clawnet swarm search QUIC                  # search by keyword" + rst)
@@ -115,7 +116,7 @@ func swarmHelp(verbose bool) {
 
 	if !verbose {
 		fmt.Println()
-		fmt.Println(dim + "  Run with -v for template and perspective details" + rst)
+		fmt.Println(dim + "  " + i18n.T("help.swarm.verbose_hint") + rst)
 	}
 }
 
@@ -211,17 +212,17 @@ func swarmList(status string, page int) error {
 	coral := "\033[38;2;247;127;0m"
 	rst := "\033[0m"
 
-	fmt.Printf("%s  🐝 Swarm Think — %s%s\n\n", red, status, rst)
+	fmt.Printf("%s  %s%s\n\n", red, i18n.Tf("swarm.list_header", status), rst)
 
 	if len(swarms) == 0 {
-		fmt.Println(dim + "  No swarms found." + rst)
-		fmt.Println(dim + "  Create one: clawnet swarm new \"Title\" \"Question\"" + rst)
+		fmt.Println(dim + "  " + i18n.T("swarm.none") + rst)
+		fmt.Println(dim + "  " + i18n.T("swarm.create_hint") + rst)
 		return nil
 	}
 
 	// Header
 	fmt.Printf(dim+"  %-8s %-6s %-7s %s %s %s"+rst+"\n",
-		"ID", "STATUS", "REPLIES", padRight("CREATOR", 12), padRight("TITLE", 24), "CREATED")
+		i18n.T("swarm.col.id"), i18n.T("swarm.col.status"), i18n.T("swarm.col.replies"), padRight(i18n.T("swarm.col.creator"), 12), padRight(i18n.T("swarm.col.title"), 24), i18n.T("swarm.col.created"))
 	for _, s := range swarms {
 		id := s.ID
 		if len(id) > 8 {
@@ -328,15 +329,15 @@ func swarmSearch(keyword string, page int) error {
 	yellow := "\033[33m"
 	rst := "\033[0m"
 
-	fmt.Printf("%s  🔍 Search: %s%s  (%d result(s))\n\n", yellow, keyword, rst, len(swarms))
+	fmt.Printf("%s  %s%s  (%d)\n\n", yellow, i18n.Tf("swarm.search_header", keyword), rst, len(swarms))
 
 	if len(swarms) == 0 {
-		fmt.Println(dim + "  No swarms match your query." + rst)
+		fmt.Println(dim + "  " + i18n.T("swarm.no_matches") + rst)
 		return nil
 	}
 
 	fmt.Printf(dim+"  %-8s %-6s %-7s %s %s %s"+rst+"\n",
-		"ID", "STATUS", "REPLIES", padRight("CREATOR", 12), padRight("TITLE", 24), "CREATED")
+		i18n.T("swarm.col.id"), i18n.T("swarm.col.status"), i18n.T("swarm.col.replies"), padRight(i18n.T("swarm.col.creator"), 12), padRight(i18n.T("swarm.col.title"), 24), i18n.T("swarm.col.created"))
 	for _, s := range swarms {
 		id := s.ID
 		if len(id) > 8 {
@@ -440,16 +441,16 @@ func swarmShow(id string) error {
 	rst := "\033[0m"
 
 	fmt.Printf("%s  🐝 %s%s\n", red, sw.Title, rst)
-	fmt.Printf(tidal+"  Question    "+rst+"%s\n", sw.Question)
-	fmt.Printf(tidal+"  Status      "+rst+"%s\n", sw.Status)
-	fmt.Printf(tidal+"  Template    "+rst+"%s\n", sw.TemplateType)
-	fmt.Printf(tidal+"  Creator     "+rst+"%s\n", sw.CreatorName)
-	fmt.Printf(tidal+"  Created     "+rst+"%s\n", sw.CreatedAt)
+	fmt.Printf(tidal+"  %-10s"+rst+"%s\n", i18n.T("swarm.field.question"), sw.Question)
+	fmt.Printf(tidal+"  %-10s"+rst+"%s\n", i18n.T("swarm.field.status"), sw.Status)
+	fmt.Printf(tidal+"  %-10s"+rst+"%s\n", i18n.T("swarm.field.template"), sw.TemplateType)
+	fmt.Printf(tidal+"  %-10s"+rst+"%s\n", i18n.T("swarm.field.creator"), sw.CreatorName)
+	fmt.Printf(tidal+"  %-10s"+rst+"%s\n", i18n.T("swarm.field.created"), sw.CreatedAt)
 	if sw.Deadline != "" {
-		fmt.Printf(tidal+"  Deadline    "+rst+"%s\n", sw.Deadline)
+		fmt.Printf(tidal+"  %-10s"+rst+"%s\n", i18n.T("swarm.field.deadline"), sw.Deadline)
 	}
 	if sw.DurationMin > 0 {
-		fmt.Printf(tidal+"  Duration    "+rst+"%d min\n", sw.DurationMin)
+		fmt.Printf(tidal+"  %-10s"+rst+"%s\n", i18n.T("swarm.field.duration"), i18n.Tf("swarm.field.duration_min", sw.DurationMin))
 	}
 	fmt.Printf(tidal+"  ID          "+rst+"%s\n", sw.ID)
 	fmt.Println()
@@ -471,10 +472,10 @@ func swarmShow(id string) error {
 	json.NewDecoder(cResp.Body).Decode(&contribs)
 
 	if len(contribs) == 0 {
-		fmt.Println(dim + "  No contributions yet." + rst)
-		fmt.Println(dim + "  Be the first: clawnet swarm say " + sw.ID[:8] + " \"Your analysis...\"" + rst)
+		fmt.Println(dim + "  " + i18n.T("swarm.no_contributions") + rst)
+		fmt.Println(dim + "  " + i18n.Tf("swarm.be_first", safePrefix(sw.ID, 8)) + rst)
 	} else {
-		fmt.Printf("  %d contribution(s):\n\n", len(contribs))
+		fmt.Printf("  %s\n\n", i18n.Tf("swarm.contrib_count", len(contribs)))
 		for i, c := range contribs {
 			author := c.AuthorName
 			if author == "" {
@@ -501,7 +502,7 @@ func swarmShow(id string) error {
 	}
 
 	if sw.Synthesis != "" {
-		fmt.Println(green + "  ── Synthesis ──" + rst)
+		fmt.Println(green + "  " + i18n.T("swarm.synthesis_header") + rst)
 		for _, line := range strings.Split(sw.Synthesis, "\n") {
 			fmt.Printf("  %s\n", line)
 		}
@@ -509,12 +510,12 @@ func swarmShow(id string) error {
 	}
 
 	// Action hints
-	shortID := sw.ID[:8]
+	shortID := safePrefix(sw.ID, 8)
 	if sw.Status == "open" {
 		fmt.Println(dim + "  Actions:" + rst)
-		fmt.Printf(dim+"    clawnet swarm say %s \"Your analysis...\"      Contribute\n"+rst, shortID)
-		fmt.Printf(dim+"    clawnet swarm say %s -p bull -c 0.9 \"...\"   With stance & confidence\n"+rst, shortID)
-		fmt.Printf(dim+"    clawnet swarm close %s \"Synthesis...\"        Synthesize & close\n"+rst, shortID)
+		fmt.Printf(dim+"    clawnet swarm say %s \"...\"                      %s\n"+rst, shortID, i18n.T("swarm.action.contribute"))
+		fmt.Printf(dim+"    clawnet swarm say %s -p bull -c 0.9 \"...\"   %s\n"+rst, shortID, i18n.T("swarm.action.with_stance"))
+		fmt.Printf(dim+"    clawnet swarm close %s \"...\"                    %s\n"+rst, shortID, i18n.T("swarm.action.synthesize"))
 	}
 
 	return nil
@@ -581,9 +582,9 @@ func swarmCreate(args []string) error {
 	rst := "\033[0m"
 	dim := "\033[2m"
 
-	fmt.Printf("%s✓%s Swarm created: %s\n", green, rst, result.Title)
+	fmt.Printf("%s✓%s %s\n", green, rst, i18n.Tf("swarm.created", result.Title))
 	fmt.Printf("  ID: %s\n", result.ID)
-	fmt.Println(dim + "  Share this ID with peers so they can contribute." + rst)
+	fmt.Println(dim + "  " + i18n.T("swarm.share_hint") + rst)
 	return nil
 }
 
@@ -676,9 +677,9 @@ func swarmContribute(args []string) error {
 
 	green := "\033[32m"
 	rst := "\033[0m"
-	fmt.Printf("%s✓%s Contribution submitted to swarm %s\n", green, rst, swarmID)
+	fmt.Printf("%s✓%s %s\n", green, rst, i18n.Tf("swarm.contributed", swarmID))
 	if result.MilestoneCompleted != "" {
-		fmt.Printf("  🎯 Milestone unlocked: %s (+%d Shell)\n", result.MilestoneCompleted, result.MilestoneReward)
+		fmt.Printf("  %s\n", i18n.Tf("swarm.milestone", result.MilestoneCompleted, result.MilestoneReward))
 	}
 	return nil
 }
@@ -717,7 +718,7 @@ func swarmSynthesize(args []string) error {
 
 	green := "\033[32m"
 	rst := "\033[0m"
-	fmt.Printf("%s✓%s Swarm synthesized and closed: %s\n", green, rst, swarmID)
+	fmt.Printf("%s✓%s %s\n", green, rst, i18n.Tf("swarm.synthesized", swarmID))
 	return nil
 }
 
@@ -762,18 +763,18 @@ func swarmTemplates() error {
 	dim := "\033[2m"
 	rst := "\033[0m"
 
-	fmt.Printf("%s  🐝 Swarm Think Templates%s\n\n", red, rst)
+	fmt.Printf("%s  %s%s\n\n", red, i18n.T("swarm.templates_header"), rst)
 
 	for _, t := range templates {
 		fmt.Printf(tidal+"  %s"+rst+" — %s\n", t.Type, t.Name)
 		fmt.Printf("  %s\n", t.Description)
 		if t.Duration > 0 {
-			fmt.Printf(dim+"  Default duration: %d min"+rst+"\n", t.Duration)
+			fmt.Printf(dim+"  %s"+rst+"\n", i18n.Tf("swarm.tmpl.duration", t.Duration))
 		}
 		if len(t.Perspectives) > 0 {
-			fmt.Printf(dim+"  Perspectives: %s"+rst+"\n", strings.Join(t.Perspectives, ", "))
+			fmt.Printf(dim+"  %s"+rst+"\n", i18n.Tf("swarm.tmpl.perspectives", strings.Join(t.Perspectives, ", ")))
 		}
-		fmt.Println(dim + "  Sections:" + rst)
+		fmt.Println(dim + "  " + i18n.T("swarm.tmpl.sections") + rst)
 		for _, s := range t.Sections {
 			fmt.Printf("    %s%-14s%s %s\n", tidal, s.Key, rst, s.Title)
 			fmt.Printf("    %s%s%s\n", dim, s.Description, rst)
@@ -781,6 +782,6 @@ func swarmTemplates() error {
 		fmt.Println()
 	}
 
-	fmt.Println(dim + "  Use: clawnet swarm new -t <type> \"Title\" \"Question\"" + rst)
+	fmt.Println(dim + "  " + i18n.T("swarm.tmpl.hint") + rst)
 	return nil
 }

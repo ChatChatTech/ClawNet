@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/i18n"
 )
 
 // cmdTask routes `clawnet task` subcommands.
@@ -97,54 +98,54 @@ func taskHelp(verbose bool) {
 	bold := "\033[1m"
 	rst := "\033[0m"
 
-	fmt.Println(bold + "clawnet task — Task Bazaar (Auction House)" + rst)
+	fmt.Println(bold + i18n.T("help.task") + rst)
 	fmt.Println()
-	fmt.Println(bold + "USAGE" + rst)
-	fmt.Println(tidal + "  clawnet task" + rst + dim + "                   Dashboard (same as 'clawnet board')" + rst)
-	fmt.Println(tidal + "  clawnet task <subcommand>" + rst + dim + "      Execute task operation" + rst)
-	fmt.Println(tidal + "  clawnet task <subcommand> --json" + rst + dim + " Machine-readable output" + rst)
+	fmt.Println(bold + i18n.T("common.usage") + rst)
+	fmt.Println(tidal + "  clawnet task" + rst + dim + "                   " + i18n.T("help.task.dashboard") + rst)
+	fmt.Println(tidal + "  clawnet task <subcommand>" + rst + dim + "      " + i18n.T("help.task.execute") + rst)
+	fmt.Println(tidal + "  clawnet task <subcommand> --json" + rst + dim + " " + i18n.T("help.task.json") + rst)
 	fmt.Println()
-	fmt.Println(bold + "SUBCOMMANDS" + rst)
-	fmt.Println(tidal+"  list     "+dim+"(ls)     "+rst + "List tasks by status (default: open)")
-	fmt.Println(tidal+"  show     "+dim+"         "+rst + "Show task details")
-	fmt.Println(tidal+"  create   "+dim+"(new)    "+rst + "Create a new task")
-	fmt.Println(tidal+"  bid      "+dim+"         "+rst + "Bid on an auction task")
-	fmt.Println(tidal+"  bids     "+dim+"         "+rst + "View bids on a task")
-	fmt.Println(tidal+"  assign   "+dim+"         "+rst + "Assign task to a bidder")
-	fmt.Println(tidal+"  claim    "+dim+"         "+rst + "Claim & submit a simple task")
-	fmt.Println(tidal+"  submit   "+dim+"         "+rst + "Submit result for assigned task")
-	fmt.Println(tidal+"  work     "+dim+"         "+rst + "Submit work for auction house task")
-	fmt.Println(tidal+"  subs     "+dim+"(submissions)"+rst + " View submissions for a task")
-	fmt.Println(tidal+"  pick     "+dim+"         "+rst + "Pick winning submission & settle")
-	fmt.Println(tidal+"  approve  "+dim+"         "+rst + "Approve submitted work → pay reward")
-	fmt.Println(tidal+"  reject   "+dim+"         "+rst + "Reject submitted work")
-	fmt.Println(tidal+"  cancel   "+dim+"         "+rst + "Cancel a task (refund)")
-	fmt.Println(tidal+"  download "+dim+"(dl)     "+rst + "Download task's .nut bundle")
+	fmt.Println(bold + i18n.T("help.task.subcmds") + rst)
+	fmt.Println(tidal+"  list     "+dim+"(ls)     "+rst + i18n.T("help.task.list"))
+	fmt.Println(tidal+"  show     "+dim+"         "+rst + i18n.T("help.task.show"))
+	fmt.Println(tidal+"  create   "+dim+"(new)    "+rst + i18n.T("help.task.create"))
+	fmt.Println(tidal+"  bid      "+dim+"         "+rst + i18n.T("help.task.bid"))
+	fmt.Println(tidal+"  bids     "+dim+"         "+rst + i18n.T("help.task.bids"))
+	fmt.Println(tidal+"  assign   "+dim+"         "+rst + i18n.T("help.task.assign"))
+	fmt.Println(tidal+"  claim    "+dim+"         "+rst + i18n.T("help.task.claim"))
+	fmt.Println(tidal+"  submit   "+dim+"         "+rst + i18n.T("help.task.submit"))
+	fmt.Println(tidal+"  work     "+dim+"         "+rst + i18n.T("help.task.work"))
+	fmt.Println(tidal+"  subs     "+dim+"(submissions)"+rst + " " + i18n.T("help.task.subs"))
+	fmt.Println(tidal+"  pick     "+dim+"         "+rst + i18n.T("help.task.pick"))
+	fmt.Println(tidal+"  approve  "+dim+"         "+rst + i18n.T("help.task.approve"))
+	fmt.Println(tidal+"  reject   "+dim+"         "+rst + i18n.T("help.task.reject"))
+	fmt.Println(tidal+"  cancel   "+dim+"         "+rst + i18n.T("help.task.cancel"))
+	fmt.Println(tidal+"  download "+dim+"(dl)     "+rst + i18n.T("help.task.download"))
 
 	if verbose {
 		fmt.Println()
-		fmt.Println(bold + "TASK MODES" + rst)
-		fmt.Println(dim + "  simple    First-come-first-served. Worker claims + submits in one step." + rst)
-		fmt.Println(dim + "  auction   Multi-step: workers bid → author assigns → worker submits → author approves." + rst)
-		fmt.Println(dim + "            Auction House variant: multiple workers submit in parallel → author picks winner." + rst)
+		fmt.Println(bold + i18n.T("help.task.modes") + rst)
+		fmt.Println(dim + "  " + i18n.T("help.task.mode_simple") + rst)
+		fmt.Println(dim + "  " + i18n.T("help.task.mode_auction") + rst)
+		fmt.Println(dim + "  " + i18n.T("help.task.mode_house") + rst)
 		fmt.Println()
-		fmt.Println(bold + "LIFECYCLE" + rst)
-		fmt.Println(dim + "  Simple:   open → submitted (claim) → approved/rejected" + rst)
-		fmt.Println(dim + "  Auction:  open → assigned (bid+assign) → submitted → approved/rejected → settled" + rst)
-		fmt.Println(dim + "  House:    open → [multiple work submissions] → settled (pick winner)" + rst)
+		fmt.Println(bold + i18n.T("help.task.lifecycle") + rst)
+		fmt.Println(dim + "  " + i18n.T("help.task.lc_simple") + rst)
+		fmt.Println(dim + "  " + i18n.T("help.task.lc_auction") + rst)
+		fmt.Println(dim + "  " + i18n.T("help.task.lc_house") + rst)
 		fmt.Println()
-		fmt.Println(bold + "STATUS LEGEND" + rst)
-		fmt.Println(coral+"  open       "+rst+dim+"Accepting bids / claims" + rst)
-		fmt.Println(coral+"  assigned   "+rst+dim+"Worker selected, awaiting submission" + rst)
-		fmt.Println(coral+"  submitted  "+rst+dim+"Work delivered, pending review" + rst)
-		fmt.Println(coral+"  approved   "+rst+dim+"Work accepted, reward transferring" + rst)
-		fmt.Println(coral+"  settled    "+rst+dim+"Reward paid out (5% fee burned)" + rst)
-		fmt.Println(coral+"  rejected   "+rst+dim+"Submission rejected by publisher" + rst)
-		fmt.Println(coral+"  cancelled  "+rst+dim+"Task cancelled, reward refunded" + rst)
+		fmt.Println(bold + i18n.T("help.task.legend") + rst)
+		fmt.Println(coral+"  open       "+rst+dim + i18n.T("help.task.st_open") + rst)
+		fmt.Println(coral+"  assigned   "+rst+dim + i18n.T("help.task.st_assigned") + rst)
+		fmt.Println(coral+"  submitted  "+rst+dim + i18n.T("help.task.st_submitted") + rst)
+		fmt.Println(coral+"  approved   "+rst+dim + i18n.T("help.task.st_approved") + rst)
+		fmt.Println(coral+"  settled    "+rst+dim + i18n.T("help.task.st_settled") + rst)
+		fmt.Println(coral+"  rejected   "+rst+dim + i18n.T("help.task.st_rejected") + rst)
+		fmt.Println(coral+"  cancelled  "+rst+dim + i18n.T("help.task.st_cancelled") + rst)
 	}
 
 	fmt.Println()
-	fmt.Println(bold + "EXAMPLES" + rst)
+	fmt.Println(bold + i18n.T("common.examples") + rst)
 	fmt.Println(dim + "  clawnet task                                    # dashboard" + rst)
 	fmt.Println(dim + "  clawnet task list                               # open tasks" + rst)
 	fmt.Println(dim + "  clawnet task list assigned                      # assigned tasks" + rst)
@@ -160,7 +161,7 @@ func taskHelp(verbose bool) {
 
 	if !verbose {
 		fmt.Println()
-		fmt.Println(dim + "  Run with -v for mode details and status legend" + rst)
+		fmt.Println(dim + "  " + i18n.T("help.task.verbose_hint") + rst)
 	}
 }
 
@@ -225,15 +226,15 @@ func taskList(args []string) error {
 	yellow := "\033[33m"
 	rst := "\033[0m"
 
-	fmt.Printf("%s  🦞 Tasks — %s%s\n\n", coral, status, rst)
+	fmt.Printf("%s  %s%s\n\n", coral, i18n.Tf("task.list_header", status), rst)
 
 	if len(tasks) == 0 {
-		fmt.Println(dim + "  No tasks found." + rst)
+		fmt.Println(dim + "  " + i18n.T("task.none") + rst)
 		return nil
 	}
 
 	fmt.Printf(dim+"  %-8s %-10s %6s %-7s %s %s %s"+rst+"\n",
-		"ID", "STATUS", "REWARD", "MODE", padRight("AUTHOR", 14), padRight("TITLE", 22), "CREATED")
+		i18n.T("task.col.id"), i18n.T("task.col.status"), i18n.T("task.col.reward"), i18n.T("task.col.mode"), padRight(i18n.T("task.col.author"), 14), padRight(i18n.T("task.col.title"), 22), i18n.T("task.col.created"))
 	for _, t := range tasks {
 		id := t.ID
 		if len(id) > 8 {
@@ -276,7 +277,7 @@ func taskList(args []string) error {
 		}
 		fmt.Println(dim + nav + rst)
 	}
-	fmt.Println(dim + "  clawnet task show <id>   View details" + rst)
+	fmt.Println(dim + "  " + i18n.T("task.hint_show") + rst)
 	return nil
 }
 
@@ -344,31 +345,31 @@ func taskShow(idArg string) error {
 	if mode == "" {
 		mode = "simple"
 	}
-	fmt.Printf("  Status      %s\n", t.Status)
-	fmt.Printf("  Mode        %s\n", mode)
-	fmt.Printf("  Reward      %s%d shells%s\n", coral, t.Reward, rst)
-	fmt.Printf("  Author      %s\n", t.AuthorName)
-	fmt.Printf("  Created     %s\n", t.CreatedAt)
+	fmt.Printf("  %-10s  %s\n", i18n.T("task.field.status"), t.Status)
+	fmt.Printf("  %-10s  %s\n", i18n.T("task.field.mode"), mode)
+	fmt.Printf("  %-10s  %s%s%s\n", "🐚", coral, i18n.Tf("task.field.reward", t.Reward), rst)
+	fmt.Printf("  %-10s  %s\n", i18n.T("task.field.author"), t.AuthorName)
+	fmt.Printf("  %-10s  %s\n", i18n.T("task.field.created"), t.CreatedAt)
 	if t.Tags != "" && t.Tags != "[]" {
-		fmt.Printf("  Tags        %s\n", t.Tags)
+		fmt.Printf("  %-10s  %s\n", i18n.T("task.field.tags"), t.Tags)
 	}
 	if t.Deadline != "" {
-		fmt.Printf("  Deadline    %s\n", t.Deadline)
+		fmt.Printf("  %-10s  %s\n", i18n.T("task.field.deadline"), t.Deadline)
 	}
 	if t.BidCloseAt != "" {
-		fmt.Printf("  Bid close   %s\n", t.BidCloseAt)
+		fmt.Printf("  %-10s  %s\n", i18n.T("task.field.bid_close"), t.BidCloseAt)
 	}
 	if t.WorkDeadline != "" {
-		fmt.Printf("  Work due    %s\n", t.WorkDeadline)
+		fmt.Printf("  %-10s  %s\n", i18n.T("task.field.work_due"), t.WorkDeadline)
 	}
 	if t.AssignedTo != "" {
-		fmt.Printf("  Assigned    %s\n", t.AssignedTo)
+		fmt.Printf("  %-10s  %s\n", i18n.T("task.field.assigned"), t.AssignedTo)
 	}
 	if t.TargetPeer != "" {
-		fmt.Printf("  Target      %s%s%s\n", dim, t.TargetPeer, rst)
+		fmt.Printf("  %-10s  %s%s%s\n", i18n.T("task.field.target"), dim, t.TargetPeer, rst)
 	}
 	if t.Result != "" {
-		fmt.Printf("\n  %s── Result ──%s\n", green, rst)
+		fmt.Printf("\n  %s%s%s\n", green, i18n.T("task.field.result"), rst)
 		fmt.Printf("  %s\n", t.Result)
 	}
 	fmt.Printf("  %sID          %s%s\n", dim, t.ID, rst)
@@ -378,14 +379,14 @@ func taskShow(idArg string) error {
 	switch t.Status {
 	case "open":
 		if mode == "simple" {
-			fmt.Printf("  %sActions: clawnet task claim %s \"result\" -s 0.85%s\n", dim, t.ID[:8], rst)
+			fmt.Printf("  %sActions: clawnet task claim %s \"result\" -s 0.85%s\n", dim, safePrefix(t.ID, 8), rst)
 		} else {
-			fmt.Printf("  %sActions: clawnet task bid %s -a <amount>%s\n", dim, t.ID[:8], rst)
+			fmt.Printf("  %sActions: clawnet task bid %s -a <amount>%s\n", dim, safePrefix(t.ID, 8), rst)
 		}
 	case "assigned":
-		fmt.Printf("  %sActions: clawnet task submit %s \"result\"%s\n", dim, t.ID[:8], rst)
+		fmt.Printf("  %sActions: clawnet task submit %s \"result\"%s\n", dim, safePrefix(t.ID, 8), rst)
 	case "submitted":
-		fmt.Printf("  %sActions: clawnet task approve %s  |  clawnet task reject %s%s\n", dim, t.ID[:8], t.ID[:8], rst)
+		fmt.Printf("  %sActions: clawnet task approve %s  |  clawnet task reject %s%s\n", dim, safePrefix(t.ID, 8), safePrefix(t.ID, 8), rst)
 	}
 	return nil
 }
@@ -503,7 +504,7 @@ func taskCreate(args []string) error {
 		return err
 	}
 
-	result, err := taskPostReturn(base+"/api/tasks", body, "Task created")
+	result, err := taskPostReturn(base+"/api/tasks", body, i18n.T("task.created"))
 	if err != nil {
 		return err
 	}
@@ -564,7 +565,7 @@ func taskBid(args []string) error {
 	if err != nil {
 		return err
 	}
-	return taskPost(base+"/api/tasks/"+id+"/bid", body, "Bid placed")
+	return taskPost(base+"/api/tasks/"+id+"/bid", body, i18n.T("task.bid_placed"))
 }
 
 // ── bids ──
@@ -596,17 +597,17 @@ func taskBids(id string) error {
 	coral := "\033[38;2;247;127;0m"
 	rst := "\033[0m"
 
-	fmt.Printf("  🦞 Bids on %s  (%d bid(s))\n\n", id[:8], len(bids))
+	fmt.Printf("  %s  (%s)\n\n", i18n.Tf("task.bids_header", safePrefix(id, 8)), i18n.Tf("task.bids_count", len(bids)))
 
 	if len(bids) == 0 {
-		fmt.Println(dim + "  No bids yet." + rst)
+		fmt.Println(dim + "  " + i18n.T("task.no_bids") + rst)
 		return nil
 	}
 
 	for i, b := range bids {
 		name := b.BidderName
 		if name == "" {
-			name = b.BidderID[:12]
+			name = safePrefix(b.BidderID, 12)
 		}
 		fmt.Printf("  #%d %s  %s%d shells%s", i+1, name, coral, b.Amount, rst)
 		if b.Message != "" {
@@ -615,7 +616,7 @@ func taskBids(id string) error {
 		fmt.Println()
 	}
 	fmt.Println()
-	fmt.Printf("  %sAssign: clawnet task assign %s --to <bidder_peer_id>%s\n", dim, id[:8], rst)
+	fmt.Printf("  %s%s%s\n", dim, i18n.Tf("task.hint_assign", safePrefix(id, 8)), rst)
 	return nil
 }
 
@@ -643,7 +644,7 @@ func taskAssign(args []string) error {
 	if err != nil {
 		return err
 	}
-	return taskPost(base+"/api/tasks/"+id+"/assign", body, "Task assigned")
+	return taskPost(base+"/api/tasks/"+id+"/assign", body, i18n.T("task.assigned"))
 }
 
 // ── claim (simple mode) ──
@@ -691,7 +692,7 @@ func taskClaim(args []string) error {
 		// Use nutshell claim if available
 		nutPath, nutErr := exec.LookPath("nutshell")
 		if nutErr != nil {
-			return fmt.Errorf("nutshell CLI not found — install with: clawnet nutshell install")
+			return fmt.Errorf("%s", i18n.T("task.nutshell_required"))
 		}
 		fullID, err := resolveTaskID(base, id)
 		if err != nil {
@@ -715,7 +716,7 @@ func taskClaim(args []string) error {
 	if err != nil {
 		return err
 	}
-	return taskPost(base+"/api/tasks/"+id+"/claim", body, "Task claimed & submitted")
+	return taskPost(base+"/api/tasks/"+id+"/claim", body, i18n.T("task.claimed"))
 }
 
 // ── submit (assigned task) ──
@@ -748,7 +749,7 @@ func taskSubmit(args []string) error {
 	if nutDir != "" {
 		nutPath, nutErr := exec.LookPath("nutshell")
 		if nutErr != nil {
-			return fmt.Errorf("nutshell CLI not found — install with: clawnet nutshell install")
+			return fmt.Errorf("%s", i18n.T("task.nutshell_required"))
 		}
 		cmd := exec.Command(nutPath, "deliver", "--dir", nutDir)
 		cmd.Stdout = os.Stdout
@@ -767,7 +768,7 @@ func taskSubmit(args []string) error {
 	if err != nil {
 		return err
 	}
-	return taskPost(base+"/api/tasks/"+id+"/submit", body, "Work submitted")
+	return taskPost(base+"/api/tasks/"+id+"/submit", body, i18n.T("task.submitted"))
 }
 
 // ── work (auction house parallel submission) ──
@@ -786,7 +787,7 @@ func taskWork(args []string) error {
 	if err != nil {
 		return err
 	}
-	return taskPost(base+"/api/tasks/"+id+"/work", body, "Work submitted to auction house")
+	return taskPost(base+"/api/tasks/"+id+"/work", body, i18n.T("task.work_submitted"))
 }
 
 // ── submissions ──
@@ -819,23 +820,23 @@ func taskSubmissions(id string) error {
 	green := "\033[32m"
 	rst := "\033[0m"
 
-	fmt.Printf("  🦞 Submissions for %s  (%d)\n\n", id[:8], len(subs))
+	fmt.Printf("  %s  (%d)\n\n", i18n.Tf("task.submissions_header", safePrefix(id, 8)), len(subs))
 
 	if len(subs) == 0 {
-		fmt.Println(dim + "  No submissions yet." + rst)
+		fmt.Println(dim + "  " + i18n.T("task.no_submissions") + rst)
 		return nil
 	}
 
 	for i, s := range subs {
 		winner := ""
 		if s.IsWinner {
-			winner = green + " ★ WINNER" + rst
+			winner = green + " " + i18n.T("task.winner") + rst
 		}
 		name := s.WorkerName
 		if name == "" {
-			name = s.WorkerID[:12]
+			name = safePrefix(s.WorkerID, 12)
 		}
-		fmt.Printf("  #%d %s%s%s  %s%s%s\n", i+1, coral, name, rst, dim, s.SubmittedAt[:10], rst+winner)
+		fmt.Printf("  #%d %s%s%s  %s%s%s\n", i+1, coral, name, rst, dim, safePrefix(s.SubmittedAt, 10), rst+winner)
 		preview := s.Result
 		if len(preview) > 80 {
 			preview = preview[:77] + "..."
@@ -843,7 +844,7 @@ func taskSubmissions(id string) error {
 		fmt.Printf("     %s%s%s\n", dim, preview, rst)
 	}
 	fmt.Println()
-	fmt.Printf("  %sPick winner: clawnet task pick %s --sub <submission_id>%s\n", dim, id[:8], rst)
+	fmt.Printf("  %s%s%s\n", dim, i18n.Tf("task.hint_pick", safePrefix(id, 8)), rst)
 	return nil
 }
 
@@ -871,7 +872,7 @@ func taskPick(args []string) error {
 	if err != nil {
 		return err
 	}
-	return taskPost(base+"/api/tasks/"+id+"/pick", body, "Winner picked & settled")
+	return taskPost(base+"/api/tasks/"+id+"/pick", body, i18n.T("task.settled"))
 }
 
 // ── approve / reject / cancel ──
@@ -881,7 +882,7 @@ func taskApprove(id string) error {
 	if err != nil {
 		return err
 	}
-	return taskPost(base+"/api/tasks/"+id+"/approve", nil, "Task approved — reward paid")
+	return taskPost(base+"/api/tasks/"+id+"/approve", nil, i18n.T("task.approved"))
 }
 
 func taskReject(id string) error {
@@ -889,7 +890,7 @@ func taskReject(id string) error {
 	if err != nil {
 		return err
 	}
-	return taskPost(base+"/api/tasks/"+id+"/reject", nil, "Task rejected")
+	return taskPost(base+"/api/tasks/"+id+"/reject", nil, i18n.T("task.rejected"))
 }
 
 func taskCancel(id string) error {
@@ -897,7 +898,7 @@ func taskCancel(id string) error {
 	if err != nil {
 		return err
 	}
-	return taskPost(base+"/api/tasks/"+id+"/cancel", nil, "Task cancelled — reward refunded")
+	return taskPost(base+"/api/tasks/"+id+"/cancel", nil, i18n.T("task.cancelled"))
 }
 
 // taskPost sends a POST request with JSON body and prints a success message.
@@ -992,7 +993,7 @@ func taskDownload(args []string) error {
 	}
 
 	if outPath == "" {
-		outPath = fullID[:8] + ".nut"
+		outPath = safePrefix(fullID, 8) + ".nut"
 	}
 
 	resp, err := http.Get(base + "/api/tasks/" + fullID + "/bundle")
@@ -1022,8 +1023,8 @@ func taskDownload(args []string) error {
 	green := "\033[32m"
 	dim := "\033[2m"
 	rst := "\033[0m"
-	fmt.Printf("  %s✓ Bundle downloaded%s\n", green, rst)
-	fmt.Printf("  %sFile: %s (%d bytes)%s\n", dim, outPath, n, rst)
+	fmt.Printf("  %s%s%s\n", green, i18n.T("task.bundle_downloaded"), rst)
+	fmt.Printf("  %s%s%s\n", dim, i18n.Tf("task.bundle_file", outPath, n), rst)
 	return nil
 }
 
@@ -1123,11 +1124,11 @@ func taskPostReturn(url string, body map[string]interface{}, successMsg string) 
 func taskUploadNut(nutDir, taskID, base string) error {
 	nutPath, err := exec.LookPath("nutshell")
 	if err != nil {
-		return fmt.Errorf("nutshell CLI not found — install with: clawnet nutshell install")
+		return fmt.Errorf("%s", i18n.T("task.nutshell_required"))
 	}
 
 	// Pack the bundle
-	nutFile := filepath.Join(os.TempDir(), taskID[:8]+".nut")
+	nutFile := filepath.Join(os.TempDir(), safePrefix(taskID, 8)+".nut")
 	cmd := exec.Command(nutPath, "pack", "--dir", nutDir, "-o", nutFile)
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -1168,6 +1169,6 @@ func taskUploadNut(nutDir, taskID, base string) error {
 
 	dim := "\033[2m"
 	rst := "\033[0m"
-	fmt.Printf("  %s.nut bundle uploaded to task %s%s\n", dim, taskID[:8], rst)
+	fmt.Printf("  %s%s%s\n", dim, i18n.Tf("task.bundle_uploaded", safePrefix(taskID, 8)), rst)
 	return nil
 }

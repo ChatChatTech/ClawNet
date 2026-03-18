@@ -178,7 +178,7 @@ func (s *Store) ListSwarms(status string, limit, offset int) ([]*Swarm, error) {
 
 // SearchSwarms searches swarms by keyword in title and contribution body.
 func (s *Store) SearchSwarms(query string, limit, offset int) ([]*Swarm, error) {
-	like := "%" + query + "%"
+	like := "%" + likeSanitize(query) + "%"
 	rows, err := s.DB.Query(
 		`SELECT s.id, s.creator_id, s.creator_name, s.title, s.question,
 		        COALESCE(s.template_type,'freeform'),

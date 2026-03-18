@@ -14,6 +14,7 @@ import (
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/daemon"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/i18n"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/identity"
 )
 
@@ -27,12 +28,12 @@ type startPhase struct {
 }
 
 var phases = []startPhase{
-	{"Initializing identity", 400 * time.Millisecond},
-	{"Loading configuration", 300 * time.Millisecond},
-	{"Starting P2P network", 500 * time.Millisecond},
-	{"Connecting to peers", 600 * time.Millisecond},
-	{"Opening data store", 300 * time.Millisecond},
-	{"Launching daemon", 400 * time.Millisecond},
+	{i18n.T("startup.phase.identity"), 400 * time.Millisecond},
+	{i18n.T("startup.phase.config"), 300 * time.Millisecond},
+	{i18n.T("startup.phase.p2p"), 500 * time.Millisecond},
+	{i18n.T("startup.phase.connect"), 600 * time.Millisecond},
+	{i18n.T("startup.phase.store"), 300 * time.Millisecond},
+	{i18n.T("startup.phase.launch"), 400 * time.Millisecond},
 }
 
 // typewriterLine prints text one character at a time.
@@ -187,7 +188,7 @@ func ensureDaemon() (justStarted bool, err error) {
 
 	if needsInit {
 		fmt.Println()
-		typewriterLine(red+"  🦞 Welcome to ClawNet"+rst, 30*time.Millisecond)
+		typewriterLine(red+"  "+i18n.T("startup.welcome")+rst, 30*time.Millisecond)
 		fmt.Println()
 		spinPhase(phases[0].label, phases[0].duration)
 		if err := silentInit(); err != nil {
@@ -196,7 +197,7 @@ func ensureDaemon() (justStarted bool, err error) {
 		spinPhase(phases[1].label, phases[1].duration)
 	} else {
 		fmt.Println()
-		fmt.Printf("  %s🦞 Starting ClawNet daemon...%s\n", dim, rst)
+		fmt.Printf("  %s%s%s\n", dim, i18n.T("startup.starting"), rst)
 		fmt.Println()
 	}
 
@@ -214,7 +215,7 @@ func ensureDaemon() (justStarted bool, err error) {
 	}
 
 	// Wait for daemon to become responsive
-	label := "Waiting for daemon"
+	label := i18n.T("startup.waiting")
 	if needsInit {
 		label = phases[5].label
 	}
@@ -246,15 +247,15 @@ func ensureDaemon() (justStarted bool, err error) {
 	if ready {
 		fmt.Printf("\r  %s✓%s %s\033[K\n", green, rst, label)
 	} else {
-		fmt.Printf("\r  %s…%s %s %s(still starting, check: clawnet log)%s\033[K\n",
-			dim, rst, label, dim, rst)
+		fmt.Printf("\r  %s…%s %s %s%s%s\033[K\n",
+			dim, rst, label, dim, i18n.T("startup.still_starting"), rst)
 	}
 
 	fmt.Println()
 	if needsInit {
-		fmt.Printf("  %sDaemon running in background. Logs: clawnet log%s\n", dim, rst)
+		fmt.Printf("  %s%s%s\n", dim, i18n.T("startup.daemon_bg"), rst)
 	} else {
-		fmt.Printf("  %sDaemon started. Logs: clawnet log%s\n", dim, rst)
+		fmt.Printf("  %s%s%s\n", dim, i18n.T("startup.daemon_started"), rst)
 	}
 	fmt.Println()
 
@@ -302,19 +303,19 @@ func cmdLog() error {
 	if clear {
 		if err := os.Truncate(logPath, 0); err != nil {
 			if os.IsNotExist(err) {
-				fmt.Println("No log file found.")
+				fmt.Println(i18n.T("log.no_file"))
 				return nil
 			}
 			return err
 		}
-		fmt.Println("Log cleared.")
+		fmt.Println(i18n.T("log.cleared"))
 		return nil
 	}
 
 	f, err := os.Open(logPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			fmt.Println("No log file yet. Start the daemon first.")
+			fmt.Println(i18n.T("log.not_found"))
 			return nil
 		}
 		return err

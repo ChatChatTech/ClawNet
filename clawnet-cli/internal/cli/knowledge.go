@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/i18n"
 )
 
 // cmdKnowledge routes `clawnet knowledge` subcommands (Knowledge Mesh).
@@ -73,30 +74,30 @@ func knowledgeHelp(verbose bool) {
 	bold := "\033[1m"
 	rst := "\033[0m"
 
-	fmt.Println(bold + "clawnet knowledge — Knowledge Mesh" + rst)
+	fmt.Println(bold + i18n.T("help.knowledge") + rst)
 	fmt.Println()
-	fmt.Println(bold + "USAGE" + rst)
-	fmt.Println(tidal + "  clawnet knowledge" + rst + dim + "                Feed (default)" + rst)
+	fmt.Println(bold + i18n.T("common.usage") + rst)
+	fmt.Println(tidal + "  clawnet knowledge" + rst + dim + "                " + i18n.T("help.knowledge.feed") + rst)
 	fmt.Println(tidal + "  clawnet knowledge <subcommand>" + rst)
-	fmt.Println(tidal + "  clawnet knowledge <subcommand> --json" + rst + dim + " Machine-readable output" + rst)
+	fmt.Println(tidal + "  clawnet knowledge <subcommand> --json" + rst + dim + " " + i18n.T("help.knowledge.json") + rst)
 	fmt.Println()
-	fmt.Println(bold + "SUBCOMMANDS" + rst)
-	fmt.Println(tidal+"  feed      "+dim+"         "+rst + "Browse recent entries")
-	fmt.Println(tidal+"  search    "+dim+"         "+rst + "Full-text search (FTS5)")
-	fmt.Println(tidal+"  show      "+dim+"         "+rst + "View entry + replies")
-	fmt.Println(tidal+"  publish   "+dim+"(pub)    "+rst + "Publish a knowledge entry")
-	fmt.Println(tidal+"  upvote    "+dim+"         "+rst + "Upvote an entry")
-	fmt.Println(tidal+"  flag      "+dim+"         "+rst + "Flag low-quality entry")
-	fmt.Println(tidal+"  reply     "+dim+"         "+rst + "Reply to an entry")
-	fmt.Println(tidal+"  replies   "+dim+"         "+rst + "View replies on an entry")
+	fmt.Println(bold + i18n.T("help.knowledge.subcmds") + rst)
+	fmt.Println(tidal+"  feed      "+dim+"         "+rst + i18n.T("help.knowledge.cmd_feed"))
+	fmt.Println(tidal+"  search    "+dim+"         "+rst + i18n.T("help.knowledge.cmd_search"))
+	fmt.Println(tidal+"  show      "+dim+"         "+rst + i18n.T("help.knowledge.cmd_show"))
+	fmt.Println(tidal+"  publish   "+dim+"(pub)    "+rst + i18n.T("help.knowledge.cmd_publish"))
+	fmt.Println(tidal+"  upvote    "+dim+"         "+rst + i18n.T("help.knowledge.cmd_upvote"))
+	fmt.Println(tidal+"  flag      "+dim+"         "+rst + i18n.T("help.knowledge.cmd_flag"))
+	fmt.Println(tidal+"  reply     "+dim+"         "+rst + i18n.T("help.knowledge.cmd_reply"))
+	fmt.Println(tidal+"  replies   "+dim+"         "+rst + i18n.T("help.knowledge.cmd_replies"))
 
 	if verbose {
 		fmt.Println()
-		fmt.Println(bold + "DOMAINS" + rst)
+		fmt.Println(bold + i18n.T("help.knowledge.domains") + rst)
 		fmt.Println(dim + "  Tag entries with domains like: data-analysis, python, web-scraping," + rst)
 		fmt.Println(dim + "  nlp, blockchain, finance, devops. Used for feed filtering." + rst)
 		fmt.Println()
-		fmt.Println(bold + "SEARCH SYNTAX" + rst)
+		fmt.Println(bold + i18n.T("help.knowledge.search") + rst)
 		fmt.Println(dim + "  Uses SQLite FTS5. Examples:" + rst)
 		fmt.Println(dim + "    clawnet knowledge search python pandas      # both words" + rst)
 		fmt.Println(dim + "    clawnet knowledge search \"python OR rust\"   # either word" + rst)
@@ -104,7 +105,7 @@ func knowledgeHelp(verbose bool) {
 	}
 
 	fmt.Println()
-	fmt.Println(bold + "EXAMPLES" + rst)
+	fmt.Println(bold + i18n.T("common.examples") + rst)
 	fmt.Println(dim + "  clawnet knowledge                                       # feed" + rst)
 	fmt.Println(dim + "  clawnet knowledge feed --domain python                  # filtered" + rst)
 	fmt.Println(dim + "  clawnet knowledge search \"retrieval augmented\"           # FTS" + rst)
@@ -113,7 +114,7 @@ func knowledgeHelp(verbose bool) {
 	fmt.Println(dim + "  clawnet knowledge reply <id> \"Great insight!\"           # reply" + rst)
 	if !verbose {
 		fmt.Println()
-		fmt.Println(dim + "  Run with -v for domain tags and FTS search syntax" + rst)
+		fmt.Println(dim + "  " + i18n.T("help.knowledge.verbose_hint") + rst)
 	}
 }
 
@@ -160,14 +161,14 @@ func knowledgeFeed(args []string) error {
 	green := "\033[32m"
 	rst := "\033[0m"
 
-	label := "Knowledge Feed"
+	label := i18n.T("knowledge.feed_header")
 	if domain != "" {
 		label += " [" + domain + "]"
 	}
-	fmt.Printf("  %s📚 %s%s  (%d)\n\n", coral, label, rst, len(entries))
+	fmt.Printf("  %s%s%s  (%d)\n\n", coral, label, rst, len(entries))
 
 	if len(entries) == 0 {
-		fmt.Println(dim + "  No entries yet." + rst)
+		fmt.Println(dim + "  " + i18n.T("knowledge.no_entries") + rst)
 		return nil
 	}
 
@@ -191,7 +192,7 @@ func knowledgeFeed(args []string) error {
 		fmt.Printf("  %s %s%s %sby %s %s%s%s\n", id, truncToWidth(e.Title, 40), votes, dim, truncToWidth(e.AuthorName, 14), ts, rst, domains)
 	}
 	fmt.Println()
-	fmt.Println(dim + "  clawnet knowledge show <id>  View full entry" + rst)
+	fmt.Println(dim + "  " + i18n.T("knowledge.hint_show") + rst)
 	return nil
 }
 
@@ -251,10 +252,10 @@ func knowledgeSearch(query string) error {
 	green := "\033[32m"
 	rst := "\033[0m"
 
-	fmt.Printf("  %s🔍 Search: \"%s\"%s  (%d results)\n\n", coral, query, rst, len(entries))
+	fmt.Printf("  %s%s%s  (%d)\n\n", coral, i18n.Tf("knowledge.search_header", query), rst, len(entries))
 
 	if len(entries) == 0 {
-		fmt.Println(dim + "  No matching entries." + rst)
+		fmt.Println(dim + "  " + i18n.T("knowledge.no_matches") + rst)
 		return nil
 	}
 
@@ -313,7 +314,7 @@ func knowledgeShow(id string) error {
 		}
 	}
 	if found == nil {
-		return fmt.Errorf("entry not found: %s", id)
+		return fmt.Errorf("%s", i18n.Tf("knowledge.not_found", id))
 	}
 
 	coral := "\033[38;2;247;127;0m"
@@ -330,16 +331,16 @@ func knowledgeShow(id string) error {
 	fmt.Println("  " + found.Body)
 	fmt.Println()
 	if found.Upvotes > 0 {
-		fmt.Printf("  %s▲ %d upvotes%s", green, found.Upvotes, rst)
+		fmt.Printf("  %s%s%s", green, i18n.Tf("knowledge.upvotes", found.Upvotes), rst)
 	}
 	if found.Flags > 0 {
-		fmt.Printf("  %s⚑ %d flags%s", coral, found.Flags, rst)
+		fmt.Printf("  %s%s%s", coral, i18n.Tf("knowledge.flags", found.Flags), rst)
 	}
 	if found.Upvotes > 0 || found.Flags > 0 {
 		fmt.Println()
 	}
 	fmt.Printf("  %sID  %s%s\n", dim, found.ID, rst)
-	fmt.Printf("\n  %sclawnet knowledge replies %s  |  clawnet knowledge upvote %s%s\n", dim, id[:8], id[:8], rst)
+	fmt.Printf("\n  %s%s%s\n", dim, i18n.Tf("knowledge.hint_actions", safePrefix(id, 8), safePrefix(id, 8)), rst)
 
 	// Show replies inline
 	repliesResp, err := http.Get(base + "/api/knowledge/" + found.ID + "/replies?limit=10")
@@ -351,7 +352,7 @@ func knowledgeShow(id string) error {
 			CreatedAt  string `json:"created_at"`
 		}
 		if json.NewDecoder(repliesResp.Body).Decode(&replies) == nil && len(replies) > 0 {
-			fmt.Printf("\n  %s── Replies (%d) ──%s\n", dim, len(replies), rst)
+			fmt.Printf("\n  %s%s%s\n", dim, i18n.Tf("knowledge.replies_header", len(replies)), rst)
 			for _, r := range replies {
 				ts := r.CreatedAt
 				if len(ts) > 10 {
@@ -407,7 +408,7 @@ func knowledgePublish(args []string) error {
 	if err != nil {
 		return err
 	}
-	return knowledgePost(base+"/api/knowledge", reqBody, "Knowledge entry published")
+	return knowledgePost(base+"/api/knowledge", reqBody, i18n.T("knowledge.published"))
 }
 
 // ── react ──
@@ -420,9 +421,9 @@ func knowledgeReact(id, reaction string) error {
 	body := map[string]interface{}{
 		"reaction": reaction,
 	}
-	msg := "Upvoted"
+	msg := i18n.T("knowledge.upvoted")
 	if reaction == "flag" {
-		msg = "Flagged"
+		msg = i18n.T("knowledge.flagged")
 	}
 	return knowledgePost(base+"/api/knowledge/"+id+"/react", body, msg)
 }
@@ -443,7 +444,7 @@ func knowledgeReply(args []string) error {
 	body := map[string]interface{}{
 		"body": replyBody,
 	}
-	return knowledgePost(base+"/api/knowledge/"+id+"/reply", body, "Reply posted")
+	return knowledgePost(base+"/api/knowledge/"+id+"/reply", body, i18n.T("knowledge.reply_posted"))
 }
 
 // ── replies ──
@@ -473,10 +474,10 @@ func knowledgeReplies(id string) error {
 	dim := "\033[2m"
 	rst := "\033[0m"
 
-	fmt.Printf("  %s📚 Replies on %s%s  (%d)\n\n", coral, id[:8], rst, len(replies))
+	fmt.Printf("  %s%s%s  (%d)\n\n", coral, i18n.Tf("knowledge.replies_on", safePrefix(id, 8)), rst, len(replies))
 
 	if len(replies) == 0 {
-		fmt.Println(dim + "  No replies yet." + rst)
+		fmt.Println(dim + "  " + i18n.T("knowledge.no_replies") + rst)
 		return nil
 	}
 

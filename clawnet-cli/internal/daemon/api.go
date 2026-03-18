@@ -98,7 +98,7 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 	// Wrap mux with localhost access guard.
 	handler := localhostGuard(mux)
 
-	addr := fmt.Sprintf("0.0.0.0:%d", d.Config.WebUIPort)
+	addr := fmt.Sprintf("127.0.0.1:%d", d.Config.WebUIPort)
 	server := &http.Server{
 		Addr:    addr,
 		Handler: handler,
@@ -1249,7 +1249,7 @@ func localhostGuard(next http.Handler) http.Handler {
 			host = r.RemoteAddr
 		}
 		ip := net.ParseIP(host)
-		if ip != nil && (ip.IsLoopback() || ip.Equal(net.IPv4zero) || ip.Equal(net.IPv6zero)) {
+		if ip != nil && ip.IsLoopback() {
 			next.ServeHTTP(w, r)
 			return
 		}

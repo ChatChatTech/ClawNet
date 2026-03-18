@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/i18n"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/identity"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
 )
@@ -72,7 +73,7 @@ func cmdExport() error {
 
 	// Check identity.key exists (not just generated)
 	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
-		return fmt.Errorf("no identity found — run 'clawnet init' first")
+		return fmt.Errorf("%s", i18n.T("export.no_identity"))
 	}
 
 	// Build payload
@@ -108,29 +109,29 @@ func cmdExport() error {
 	// Show summary
 	fmt.Println()
 	fmt.Println(cBanner + "  ┌─────────────────────────────────────────┐" + cReset)
-	fmt.Println(cBanner + "  │       ClawNet Identity Export           │" + cReset)
+	fmt.Println(cBanner + "  │       " + i18n.T("export.title") + "           │" + cReset)
 	fmt.Println(cBanner + "  └─────────────────────────────────────────┘" + cReset)
 	fmt.Println()
-	fmt.Printf("  Peer ID:    %s\n", payload.PeerID)
-	fmt.Printf("  Balance:    %d Shell\n", payload.Balance)
-	fmt.Printf("  Frozen:     %d Shell\n", payload.Frozen)
-	fmt.Printf("  Prestige:   %.2f\n", payload.Prestige)
+	fmt.Printf("  %-12s %s\n", i18n.T("export.field.peer_id"), payload.PeerID)
+	fmt.Printf("  %-12s %d Shell\n", i18n.T("export.field.balance"), payload.Balance)
+	fmt.Printf("  %-12s %d Shell\n", i18n.T("export.field.frozen"), payload.Frozen)
+	fmt.Printf("  %-12s %.2f\n", i18n.T("export.field.prestige"), payload.Prestige)
 	fmt.Println()
 
 	// ── Double confirmation ──
-	fmt.Println(cWarn + "  ⚠  This will export your identity and then WIPE all local data." + cReset)
-	fmt.Println(cWarn + "  ⚠  The export file is the ONLY way to recover your identity." + cReset)
+	fmt.Println(cWarn + "  " + i18n.T("export.warning1") + cReset)
+	fmt.Println(cWarn + "  " + i18n.T("export.warning2") + cReset)
 	fmt.Println()
 
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("  Continue? [y/N] ")
+	fmt.Print("  " + i18n.T("export.confirm"))
 	ans1, _ := reader.ReadString('\n')
 	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(ans1)), "y") {
-		fmt.Println("  Cancelled.")
+		fmt.Println("  " + i18n.T("common.cancelled"))
 		return nil
 	}
 
-	fmt.Print("  Type your Peer ID to confirm (first 12 chars): ")
+	fmt.Print("  " + i18n.T("export.confirm_peerid"))
 	ans2, _ := reader.ReadString('\n')
 	ans2 = strings.TrimSpace(ans2)
 	prefix := peerID.String()
@@ -138,7 +139,7 @@ func cmdExport() error {
 		prefix = prefix[:12]
 	}
 	if ans2 != prefix {
-		fmt.Println("  Peer ID mismatch — cancelled.")
+		fmt.Println("  " + i18n.T("export.mismatch"))
 		return nil
 	}
 
@@ -185,23 +186,23 @@ func cmdExport() error {
 
 	absPath, _ := filepath.Abs(outFile)
 	fmt.Println()
-	fmt.Println(cOK + "  ✓ Export saved to: " + absPath + cReset)
+	fmt.Println(cOK + "  " + i18n.T("export.saved") + absPath + cReset)
 	fmt.Println()
 	fmt.Println(cWarn + "  ╔═══════════════════════════════════════════════════════════╗" + cReset)
-	fmt.Println(cWarn + "  ║  BACK UP THIS FILE IMMEDIATELY!                          ║" + cReset)
-	fmt.Println(cWarn + "  ║  It contains your identity key and cannot be recreated.   ║" + cReset)
-	fmt.Println(cWarn + "  ║  Store it somewhere safe (USB drive, cloud, etc.)         ║" + cReset)
+	fmt.Println(cWarn + "  ║  " + i18n.T("export.backup1") + "                          ║" + cReset)
+	fmt.Println(cWarn + "  ║  " + i18n.T("export.backup2") + "   ║" + cReset)
+	fmt.Println(cWarn + "  ║  " + i18n.T("export.backup3") + "         ║" + cReset)
 	fmt.Println(cWarn + "  ╚═══════════════════════════════════════════════════════════╝" + cReset)
 	fmt.Println()
 
 	// ── Wipe local data ──
-	fmt.Println("  Wiping local ClawNet data...")
+	fmt.Println("  " + i18n.T("export.wiping"))
 	if err := nukeDataDir(dataDir, false); err != nil {
 		return fmt.Errorf("wipe failed: %w", err)
 	}
-	fmt.Println(cOK + "  ✓ Local data wiped." + cReset)
+	fmt.Println(cOK + "  " + i18n.T("export.wiped") + cReset)
 	fmt.Println()
-	fmt.Println("  To restore on a new machine:")
+	fmt.Println("  " + i18n.T("export.restore_hint"))
 	fmt.Printf("    clawnet import %s\n", filepath.Base(outFile))
 	fmt.Println()
 
@@ -221,7 +222,7 @@ func cmdImport() error {
 
 	// Refuse if identity already exists
 	if _, err := os.Stat(keyPath); err == nil {
-		return fmt.Errorf("identity already exists at %s\nRun 'clawnet nuke' first, or 'clawnet export' to transfer", keyPath)
+		return fmt.Errorf("%s", i18n.Tf("import.already_exists", keyPath))
 	}
 
 	// Read file
@@ -248,7 +249,7 @@ func cmdImport() error {
 		return fmt.Errorf("parse payload: %w", err)
 	}
 	if payload.Magic != exportMagic {
-		return fmt.Errorf("not a valid ClawNet export file")
+		return fmt.Errorf("%s", i18n.T("import.invalid_file"))
 	}
 
 	// Verify HMAC
@@ -263,19 +264,19 @@ func cmdImport() error {
 	// Show what we're importing
 	fmt.Println()
 	fmt.Println(cBanner + "  ┌─────────────────────────────────────────┐" + cReset)
-	fmt.Println(cBanner + "  │       ClawNet Identity Import           │" + cReset)
+	fmt.Println(cBanner + "  │       " + i18n.T("import.title") + "           │" + cReset)
 	fmt.Println(cBanner + "  └─────────────────────────────────────────┘" + cReset)
 	fmt.Println()
-	fmt.Printf("  Peer ID:      %s\n", payload.PeerID)
-	fmt.Printf("  Balance:      %d Shell\n", payload.Balance)
-	fmt.Printf("  Exported at:  %s\n", payload.ExportedAt)
+	fmt.Printf("  %-14s %s\n", i18n.T("import.field.peer_id"), payload.PeerID)
+	fmt.Printf("  %-14s %d Shell\n", i18n.T("import.field.balance"), payload.Balance)
+	fmt.Printf("  %-14s %s\n", i18n.T("import.field.exported_at"), payload.ExportedAt)
 	fmt.Println()
 
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("  Import this identity? [y/N] ")
+	fmt.Print("  " + i18n.T("import.confirm"))
 	ans, _ := reader.ReadString('\n')
 	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(ans)), "y") {
-		fmt.Println("  Cancelled.")
+		fmt.Println("  " + i18n.T("common.cancelled"))
 		return nil
 	}
 
@@ -311,10 +312,10 @@ func cmdImport() error {
 	}
 
 	fmt.Println()
-	fmt.Println(cOK + "  ✓ Identity imported successfully!" + cReset)
+	fmt.Println(cOK + "  " + i18n.T("import.success") + cReset)
 	fmt.Printf("  Peer ID: %s\n", payload.PeerID)
 	fmt.Println()
-	fmt.Println("  Next steps:")
+	fmt.Println("  " + i18n.T("import.next_steps"))
 	fmt.Println("    clawnet init    — finish directory setup")
 	fmt.Println("    clawnet start   — start your node")
 	fmt.Println()
@@ -329,7 +330,7 @@ func cmdNuke() error {
 
 	// Check if anything exists
 	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
-		fmt.Println("Nothing to remove — no ClawNet data found.")
+		fmt.Println("  " + i18n.T("nuke.nothing"))
 		return nil
 	}
 
@@ -339,7 +340,7 @@ func cmdNuke() error {
 		if pid, err := strconv.Atoi(strings.TrimSpace(string(pidData))); err == nil {
 			if proc, err := os.FindProcess(pid); err == nil {
 				proc.Signal(os.Interrupt)
-				fmt.Println("  Stopped running daemon.")
+				fmt.Println("  " + i18n.T("nuke.stopped_daemon"))
 				time.Sleep(500 * time.Millisecond)
 			}
 		}
@@ -354,12 +355,12 @@ func cmdNuke() error {
 
 	fmt.Println()
 	fmt.Println(cWarn + "  ╔═══════════════════════════════════════════════════════════╗" + cReset)
-	fmt.Println(cWarn + "  ║               COMPLETE UNINSTALL                          ║" + cReset)
+	fmt.Println(cWarn + "  ║               " + i18n.T("nuke.title") + "                          ║" + cReset)
 	fmt.Println(cWarn + "  ╚═══════════════════════════════════════════════════════════╝" + cReset)
 	fmt.Println()
 	fmt.Printf("  Data directory: %s\n", dataDir)
 	if hasKey {
-		fmt.Println("  Identity key:   " + cWarn + "FOUND" + cReset)
+		fmt.Println("  Identity key:   " + cWarn + i18n.T("nuke.key_found") + cReset)
 	}
 	fmt.Println()
 
@@ -367,22 +368,22 @@ func cmdNuke() error {
 
 	keepKey := false
 	if hasKey {
-		fmt.Print("  Keep your identity key for future use? [y/N] ")
+		fmt.Print("  " + i18n.T("nuke.keep_key"))
 		ans, _ := reader.ReadString('\n')
 		keepKey = strings.HasPrefix(strings.ToLower(strings.TrimSpace(ans)), "y")
 	}
 
 	fmt.Println()
 	if keepKey {
-		fmt.Println(cWarn + "  This will remove ALL ClawNet data EXCEPT the identity key." + cReset)
+		fmt.Println(cWarn + "  " + i18n.T("nuke.warn_except_key") + cReset)
 	} else {
-		fmt.Println(cWarn + "  This will PERMANENTLY DELETE your identity and all data." + cReset)
-		fmt.Println(cWarn + "  Consider 'clawnet export' first to back up your identity." + cReset)
+		fmt.Println(cWarn + "  " + i18n.T("nuke.warn_permanent") + cReset)
+		fmt.Println(cWarn + "  " + i18n.T("nuke.warn_export_first") + cReset)
 	}
-	fmt.Print("  Are you sure? [y/N] ")
+	fmt.Print("  " + i18n.T("nuke.confirm"))
 	ans, _ := reader.ReadString('\n')
 	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(ans)), "y") {
-		fmt.Println("  Cancelled.")
+		fmt.Println("  " + i18n.T("common.cancelled"))
 		return nil
 	}
 
@@ -401,29 +402,29 @@ func cmdNuke() error {
 	if keepKey && keyBackup != nil {
 		os.MkdirAll(dataDir, 0700)
 		os.WriteFile(keyPath, keyBackup, 0600)
-		fmt.Println(cOK + "  ✓ Data removed. Identity key preserved." + cReset)
+		fmt.Println(cOK + "  " + i18n.T("nuke.preserved") + cReset)
 	} else {
-		fmt.Println(cOK + "  ✓ All ClawNet data removed." + cReset)
+		fmt.Println(cOK + "  " + i18n.T("nuke.removed") + cReset)
 	}
 
 	// Offer to remove binary
 	binaryPath, _ := os.Executable()
 	if binaryPath != "" {
 		fmt.Println()
-		fmt.Printf("  Remove binary (%s) too? [y/N] ", binaryPath)
+		fmt.Printf("  %s [y/N] ", i18n.Tf("nuke.remove_binary", binaryPath))
 		ans, _ := reader.ReadString('\n')
 		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(ans)), "y") {
 			if err := os.Remove(binaryPath); err != nil {
-				fmt.Printf("  Could not remove binary: %v\n", err)
-				fmt.Printf("  Remove manually: sudo rm %s\n", binaryPath)
+				fmt.Printf("  %s\n", i18n.Tf("nuke.binary_error", err))
+				fmt.Printf("  %s\n", i18n.Tf("nuke.binary_remove_hint", binaryPath))
 			} else {
-				fmt.Println(cOK + "  ✓ Binary removed." + cReset)
+				fmt.Println(cOK + "  " + i18n.T("nuke.binary_removed") + cReset)
 			}
 		}
 	}
 
 	fmt.Println()
-	fmt.Println("  ClawNet has been uninstalled. 👋")
+	fmt.Println("  " + i18n.T("nuke.goodbye"))
 	return nil
 }
 

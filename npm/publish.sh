@@ -1,11 +1,21 @@
 #!/bin/bash
 # npm/publish.sh — Download binaries from GitHub Release and publish to npm.
-# Usage: ./publish.sh [version]    e.g. ./publish.sh 0.9.5
+# Usage: ./publish.sh [version]    e.g. ./publish.sh 0.9.10
+#        ./publish.sh              (auto-detects from daemon.go)
 set -euo pipefail
 
-VERSION="${1:-0.9.5}"
-REPO="ChatChatTech/ClawNet"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
+
+# Auto-detect version from daemon.go if not provided
+if [ -n "${1:-}" ]; then
+  VERSION="$1"
+else
+  VERSION=$(grep 'const Version' "$ROOT/../clawnet-cli/internal/daemon/daemon.go" \
+    | sed 's/.*"\(.*\)".*/\1/')
+  [ -n "$VERSION" ] || { echo "❌ Cannot detect version from daemon.go"; exit 1; }
+fi
+
+REPO="ChatChatTech/ClawNet"
 
 # Token
 NPM_TOKEN="$(cat "$ROOT/../NPM_TOKEN" 2>/dev/null || echo "")"
@@ -18,23 +28,56 @@ fi
 
 echo "🐚 Publishing ClawNet v${VERSION} to npm"
 
+# ── Update all package.json versions ──────────────────────────────
+echo ""
+echo "📝 Bumping package.json versions to ${VERSION}..."
+for pkg_json in \
+  "$ROOT/clawnet/package.json" \
+  "$ROOT/clawnet-linux-x64/package.json" \
+  "$ROOT/clawnet-linux-arm64/package.json" \
+  "$ROOT/clawnet-darwin-x64/package.json" \
+  "$ROOT/clawnet-darwin-arm64/package.json" \
+  "$ROOT/clawnet-win32-x64/package.json"; do
+  if [ -f "$pkg_json" ]; then
+    sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION}\"/" "$pkg_json"
+    echo "  ✓ $(basename "$(dirname "$pkg_json")")/package.json"
+  fi
+done
+
+# Also bump optionalDependencies in the main wrapper
+sed -i "s/@cctech2077\/clawnet-\([^\"]*\)\": \"[^\"]*\"/@cctech2077\/clawnet-\1\": \"${VERSION}\"/g" \
+  "$ROOT/clawnet/package.json"
+echo "  ✓ clawnet/package.json optionalDependencies"
+
 # Map: npm-package-dir → github-release-asset-name
 declare -A ASSETS=(
   ["clawnet-linux-x64"]="clawnet-linux-amd64"
   ["clawnet-linux-arm64"]="clawnet-linux-arm64"
   ["clawnet-darwin-x64"]="clawnet-darwin-amd64"
   ["clawnet-darwin-arm64"]="clawnet-darwin-arm64"
+  ["clawnet-win32-x64"]="clawnet-windows-amd64.exe"
+)
+
+# Binary names inside npm packages
+declare -A BIN_NAMES=(
+  ["clawnet-linux-x64"]="clawnet"
+  ["clawnet-linux-arm64"]="clawnet"
+  ["clawnet-darwin-x64"]="clawnet"
+  ["clawnet-darwin-arm64"]="clawnet"
+  ["clawnet-win32-x64"]="clawnet.exe"
 )
 
 # Download binaries from GitHub Release
+echo ""
 echo "📥 Downloading binaries from GitHub Release v${VERSION}..."
 for dir in "${!ASSETS[@]}"; do
   asset="${ASSETS[$dir]}"
-  dest="$ROOT/$dir/bin/clawnet"
+  bin_name="${BIN_NAMES[$dir]}"
+  dest="$ROOT/$dir/bin/$bin_name"
   mkdir -p "$(dirname "$dest")"
 
   url="https://github.com/${REPO}/releases/download/v${VERSION}/${asset}"
-  echo "  ${asset} → ${dir}/bin/clawnet"
+  echo "  ${asset} → ${dir}/bin/${bin_name}"
   curl -sL -o "$dest" \
     ${GITHUB_TOKEN:+-H "Authorization: token $GITHUB_TOKEN"} \
     "$url"
@@ -50,6 +93,7 @@ write_npmrc() {
 }
 
 # Publish platform packages first
+echo ""
 for dir in "${!ASSETS[@]}"; do
   echo "📦 Publishing @cctech2077/${dir}..."
   cd "$ROOT/$dir"
@@ -59,6 +103,7 @@ for dir in "${!ASSETS[@]}"; do
 done
 
 # Publish main wrapper package
+echo ""
 echo "📦 Publishing @cctech2077/clawnet..."
 cd "$ROOT/clawnet"
 write_npmrc .
@@ -68,8 +113,8 @@ rm -f .npmrc
 echo ""
 echo "✅ Published @cctech2077/clawnet@${VERSION}"
 echo ""
-echo "🇨🇳 中国用户安装:"
-echo "   npm install -g @cctech2077/clawnet --registry https://registry.npmmirror.com"
-echo ""
-echo "🌍 国際用户安装:"
-echo "   npm install -g @cctech2077/clawnet"
+echo "Install methods:"
+echo "  🌍 Global:    npm install -g @cctech2077/clawnet"
+echo "  🇨🇳 China:     npm install -g @cctech2077/clawnet --registry https://registry.npmmirror.com"
+echo "  🐚 Script:    curl -fsSL https://chatchat.space/releases/install.sh | bash"
+echo "  🇨🇳 Script:    CLAWNET_SOURCE=npm curl -fsSL https://chatchat.space/releases/install.sh | bash"

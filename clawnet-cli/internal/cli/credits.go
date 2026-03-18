@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/i18n"
 )
 
 // cmdCredits routes `clawnet credits` subcommands.
@@ -38,40 +39,40 @@ func creditsHelp(verbose bool) {
 	bold := "\033[1m"
 	rst := "\033[0m"
 
-	fmt.Println(bold + "clawnet credits — Shell Economy" + rst)
+	fmt.Println(bold + i18n.T("help.credits") + rst)
 	fmt.Println()
-	fmt.Println(bold + "USAGE" + rst)
-	fmt.Println(tidal + "  clawnet credits" + rst + dim + "             Show balance (default)" + rst)
+	fmt.Println(bold + i18n.T("common.usage") + rst)
+	fmt.Println(tidal + "  clawnet credits" + rst + dim + "             " + i18n.T("help.credits.balance") + rst)
 	fmt.Println(tidal + "  clawnet credits <subcommand>" + rst)
-	fmt.Println(tidal + "  clawnet credits --json" + rst + dim + "         Machine-readable output" + rst)
+	fmt.Println(tidal + "  clawnet credits --json" + rst + dim + "         " + i18n.T("help.credits.json") + rst)
 	fmt.Println()
-	fmt.Println(bold + "SUBCOMMANDS" + rst)
-	fmt.Println(tidal+"  balance  "+dim+"(bal)    "+rst + "Show balance, tier, and regen rate")
-	fmt.Println(tidal+"  history  "+dim+"(txns)   "+rst + "Transaction history")
-	fmt.Println(tidal+"  audit    "+dim+"         "+rst + "Audit trail (task rewards/fees)")
+	fmt.Println(bold + i18n.T("help.credits.subcmds") + rst)
+	fmt.Println(tidal+"  balance  "+dim+"(bal)    "+rst + i18n.T("help.credits.cmd_balance"))
+	fmt.Println(tidal+"  history  "+dim+"(txns)   "+rst + i18n.T("help.credits.cmd_history"))
+	fmt.Println(tidal+"  audit    "+dim+"         "+rst + i18n.T("help.credits.cmd_audit"))
 
 	if verbose {
 		fmt.Println()
-		fmt.Println(bold + "ECONOMY" + rst)
-		fmt.Println(dim + "  1 Shell ≈ 1 RMB. Digital currency earned through tasks and knowledge." + rst)
-		fmt.Println(dim + "  Energy:    Spendable balance" + rst)
-		fmt.Println(dim + "  Frozen:    Locked in pending bets/tasks" + rst)
-		fmt.Println(dim + "  Prestige:  Lifetime reputation score" + rst)
-		fmt.Println(dim + "  Tier:      Based on energy — Plankton → Krill → Shrimp → Blue Lobster → King Crab" + rst)
+		fmt.Println(bold + i18n.T("help.credits.economy") + rst)
+		fmt.Println(dim + "  " + i18n.T("help.credits.economy_desc") + rst)
+		fmt.Println(dim + "  " + i18n.T("help.credits.energy") + rst)
+		fmt.Println(dim + "  " + i18n.T("help.credits.frozen") + rst)
+		fmt.Println(dim + "  " + i18n.T("help.credits.prestige") + rst)
+		fmt.Println(dim + "  " + i18n.T("help.credits.tier") + rst)
 		fmt.Println()
-		fmt.Println(bold + "TRANSACTION REASONS" + rst)
+		fmt.Println(bold + i18n.T("help.credits.txn_reasons") + rst)
 		fmt.Println(dim + "  initial, transfer, task_payment, task_reward, task_fee," + rst)
 		fmt.Println(dim + "  reputation_bonus, swarm_reward, prediction_win, prediction_loss" + rst)
 	}
 
 	fmt.Println()
-	fmt.Println(bold + "EXAMPLES" + rst)
+	fmt.Println(bold + i18n.T("common.examples") + rst)
 	fmt.Println(dim + "  clawnet credits                # balance overview" + rst)
 	fmt.Println(dim + "  clawnet credits history         # recent transactions" + rst)
 	fmt.Println(dim + "  clawnet credits audit           # reward audit trail" + rst)
 	if !verbose {
 		fmt.Println()
-		fmt.Println(dim + "  Run with -v for economy details and tier info" + rst)
+		fmt.Println(dim + "  " + i18n.T("help.credits.verbose_hint") + rst)
 	}
 }
 
@@ -126,19 +127,19 @@ func creditsBalance() error {
 	rst := "\033[0m"
 
 	fmt.Printf("  %s%s %s%s\n\n", coral, bal.Tier.Emoji, bal.Tier.Name, rst)
-	fmt.Printf("  Energy      %s%d shells%s\n", green, bal.Energy, rst)
+	fmt.Printf("  %-10s  %s%d shells%s\n", i18n.T("credits.field.energy"), green, bal.Energy, rst)
 	if bal.Frozen > 0 {
-		fmt.Printf("  Frozen      %d shells %s(locked in bids/tasks)%s\n", bal.Frozen, dim, rst)
+		fmt.Printf("  %-10s  %d shells %s%s%s\n", i18n.T("credits.field.frozen"), bal.Frozen, dim, i18n.T("credits.field.frozen_note"), rst)
 	}
-	fmt.Printf("  Prestige    %.1f\n", bal.Prestige)
-	fmt.Printf("  Tier        Lv.%d %s %s\n", bal.Tier.Level, bal.Tier.Name, bal.Tier.Emoji)
+	fmt.Printf("  %-10s  %.1f\n", i18n.T("credits.field.prestige"), bal.Prestige)
+	fmt.Printf("  %-10s  Lv.%d %s %s\n", i18n.T("credits.field.tier"), bal.Tier.Level, bal.Tier.Name, bal.Tier.Emoji)
 	if bal.RegenRate > 0 {
-		fmt.Printf("  Regen       %.2f/hr\n", bal.RegenRate)
+		fmt.Printf("  %-10s  %.2f/hr\n", i18n.T("credits.field.regen"), bal.RegenRate)
 	}
 	fmt.Println()
-	fmt.Printf("  %sEarned: %d  Spent: %d  Net: %d%s\n", dim, bal.TotalEarned, bal.TotalSpent, bal.TotalEarned-bal.TotalSpent, rst)
+	fmt.Printf("  %s%s%s\n", dim, i18n.Tf("credits.earned_spent", bal.TotalEarned, bal.TotalSpent, bal.TotalEarned-bal.TotalSpent), rst)
 	if bal.LocalValue != "" {
-		fmt.Printf("  %sLocal value: %s%s\n", dim, bal.LocalValue, rst)
+		fmt.Printf("  %s%s%s\n", dim, i18n.Tf("credits.local_value", bal.LocalValue), rst)
 	}
 	return nil
 }
@@ -179,10 +180,10 @@ func creditsHistory() error {
 	dim := "\033[2m"
 	rst := "\033[0m"
 
-	fmt.Printf("  %s🦞 Transaction History%s  (%d)\n\n", coral, rst, len(txns))
+	fmt.Printf("  %s%s%s  (%d)\n\n", coral, i18n.T("credits.history_header"), rst, len(txns))
 
 	if len(txns) == 0 {
-		fmt.Println(dim + "  No transactions yet." + rst)
+		fmt.Println(dim + "  " + i18n.T("credits.no_transactions") + rst)
 		return nil
 	}
 
@@ -240,14 +241,14 @@ func creditsAudit() error {
 	dim := "\033[2m"
 	rst := "\033[0m"
 
-	fmt.Printf("  %s🦞 Credit Audit Trail%s  (%d)\n\n", coral, rst, len(records))
+	fmt.Printf("  %s%s%s  (%d)\n\n", coral, i18n.T("credits.audit_header"), rst, len(records))
 
 	if len(records) == 0 {
-		fmt.Println(dim + "  No audit records." + rst)
+		fmt.Println(dim + "  " + i18n.T("credits.no_audit") + rst)
 		return nil
 	}
 
-	fmt.Printf(dim+"  %-10s %7s %-18s %-10s %s"+rst+"\n", "TASK", "AMOUNT", "REASON", "FROM→TO", "TIME")
+	fmt.Printf(dim+"  %-10s %7s %-18s %-10s %s"+rst+"\n", i18n.T("credits.audit_col.task"), i18n.T("credits.audit_col.amount"), i18n.T("credits.audit_col.reason"), i18n.T("credits.audit_col.fromto"), i18n.T("credits.audit_col.time"))
 	for _, r := range records {
 		taskShort := r.TaskID
 		if len(taskShort) > 10 {

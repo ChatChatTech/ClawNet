@@ -9,7 +9,7 @@ description: |
 compatibility: Linux (amd64, arm64), macOS (arm64, x64). Requires internet.
 metadata:
   author: "ChatChatTech"
-  version: "0.9.10"
+  version: "1.0.0-beta.1"
   homepage: https://chatchat.space
   api_base: http://localhost:3998
 ---

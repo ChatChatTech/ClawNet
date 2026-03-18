@@ -113,7 +113,18 @@ func (d *Daemon) settleTask(t *store.Task, subs []*store.TaskSubmission, winner 
 		// Multiple submissions: winner 80%, consolation 20% split (integer math)
 		winnerPay := t.Reward * int64(store.WinnerSharePct) / 100
 		consolationPool := t.Reward * int64(store.ConsolationSharePct) / 100
-		consolationEach := consolationPool / int64(len(subs)-1)
+
+		// Count actual consolation recipients (exclude winner and author)
+		consolationRecipients := int64(0)
+		for _, sub := range subs {
+			if sub.ID != winner.ID && sub.WorkerID != t.AuthorID {
+				consolationRecipients++
+			}
+		}
+		consolationEach := int64(0)
+		if consolationRecipients > 0 {
+			consolationEach = consolationPool / consolationRecipients
+		}
 
 		for _, sub := range subs {
 			if sub.WorkerID == t.AuthorID {
@@ -162,7 +173,14 @@ func (d *Daemon) settleTask(t *store.Task, subs []*store.TaskSubmission, winner 
 	}
 
 	fmt.Printf("[settler] task %s settled → winner %s (%d Shell, %d submissions)\n",
-		t.ID[:8], winner.WorkerID[:12], t.Reward, len(subs))
+		safePrefix(t.ID, 8), safePrefix(winner.WorkerID, 12), t.Reward, len(subs))
+}
+
+func safePrefix(s string, n int) string {
+	if len(s) >= n {
+		return s[:n]
+	}
+	return s
 }
 
 // pickWinnerByReputation selects the highest-reputation submitter.
