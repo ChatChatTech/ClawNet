@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -72,6 +75,8 @@ func cmdTask() error {
 			return fmt.Errorf("usage: clawnet task cancel <id>")
 		}
 		return taskCancel(args[1])
+	case "download", "dl":
+		return taskDownload(args[1:])
 	default:
 		return fmt.Errorf("unknown task subcommand: %s\nRun 'clawnet task help' for usage", sub)
 	}
@@ -114,6 +119,7 @@ func taskHelp(verbose bool) {
 	fmt.Println(tidal+"  approve  "+dim+"         "+rst + "Approve submitted work → pay reward")
 	fmt.Println(tidal+"  reject   "+dim+"         "+rst + "Reject submitted work")
 	fmt.Println(tidal+"  cancel   "+dim+"         "+rst + "Cancel a task (refund)")
+	fmt.Println(tidal+"  download "+dim+"(dl)     "+rst + "Download task's .nut bundle")
 
 	if verbose {
 		fmt.Println()
@@ -142,11 +148,15 @@ func taskHelp(verbose bool) {
 	fmt.Println(dim + "  clawnet task                                    # dashboard" + rst)
 	fmt.Println(dim + "  clawnet task list                               # open tasks" + rst)
 	fmt.Println(dim + "  clawnet task list assigned                      # assigned tasks" + rst)
-	fmt.Println(dim + "  clawnet task create \"Review PR\" --reward 50     # simple task" + rst)
-	fmt.Println(dim + "  clawnet task create \"Design\" -r 200 --auction   # auction task" + rst)
-	fmt.Println(dim + "  clawnet task bid <id> -a 40 -m \"I can do it\"   # bid 40 shells" + rst)
+	fmt.Println(dim + "  clawnet task create \"Review PR\" --reward 200     # simple task" + rst)
+	fmt.Println(dim + "  clawnet task create \"Design\" -r 500 --auction   # auction task" + rst)
+	fmt.Println(dim + "  clawnet task create --nut ./my-task               # from nutshell dir" + rst)
+	fmt.Println(dim + "  clawnet task bid <id> -a 150 -m \"I can do it\"  # bid 150 shells" + rst)
 	fmt.Println(dim + "  clawnet task claim <id> \"result text\" -s 0.85  # claim simple" + rst)
-	fmt.Println(dim + "  clawnet task approve <id>                       # approve & pay" + rst)
+	fmt.Println(dim + "  clawnet task claim <id> --unpack ./workspace     # claim + unpack .nut" + rst)
+	fmt.Println(dim + "  clawnet task submit <id> --nut ./workspace        # pack + submit .nut" + rst)
+	fmt.Println(dim + "  clawnet task download <id> -o task.nut            # download .nut" + rst)
+	fmt.Println(dim + "  clawnet task approve <id>                        # approve & pay" + rst)
 
 	if !verbose {
 		fmt.Println()
@@ -384,7 +394,7 @@ func taskShow(idArg string) error {
 
 func taskCreate(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: clawnet task create \"title\" [--reward N] [--desc \"...\"] [--auction] [--tags \"a,b\"] [--deadline \"RFC3339\"] [--target <peer_id>]")
+		return fmt.Errorf("usage: clawnet task create \"title\" [--reward N] [--desc \"...\"] [--auction] [--tags \"a,b\"] [--deadline \"RFC3339\"] [--target <peer_id>] [--nut <dir>]")
 	}
 
 	title := ""
@@ -394,6 +404,7 @@ func taskCreate(args []string) error {
 	tags := ""
 	deadline := ""
 	targetPeer := ""
+	nutDir := ""
 
 	i := 0
 	for i < len(args) {
@@ -429,12 +440,40 @@ func taskCreate(args []string) error {
 				i++
 				targetPeer = args[i]
 			}
+		case "--nut":
+			if i+1 < len(args) {
+				i++
+				nutDir = args[i]
+			}
 		default:
 			if title == "" {
 				title = args[i]
 			}
 		}
 		i++
+	}
+
+	// --nut: read nutshell.json manifest for task metadata
+	if nutDir != "" {
+		manifest, err := readNutshellManifest(nutDir)
+		if err != nil {
+			return err
+		}
+		if title == "" {
+			title = manifest.Title
+		}
+		if desc == "" {
+			desc = manifest.Summary
+		}
+		if tags == "" && manifest.Skills != "" {
+			tags = manifest.Skills
+		}
+		if deadline == "" && manifest.Deadline != "" {
+			deadline = manifest.Deadline
+		}
+		if reward == 0 && manifest.Reward > 0 {
+			reward = int64(manifest.Reward)
+		}
 	}
 
 	if title == "" {
@@ -463,7 +502,23 @@ func taskCreate(args []string) error {
 	if err != nil {
 		return err
 	}
-	return taskPost(base+"/api/tasks", body, "Task created")
+
+	result, err := taskPostReturn(base+"/api/tasks", body, "Task created")
+	if err != nil {
+		return err
+	}
+
+	// If --nut was specified and task created, upload the bundle via nutshell CLI
+	if nutDir != "" {
+		taskID, _ := result["task_id"].(string)
+		if taskID == "" {
+			taskID, _ = result["id"].(string)
+		}
+		if taskID != "" {
+			return taskUploadNut(nutDir, taskID, base)
+		}
+	}
+	return nil
 }
 
 // ── bid ──
@@ -594,12 +649,13 @@ func taskAssign(args []string) error {
 // ── claim (simple mode) ──
 
 func taskClaim(args []string) error {
-	if len(args) < 2 {
-		return fmt.Errorf("usage: clawnet task claim <id> \"result\" [-s score]")
+	if len(args) < 1 {
+		return fmt.Errorf("usage: clawnet task claim <id> [\"result\" [-s score]] [--unpack <dir>]")
 	}
 	id := args[0]
 	result := ""
 	score := 0.8
+	unpackDir := ""
 
 	i := 1
 	for i < len(args) {
@@ -613,6 +669,11 @@ func taskClaim(args []string) error {
 				}
 				score = s
 			}
+		case "--unpack":
+			if i+1 < len(args) {
+				i++
+				unpackDir = args[i]
+			}
 		default:
 			if result == "" && !strings.HasPrefix(args[i], "-") {
 				result = args[i]
@@ -620,8 +681,30 @@ func taskClaim(args []string) error {
 		}
 		i++
 	}
+
+	// --unpack mode: claim task and download + unpack .nut bundle
+	if unpackDir != "" {
+		base, err := taskBase()
+		if err != nil {
+			return err
+		}
+		// Use nutshell claim if available
+		nutPath, nutErr := exec.LookPath("nutshell")
+		if nutErr != nil {
+			return fmt.Errorf("nutshell CLI not found — install with: clawnet nutshell install")
+		}
+		fullID, err := resolveTaskID(base, id)
+		if err != nil {
+			return err
+		}
+		cmd := exec.Command(nutPath, "claim", fullID, "-o", unpackDir)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	}
+
 	if result == "" {
-		return fmt.Errorf("result text is required")
+		return fmt.Errorf("result text is required (or use --unpack <dir> to claim + download .nut)")
 	}
 
 	body := map[string]interface{}{
@@ -638,11 +721,44 @@ func taskClaim(args []string) error {
 // ── submit (assigned task) ──
 
 func taskSubmit(args []string) error {
-	if len(args) < 2 {
-		return fmt.Errorf("usage: clawnet task submit <id> \"result\"")
+	if len(args) < 1 {
+		return fmt.Errorf("usage: clawnet task submit <id> \"result\" [--nut <dir>]")
 	}
 	id := args[0]
-	result := args[1]
+	result := ""
+	nutDir := ""
+
+	i := 1
+	for i < len(args) {
+		switch args[i] {
+		case "--nut":
+			if i+1 < len(args) {
+				i++
+				nutDir = args[i]
+			}
+		default:
+			if result == "" && !strings.HasPrefix(args[i], "-") {
+				result = args[i]
+			}
+		}
+		i++
+	}
+
+	// --nut mode: pack + submit via nutshell deliver
+	if nutDir != "" {
+		nutPath, nutErr := exec.LookPath("nutshell")
+		if nutErr != nil {
+			return fmt.Errorf("nutshell CLI not found — install with: clawnet nutshell install")
+		}
+		cmd := exec.Command(nutPath, "deliver", "--dir", nutDir)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	}
+
+	if result == "" {
+		return fmt.Errorf("result text is required (or use --nut <dir> to pack + submit delivery)")
+	}
 
 	body := map[string]interface{}{
 		"result": result,
@@ -847,4 +963,211 @@ func resolveTaskID(base, short string) (string, error) {
 		}
 	}
 	return short, nil // fall through, let API return 404
+}
+
+// ── download ──
+
+// taskDownload downloads the .nut bundle attached to a task.
+func taskDownload(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: clawnet task download <id> [-o <path>]")
+	}
+	id := args[0]
+	outPath := ""
+
+	for i := 1; i < len(args); i++ {
+		if (args[i] == "-o" || args[i] == "--output") && i+1 < len(args) {
+			i++
+			outPath = args[i]
+		}
+	}
+
+	base, err := taskBase()
+	if err != nil {
+		return err
+	}
+	fullID, err := resolveTaskID(base, id)
+	if err != nil {
+		return err
+	}
+
+	if outPath == "" {
+		outPath = fullID[:8] + ".nut"
+	}
+
+	resp, err := http.Get(base + "/api/tasks/" + fullID + "/bundle")
+	if err != nil {
+		return fmt.Errorf("cannot connect to daemon: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == 404 {
+		return fmt.Errorf("no .nut bundle attached to task %s", id)
+	}
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("download failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	f, err := os.Create(outPath)
+	if err != nil {
+		return err
+	}
+	n, copyErr := io.Copy(f, resp.Body)
+	f.Close()
+	if copyErr != nil {
+		os.Remove(outPath)
+		return copyErr
+	}
+
+	green := "\033[32m"
+	dim := "\033[2m"
+	rst := "\033[0m"
+	fmt.Printf("  %s✓ Bundle downloaded%s\n", green, rst)
+	fmt.Printf("  %sFile: %s (%d bytes)%s\n", dim, outPath, n, rst)
+	return nil
+}
+
+// ── nutshell helpers ──
+
+// nutshellManifest holds the fields we extract from a nutshell.json.
+type nutshellManifest struct {
+	Title    string
+	Summary  string
+	Skills   string
+	Deadline string
+	Reward   float64
+}
+
+// readNutshellManifest reads a nutshell.json from a directory and extracts task fields.
+func readNutshellManifest(dir string) (*nutshellManifest, error) {
+	data, err := os.ReadFile(filepath.Join(dir, "nutshell.json"))
+	if err != nil {
+		return nil, fmt.Errorf("cannot read nutshell.json in %s: %w", dir, err)
+	}
+	var raw struct {
+		Task struct {
+			Title   string `json:"title"`
+			Summary string `json:"summary"`
+		} `json:"task"`
+		ExpiresAt string `json:"expires_at"`
+		Tags      struct {
+			SkillsRequired []string `json:"skills_required"`
+		} `json:"tags"`
+		Extensions map[string]json.RawMessage `json:"extensions"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("invalid nutshell.json: %w", err)
+	}
+	m := &nutshellManifest{
+		Title:    raw.Task.Title,
+		Summary:  raw.Task.Summary,
+		Deadline: raw.ExpiresAt,
+	}
+	if len(raw.Tags.SkillsRequired) > 0 {
+		m.Skills = strings.Join(raw.Tags.SkillsRequired, ",")
+	}
+	// Extract reward from extensions.clawnet.reward.amount
+	if ext, ok := raw.Extensions["clawnet"]; ok {
+		var clawExt map[string]interface{}
+		json.Unmarshal(ext, &clawExt)
+		if rw, ok := clawExt["reward"].(map[string]interface{}); ok {
+			if amt, ok := rw["amount"].(float64); ok && amt > 0 {
+				m.Reward = amt
+			}
+		}
+	}
+	return m, nil
+}
+
+// taskPostReturn sends a POST request and returns the parsed JSON response.
+func taskPostReturn(url string, body map[string]interface{}, successMsg string) (map[string]interface{}, error) {
+	var reqBody io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+		reqBody = bytes.NewReader(data)
+	} else {
+		reqBody = bytes.NewReader([]byte("{}"))
+	}
+
+	resp, err := http.Post(url, "application/json", reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("cannot connect to daemon: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("error (%d): %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+
+	green := "\033[32m"
+	dim := "\033[2m"
+	rst := "\033[0m"
+	fmt.Printf("  %s✓ %s%s\n", green, successMsg, rst)
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(respBody, &result); err == nil {
+		for k, v := range result {
+			if k == "status" || k == "task_id" || k == "id" || k == "reward_paid" || k == "milestone_completed" {
+				fmt.Printf("  %s%s: %v%s\n", dim, k, v, rst)
+			}
+		}
+	}
+	return result, nil
+}
+
+// taskUploadNut packs and uploads a .nut bundle to a task.
+func taskUploadNut(nutDir, taskID, base string) error {
+	nutPath, err := exec.LookPath("nutshell")
+	if err != nil {
+		return fmt.Errorf("nutshell CLI not found — install with: clawnet nutshell install")
+	}
+
+	// Pack the bundle
+	nutFile := filepath.Join(os.TempDir(), taskID[:8]+".nut")
+	cmd := exec.Command(nutPath, "pack", "--dir", nutDir, "-o", nutFile)
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("nutshell pack failed: %w", err)
+	}
+	defer os.Remove(nutFile)
+
+	// Read packed bundle
+	bundleData, err := os.ReadFile(nutFile)
+	if err != nil {
+		return err
+	}
+
+	// Upload via multipart form
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	part, err := writer.CreateFormFile("bundle", filepath.Base(nutFile))
+	if err != nil {
+		return err
+	}
+	part.Write(bundleData)
+	writer.Close()
+
+	req, err := http.NewRequest("POST", base+"/api/tasks/"+taskID+"/bundle", &buf)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("upload bundle: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("upload failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	dim := "\033[2m"
+	rst := "\033[0m"
+	fmt.Printf("  %s.nut bundle uploaded to task %s%s\n", dim, taskID[:8], rst)
+	return nil
 }
