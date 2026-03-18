@@ -14,6 +14,7 @@ set -e
 REPO="ChatChatTech/ClawNet"
 INSTALL_DIR="/usr/local/bin"
 BINARY_NAME="clawnet"
+IS_WINDOWS=false
 TIMEOUT=15  # seconds per source attempt
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -32,9 +33,17 @@ need_cmd() {
 detect_os() {
   OS="$(uname -s)"
   case "$OS" in
-    Linux*)  OS="linux" ;;
-    Darwin*) OS="darwin" ;;
-    *)       err "Unsupported OS: $OS. ClawNet supports Linux and macOS." ;;
+    Linux*)   OS="linux" ;;
+    Darwin*)  OS="darwin" ;;
+    MINGW*|MSYS*|CYGWIN*)
+      OS="windows"
+      IS_WINDOWS=true
+      BINARY_NAME="clawnet.exe"
+      # Default to user-writable directory on Windows
+      INSTALL_DIR="${LOCALAPPDATA:-$HOME}/ClawNet"
+      mkdir -p "$INSTALL_DIR"
+      ;;
+    *)        err "Unsupported OS: $OS. ClawNet supports Linux, macOS, and Windows." ;;
   esac
 }
 
@@ -78,7 +87,11 @@ fetch_latest_tag() {
 # ── Download: GitHub Releases ───────────────────────────────────
 
 download_github() {
-  ASSET_NAME="${BINARY_NAME}-${OS}-${ARCH}"
+  if $IS_WINDOWS; then
+    ASSET_NAME="clawnet-${OS}-${ARCH}.exe"
+  else
+    ASSET_NAME="clawnet-${OS}-${ARCH}"
+  fi
   URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET_NAME}"
   info "Trying GitHub Releases..."
   HTTP_CODE=$(curl -fsSL --connect-timeout "$TIMEOUT" --max-time 120 \
@@ -100,7 +113,10 @@ download_npm() {
     arm64) NPM_ARCH="arm64" ;;
     *)     NPM_ARCH="$ARCH" ;;
   esac
-  NPM_PKG="@cctech2077/clawnet-${OS}-${NPM_ARCH}"
+  # npm uses "win32" not "windows"
+  NPM_OS="$OS"
+  if $IS_WINDOWS; then NPM_OS="win32"; fi
+  NPM_PKG="@cctech2077/clawnet-${NPM_OS}-${NPM_ARCH}"
   # strip leading v from tag
   NPM_VER="${TAG#v}"
 
@@ -108,7 +124,7 @@ download_npm() {
   for REGISTRY in "https://registry.npmmirror.com" "https://registry.npmjs.org"; do
     info "Trying npm: ${REGISTRY}..."
     # npm tarball URL: @scope/name/-/name-version.tgz
-    PKG_BASE="clawnet-${OS}-${NPM_ARCH}"
+    PKG_BASE="clawnet-${NPM_OS}-${NPM_ARCH}"
     TARBALL_URL="${REGISTRY}/${NPM_PKG}/-/${PKG_BASE}-${NPM_VER}.tgz"
 
     TARBALL_TMP="$(mktemp)"
@@ -119,7 +135,7 @@ download_npm() {
       # Extract binary from tarball: package/bin/clawnet
       EXTRACT_DIR="$(mktemp -d)"
       tar xzf "$TARBALL_TMP" -C "$EXTRACT_DIR" 2>/dev/null
-      NPM_BIN="$EXTRACT_DIR/package/bin/clawnet"
+      NPM_BIN="$EXTRACT_DIR/package/bin/${BINARY_NAME}"
       if [ -f "$NPM_BIN" ] && [ -s "$NPM_BIN" ]; then
         cp "$NPM_BIN" "$TMP"
         rm -rf "$EXTRACT_DIR" "$TARBALL_TMP"
@@ -209,6 +225,11 @@ main() {
   echo ""
   ok "ClawNet installed! 🦞"
   echo ""
+  if $IS_WINDOWS; then
+    echo "  Binary location:     $INSTALL_DIR/$BINARY_NAME"
+    echo "  Add to PATH:         set PATH=%PATH%;$INSTALL_DIR"
+    echo ""
+  fi
   echo "  Start the daemon:    clawnet start"
   echo "  Check status:        clawnet status"
   echo "  View topology:       clawnet topo"
