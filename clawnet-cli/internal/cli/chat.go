@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/i18n"
 	"golang.org/x/term"
 )
 
@@ -55,17 +56,20 @@ TUI Controls:
 }
 
 func chatQuickSend(peerID, body string) error {
-	cfg, _ := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
 	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
 	if err := sendChatMsg(base, peerID, body); err != nil {
-		fmt.Fprintf(os.Stderr, "\033[91m✗ Send error: %v\033[0m\n", err)
+		fmt.Fprintf(os.Stderr, "\033[91m%s\033[0m\n", i18n.Tf("chat.send_error", err))
 		return err
 	}
 	short := peerID
 	if len(short) > 16 {
 		short = short[:16] + "..."
 	}
-	fmt.Printf("\033[92m✓\033[0m Sent to %s\n", short)
+	fmt.Println(i18n.Tf("chat.sent", short))
 	return nil
 }
 
@@ -178,13 +182,15 @@ func cmdChatTUI() error {
 	}
 	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
 
-	if _, err := http.Get(base + "/api/dm/inbox"); err != nil {
+	if resp, err := http.Get(base + "/api/dm/inbox"); err != nil {
 		return fmt.Errorf("cannot connect to daemon: %w", err)
+	} else {
+		resp.Body.Close()
 	}
 
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
-		return fmt.Errorf("not a terminal")
+		return fmt.Errorf("%s", i18n.T("chat.not_terminal"))
 	}
 	oldState, err := term.MakeRaw(fd)
 	if err != nil {
@@ -382,7 +388,7 @@ func (s *chatTUI) handleKey(key byte, prevPeer *string) {
 					if err := sendChatMsg(s.base, s.selectedPeerID(), text); err != nil {
 						s.setStatus("✗ " + err.Error())
 					} else {
-						s.setStatus("✓ Sent")
+						s.setStatus(i18n.T("chat.status_sent"))
 						s.thread = fetchThreadMsgs(s.base, s.selectedPeerID())
 						s.threadScroll = 0
 					}
@@ -493,13 +499,13 @@ func (s *chatTUI) handleEsc(seq string, prevPeer *string) {
 		if pid := s.selectedPeerID(); pid != "" {
 			s.thread = fetchThreadMsgs(s.base, pid)
 		}
-		s.setStatus("Refreshed")
+		s.setStatus(i18n.T("chat.refreshed"))
 	case "15~": // F5 — quit
 		s.wantExit = true
 	case "13~", "OR": // F3 — delete selected conversation
 		if s.selectedPeerID() != "" {
 			if err := deleteInbox(s.base, s.selectedPeerID()); err != nil {
-				s.setStatus("✗ Delete: " + err.Error())
+				s.setStatus(i18n.T("chat.delete_error") + err.Error())
 			} else {
 				s.inbox = fetchInbox(s.base)
 				if s.selectedIdx >= len(s.inbox) {
@@ -513,7 +519,7 @@ func (s *chatTUI) handleEsc(seq string, prevPeer *string) {
 				if pid := s.selectedPeerID(); pid != "" {
 					s.thread = fetchThreadMsgs(s.base, pid)
 				}
-				s.setStatus("✓ Deleted")
+				s.setStatus(i18n.T("chat.deleted"))
 			}
 		}
 	}
@@ -571,7 +577,7 @@ func renderChatFrame(s *chatTUI, termW, termH int) (string, int, int) {
 	var sb strings.Builder
 
 	// ── Header (top border) ──
-	titleText := " ClawNet Mail "
+	titleText := i18n.T("chat.title")
 	unread := 0
 	for _, e := range s.inbox {
 		if !e.Read && e.Direction == "received" {
@@ -599,8 +605,8 @@ func renderChatFrame(s *chatTUI, termW, termH int) (string, int, int) {
 	inboxHL := s.panel == chatPanelInbox
 	threadHL := s.panel == chatPanelThread
 
-	leftHdr := " Inbox"
-	rightHdr := " Thread"
+	leftHdr := i18n.T("chat.panel.inbox")
+	rightHdr := i18n.T("chat.panel.thread")
 	if pid := s.selectedPeerID(); pid != "" {
 		short := pid
 		if len(short) > 16 {
@@ -864,8 +870,8 @@ func renderInboxLines(s *chatTUI, w, maxLines int) []string {
 	lines := make([]string, 0, maxLines)
 
 	if len(s.inbox) == 0 {
-		lines = append(lines, padRight(cDim+"  No conversations"+cReset, w))
-		lines = append(lines, padRight(cDim+"  F1 to start one"+cReset, w))
+		lines = append(lines, padRight(cDim+"  "+i18n.T("chat.no_conversations")+cReset, w))
+		lines = append(lines, padRight(cDim+"  "+i18n.T("chat.start_hint")+cReset, w))
 		return lines
 	}
 

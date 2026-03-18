@@ -6,10 +6,14 @@ import (
 	"net/http"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/i18n"
 )
 
 func cmdMolt() error {
-	cfg, _ := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
 	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
 	resp, err := http.Post(base+"/api/overlay/molt", "application/json", nil)
 	if err != nil {
@@ -22,17 +26,20 @@ func cmdMolt() error {
 
 	if resp.StatusCode != http.StatusOK {
 		if e, ok := result["error"].(string); ok {
-			return fmt.Errorf("molt failed: %s", e)
+			return fmt.Errorf("%s", i18n.Tf("molt.failed", e))
 		}
-		return fmt.Errorf("molt failed: HTTP %d", resp.StatusCode)
+		return fmt.Errorf("%s", i18n.Tf("molt.failed", fmt.Sprintf("HTTP %d", resp.StatusCode)))
 	}
 
-	fmt.Println("\033[38;2;230;57;70m� Molted!\033[0m full overlay mesh interop enabled")
+	fmt.Println(i18n.T("molt.success"))
 	return nil
 }
 
 func cmdUnmolt() error {
-	cfg, _ := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
 	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
 	resp, err := http.Post(base+"/api/overlay/unmolt", "application/json", nil)
 	if err != nil {
@@ -45,11 +52,11 @@ func cmdUnmolt() error {
 
 	if resp.StatusCode != http.StatusOK {
 		if e, ok := result["error"].(string); ok {
-			return fmt.Errorf("unmolt failed: %s", e)
+			return fmt.Errorf("%s", i18n.Tf("unmolt.failed", e))
 		}
-		return fmt.Errorf("unmolt failed: HTTP %d", resp.StatusCode)
+		return fmt.Errorf("%s", i18n.Tf("unmolt.failed", fmt.Sprintf("HTTP %d", resp.StatusCode)))
 	}
 
-	fmt.Println("\033[38;2;42;157;143m🦞 Unmolted!\033[0m ClawNet-only mode — external mesh peers blocked")
+	fmt.Println(i18n.T("unmolt.success"))
 	return nil
 }

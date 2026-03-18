@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/daemon"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/i18n"
 )
 
 const (
@@ -32,8 +33,8 @@ type ghAsset struct {
 
 func cmdUpdate() error {
 	current := "v" + daemon.Version
-	fmt.Printf("Current version: %s\n", current)
-	fmt.Println("Checking for updates...")
+	fmt.Println(i18n.Tf("update.current", current))
+	fmt.Println(i18n.T("update.checking"))
 
 	release, err := fetchLatestRelease()
 	if err != nil {
@@ -41,11 +42,11 @@ func cmdUpdate() error {
 	}
 
 	if release.TagName == current || release.TagName == daemon.Version {
-		fmt.Println("Already up to date.")
+		fmt.Println(i18n.T("update.up_to_date"))
 		return nil
 	}
 
-	fmt.Printf("New version available: %s\n", release.TagName)
+	fmt.Println(i18n.Tf("update.available", release.TagName))
 
 	// Find matching asset for current OS/arch
 	assetName := fmt.Sprintf("clawnet-%s-%s", runtime.GOOS, runtime.GOARCH)
@@ -69,7 +70,7 @@ func cmdUpdate() error {
 		return fmt.Errorf("no binary found for %s/%s in release %s", runtime.GOOS, runtime.GOARCH, release.TagName)
 	}
 
-	fmt.Printf("Downloading %s (%d bytes)...\n", asset.Name, asset.Size)
+	fmt.Println(i18n.Tf("update.downloading", asset.Name, asset.Size))
 
 	// Download to temp file
 	binPath, err := os.Executable()
@@ -95,8 +96,8 @@ func cmdUpdate() error {
 		return fmt.Errorf("replace binary: %w", err)
 	}
 
-	fmt.Printf("Updated to %s successfully.\n", release.TagName)
-	fmt.Println("Restart the daemon to use the new version.")
+	fmt.Println(i18n.Tf("update.success", release.TagName))
+	fmt.Println(i18n.T("update.restart_hint"))
 	return nil
 }
 

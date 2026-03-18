@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/i18n"
 )
 
 const (
@@ -44,14 +46,14 @@ func cmdNutshell() error {
 }
 
 func nutshellUsage() error {
-	fmt.Println("Usage: clawnet nutshell <subcommand>")
+	fmt.Println(i18n.T("nutshell.usage"))
 	fmt.Println()
-	fmt.Println("Subcommands:")
-	fmt.Println("  install    Download and install the Nutshell CLI")
-	fmt.Println("  upgrade    Upgrade Nutshell CLI to the latest version")
-	fmt.Println("  uninstall  Remove the Nutshell CLI binary")
-	fmt.Println("  version    Show installed Nutshell version")
-	fmt.Println("  status     Check if Nutshell is installed and show info")
+	fmt.Println(i18n.T("nutshell.subcmds"))
+	fmt.Println("  install    " + i18n.T("nutshell.cmd_install"))
+	fmt.Println("  upgrade    " + i18n.T("nutshell.cmd_upgrade"))
+	fmt.Println("  uninstall  " + i18n.T("nutshell.cmd_uninstall"))
+	fmt.Println("  version    " + i18n.T("nutshell.cmd_version"))
+	fmt.Println("  status     " + i18n.T("nutshell.cmd_status"))
 	return nil
 }
 
@@ -80,12 +82,12 @@ func nutshellInstall(upgrade bool) error {
 
 	if !upgrade {
 		if _, err := exec.LookPath(nutshellBinName); err == nil {
-			fmt.Println("Nutshell is already installed. Use 'clawnet nutshell upgrade' to update.")
+			fmt.Println(i18n.T("nutshell.already_installed"))
 			return nutshellVersion()
 		}
 	}
 
-	fmt.Println("Fetching latest Nutshell release...")
+	fmt.Println(i18n.T("nutshell.fetching"))
 	release, err := fetchNutshellRelease()
 	if err != nil {
 		return fmt.Errorf("fetch nutshell release: %w", err)
@@ -96,15 +98,15 @@ func nutshellInstall(upgrade bool) error {
 		if installed := installedNutshellVersion(); installed != "" {
 			latestVer := strings.TrimPrefix(release.TagName, "v")
 			if installed == latestVer {
-				fmt.Printf("Nutshell is already up to date (v%s).\n", installed)
+				fmt.Println(i18n.Tf("nutshell.up_to_date", installed))
 				return nil
 			}
-			fmt.Printf("Upgrading Nutshell v%s → %s...\n", installed, release.TagName)
+			fmt.Println(i18n.Tf("nutshell.upgrading", installed, release.TagName))
 		} else {
-			fmt.Printf("Upgrading Nutshell to %s...\n", release.TagName)
+			fmt.Println(i18n.Tf("nutshell.upgrading_to", release.TagName))
 		}
 	} else {
-		fmt.Printf("Installing Nutshell %s...\n", release.TagName)
+		fmt.Println(i18n.Tf("nutshell.installing", release.TagName))
 	}
 
 	// Find matching asset
@@ -131,7 +133,7 @@ func nutshellInstall(upgrade bool) error {
 	if asset == nil {
 		return fmt.Errorf("no nutshell binary found for %s/%s in release %s", osName, archName, release.TagName)
 	}
-	fmt.Printf("Downloading %s (%d bytes)...\n", asset.Name, asset.Size)
+	fmt.Println(i18n.Tf("nutshell.downloading", asset.Name, asset.Size))
 
 	tmpPath := binPath + ".download"
 	if err := downloadAsset(asset.BrowserDownloadURL, tmpPath); err != nil {
@@ -149,7 +151,7 @@ func nutshellInstall(upgrade bool) error {
 		return fmt.Errorf("install nutshell to %s: %w", binPath, err)
 	}
 
-	fmt.Printf("Nutshell installed at %s\n", binPath)
+	fmt.Println(i18n.Tf("nutshell.installed", binPath))
 	return nutshellVersion()
 }
 
@@ -157,15 +159,15 @@ func nutshellInstall(upgrade bool) error {
 func nutshellUninstall() error {
 	path, err := exec.LookPath(nutshellBinName)
 	if err != nil {
-		fmt.Println("Nutshell is not installed.")
+		fmt.Println(i18n.T("nutshell.not_installed"))
 		return nil
 	}
 
-	fmt.Printf("Removing %s...\n", path)
+	fmt.Println(i18n.Tf("nutshell.removing", path))
 	if err := os.Remove(path); err != nil {
 		return fmt.Errorf("remove nutshell: %w", err)
 	}
-	fmt.Println("Nutshell has been uninstalled.")
+	fmt.Println(i18n.T("nutshell.uninstalled"))
 	return nil
 }
 
@@ -190,7 +192,7 @@ func installedNutshellVersion() string {
 func nutshellVersion() error {
 	path, err := exec.LookPath(nutshellBinName)
 	if err != nil {
-		fmt.Println("Nutshell is not installed. Run 'clawnet nutshell install' to install.")
+		fmt.Println(i18n.T("nutshell.not_installed_hint"))
 		return nil
 	}
 
@@ -206,21 +208,21 @@ func nutshellVersion() error {
 func nutshellStatus() error {
 	path, err := exec.LookPath(nutshellBinName)
 	if err != nil {
-		fmt.Println("Status: NOT INSTALLED")
-		fmt.Println("Run 'clawnet nutshell install' to install.")
+		fmt.Println(i18n.T("nutshell.status_missing"))
+		fmt.Println(i18n.T("nutshell.status_install"))
 		return nil
 	}
 
-	fmt.Printf("Status: installed\n")
-	fmt.Printf("Path:   %s\n", path)
+	fmt.Println(i18n.T("nutshell.status_ok"))
+	fmt.Println(i18n.Tf("nutshell.status_path", path))
 
 	if info, err := os.Stat(path); err == nil {
-		fmt.Printf("Size:   %.1f MB\n", float64(info.Size())/(1024*1024))
+		fmt.Println(i18n.Tf("nutshell.status_size", float64(info.Size())/(1024*1024)))
 	}
 
 	out, err := exec.Command(path, "version").CombinedOutput()
 	if err == nil {
-		fmt.Printf("Version: %s", string(out))
+		fmt.Print(i18n.Tf("nutshell.status_version", string(out)))
 	}
 	return nil
 }

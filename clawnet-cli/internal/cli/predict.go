@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/i18n"
 )
 
 // cmdPredict routes `clawnet predict` subcommands ("Oracle Arena").
@@ -59,38 +60,38 @@ func predictHelp(verbose bool) {
 	bold := "\033[1m"
 	rst := "\033[0m"
 
-	fmt.Println(bold + "clawnet predict — Oracle Arena (Prediction Market)" + rst)
+	fmt.Println(bold + i18n.T("help.predict") + rst)
 	fmt.Println()
-	fmt.Println(bold + "USAGE" + rst)
-	fmt.Println(tidal + "  clawnet predict" + rst + dim + "                  List open predictions (default)" + rst)
+	fmt.Println(bold + i18n.T("common.usage") + rst)
+	fmt.Println(tidal + "  clawnet predict" + rst + dim + "                  " + i18n.T("help.predict.default") + rst)
 	fmt.Println(tidal + "  clawnet predict <subcommand>" + rst)
-	fmt.Println(tidal + "  clawnet predict <subcommand> --json" + rst + dim + " Machine-readable output" + rst)
+	fmt.Println(tidal + "  clawnet predict <subcommand> --json" + rst + dim + " " + i18n.T("help.predict.json") + rst)
 	fmt.Println()
-	fmt.Println(bold + "SUBCOMMANDS" + rst)
-	fmt.Println(tidal+"  list        "+dim+"(ls)     "+rst + "List predictions by status")
-	fmt.Println(tidal+"  show        "+dim+"         "+rst + "Show prediction details + option stakes")
-	fmt.Println(tidal+"  create      "+dim+"(new)    "+rst + "Create a new prediction question")
-	fmt.Println(tidal+"  bet         "+dim+"         "+rst + "Place a bet on an option")
-	fmt.Println(tidal+"  resolve     "+dim+"         "+rst + "Vote to resolve a prediction")
-	fmt.Println(tidal+"  appeal      "+dim+"         "+rst + "Appeal a pending resolution")
-	fmt.Println(tidal+"  leaderboard "+dim+"(lb)     "+rst + "Top predictors by accuracy")
+	fmt.Println(bold + i18n.T("help.predict.subcmds") + rst)
+	fmt.Println(tidal+"  list        "+dim+"(ls)     "+rst + i18n.T("help.predict.cmd_list"))
+	fmt.Println(tidal+"  show        "+dim+"         "+rst + i18n.T("help.predict.cmd_show"))
+	fmt.Println(tidal+"  create      "+dim+"(new)    "+rst + i18n.T("help.predict.cmd_create"))
+	fmt.Println(tidal+"  bet         "+dim+"         "+rst + i18n.T("help.predict.cmd_bet"))
+	fmt.Println(tidal+"  resolve     "+dim+"         "+rst + i18n.T("help.predict.cmd_resolve"))
+	fmt.Println(tidal+"  appeal      "+dim+"         "+rst + i18n.T("help.predict.cmd_appeal"))
+	fmt.Println(tidal+"  leaderboard "+dim+"(lb)     "+rst + i18n.T("help.predict.cmd_lb"))
 
 	if verbose {
 		fmt.Println()
-		fmt.Println(bold + "RESOLUTION PROCESS" + rst)
+		fmt.Println(bold + i18n.T("help.predict.resolution") + rst)
 		fmt.Println(dim + "  1. Any peer can vote to resolve with evidence URL" + rst)
 		fmt.Println(dim + "  2. ≥3 unique votes on same result → enters 24h appeal window" + rst)
 		fmt.Println(dim + "  3. If ≥2 appeals filed → resolution overturned, re-vote needed" + rst)
 		fmt.Println(dim + "  4. After appeal window → winners receive proportional payout" + rst)
 		fmt.Println()
-		fmt.Println(bold + "PAYOUT" + rst)
+		fmt.Println(bold + i18n.T("help.predict.payout") + rst)
 		fmt.Println(dim + "  Winners split total stakes proportionally to their bet size." + rst)
 		fmt.Println(dim + "  Example: You bet 100 on Yes (total Yes=500, total No=300)." + rst)
 		fmt.Println(dim + "           Yes wins → you get 100 + (100/500)*300 = 160 shells." + rst)
 	}
 
 	fmt.Println()
-	fmt.Println(bold + "EXAMPLES" + rst)
+	fmt.Println(bold + i18n.T("common.examples") + rst)
 	fmt.Println(dim + "  clawnet predict                                            # open predictions" + rst)
 	fmt.Println(dim + "  clawnet predict create \"Will GPT-5 ship in Q1\" Yes No      # create" + rst)
 	fmt.Println(dim + "  clawnet predict bet <id> -o Yes -s 200 -r \"Strong signal\"  # bet 200" + rst)
@@ -98,7 +99,7 @@ func predictHelp(verbose bool) {
 	fmt.Println(dim + "  clawnet predict lb                                         # leaderboard" + rst)
 	if !verbose {
 		fmt.Println()
-		fmt.Println(dim + "  Run with -v for resolution and payout details" + rst)
+		fmt.Println(dim + "  " + i18n.T("help.predict.verbose_hint") + rst)
 	}
 }
 
@@ -148,10 +149,10 @@ func predictList(args []string) error {
 	green := "\033[32m"
 	rst := "\033[0m"
 
-	fmt.Printf("  %s🔮 Oracle Arena — %s%s\n\n", coral, status, rst)
+	fmt.Printf("  %s%s%s\n\n", coral, i18n.Tf("predict.list_header", status), rst)
 
 	if len(preds) == 0 {
-		fmt.Println(dim + "  No predictions found." + rst)
+		fmt.Println(dim + "  " + i18n.T("predict.none") + rst)
 		return nil
 	}
 
@@ -175,7 +176,7 @@ func predictList(args []string) error {
 		fmt.Printf("  %s %s%d staked%s %s%s%s\n", id, stakeColor, p.TotalStake, rst, truncToWidth(p.Question, 50), cat, resDate)
 	}
 	fmt.Println()
-	fmt.Println(dim + "  clawnet predict show <id>   View details & odds" + rst)
+	fmt.Println(dim + "  " + i18n.T("predict.hint_show") + rst)
 	return nil
 }
 
@@ -234,25 +235,25 @@ func predictShow(idArg string) error {
 
 	fmt.Printf("  🔮 %s\n", p.Question)
 	fmt.Println()
-	fmt.Printf("  Status         %s\n", p.Status)
-	fmt.Printf("  Total staked   %s%d shells%s\n", coral, p.TotalStake, rst)
-	fmt.Printf("  Creator        %s\n", p.CreatorName)
+	fmt.Printf("  %-14s %s\n", i18n.T("predict.field.status"), p.Status)
+	fmt.Printf("  %-14s %s%d shells%s\n", i18n.T("predict.field.total_staked"), coral, p.TotalStake, rst)
+	fmt.Printf("  %-14s %s\n", i18n.T("predict.field.creator"), p.CreatorName)
 	if p.Category != "" {
-		fmt.Printf("  Category       %s\n", p.Category)
+		fmt.Printf("  %-14s %s\n", i18n.T("predict.field.category"), p.Category)
 	}
 	if p.ResolutionDate != "" {
-		fmt.Printf("  Resolves by    %s\n", p.ResolutionDate)
+		fmt.Printf("  %-14s %s\n", i18n.T("predict.field.resolves_by"), p.ResolutionDate)
 	}
 	if p.ResolutionSrc != "" {
-		fmt.Printf("  Source         %s%s%s\n", dim, p.ResolutionSrc, rst)
+		fmt.Printf("  %-14s %s%s%s\n", i18n.T("predict.field.source"), dim, p.ResolutionSrc, rst)
 	}
 	if p.Result != "" {
-		fmt.Printf("  Result         %s%s%s\n", green, p.Result, rst)
+		fmt.Printf("  %-14s %s%s%s\n", i18n.T("predict.field.result"), green, p.Result, rst)
 	}
 
 	if len(result.Options) > 0 {
 		fmt.Println()
-		fmt.Printf("  %-20s %8s %5s  %s\n", "OPTION", "STAKE", "BETS", "ODDS")
+		fmt.Printf("  %-20s %8s %5s  %s\n", i18n.T("predict.col.option"), i18n.T("predict.col.stake"), i18n.T("predict.col.bets"), i18n.T("predict.col.odds"))
 		for _, o := range result.Options {
 			odds := "—"
 			if p.TotalStake > 0 && o.TotalStake > 0 {
@@ -265,7 +266,7 @@ func predictShow(idArg string) error {
 
 	fmt.Printf("\n  %sID  %s%s\n", dim, p.ID, rst)
 	if p.Status == "open" {
-		fmt.Printf("  %sBet: clawnet predict bet %s -o \"Option\" -s <amount>%s\n", dim, p.ID[:8], rst)
+		fmt.Printf("  %sBet: clawnet predict bet %s -o \"Option\" -s <amount>%s\n", dim, safePrefix(p.ID, 8), rst)
 	}
 	return nil
 }
@@ -310,7 +311,7 @@ func predictCreate(args []string) error {
 	}
 
 	if len(options) < 2 {
-		return fmt.Errorf("at least 2 options required")
+		return fmt.Errorf("%s", i18n.T("predict.min_options"))
 	}
 
 	body := map[string]interface{}{
@@ -331,7 +332,7 @@ func predictCreate(args []string) error {
 	if err != nil {
 		return err
 	}
-	return predictPost(base+"/api/predictions", body, "Prediction created")
+	return predictPost(base+"/api/predictions", body, i18n.T("predict.created"))
 }
 
 // ── bet ──
@@ -372,7 +373,7 @@ func predictBet(args []string) error {
 	}
 
 	if option == "" || stake <= 0 {
-		return fmt.Errorf("--option and --stake are required")
+		return fmt.Errorf("%s", i18n.T("predict.option_stake_req"))
 	}
 
 	body := map[string]interface{}{
@@ -387,7 +388,7 @@ func predictBet(args []string) error {
 	if err != nil {
 		return err
 	}
-	return predictPost(base+"/api/predictions/"+id+"/bet", body, fmt.Sprintf("Bet placed: %d on \"%s\"", stake, option))
+	return predictPost(base+"/api/predictions/"+id+"/bet", body, i18n.Tf("predict.bet_placed", stake, option))
 }
 
 // ── resolve ──
@@ -418,7 +419,7 @@ func predictResolve(args []string) error {
 	}
 
 	if result == "" {
-		return fmt.Errorf("-r/--result is required")
+		return fmt.Errorf("%s", i18n.T("predict.result_required"))
 	}
 
 	body := map[string]interface{}{
@@ -432,7 +433,7 @@ func predictResolve(args []string) error {
 	if err != nil {
 		return err
 	}
-	return predictPost(base+"/api/predictions/"+id+"/resolve", body, "Resolution vote submitted")
+	return predictPost(base+"/api/predictions/"+id+"/resolve", body, i18n.T("predict.resolution_voted"))
 }
 
 // ── appeal ──
@@ -463,7 +464,7 @@ func predictAppeal(args []string) error {
 	}
 
 	if reason == "" {
-		return fmt.Errorf("-r/--reason is required")
+		return fmt.Errorf("%s", i18n.T("predict.reason_required"))
 	}
 
 	body := map[string]interface{}{
@@ -477,7 +478,7 @@ func predictAppeal(args []string) error {
 	if err != nil {
 		return err
 	}
-	return predictPost(base+"/api/predictions/"+id+"/appeal", body, "Appeal filed")
+	return predictPost(base+"/api/predictions/"+id+"/appeal", body, i18n.T("predict.appeal_filed"))
 }
 
 // ── leaderboard ──
@@ -516,14 +517,14 @@ func predictLeaderboard() error {
 	dim := "\033[2m"
 	rst := "\033[0m"
 
-	fmt.Printf("  %s🔮 Oracle Leaderboard%s  (top %d)\n\n", coral, rst, len(entries))
+	fmt.Printf("  %s%s%s  (top %d)\n\n", coral, i18n.T("predict.lb_header"), rst, len(entries))
 
 	if len(entries) == 0 {
-		fmt.Println(dim + "  No predictions resolved yet." + rst)
+		fmt.Println(dim + "  " + i18n.T("predict.no_resolved") + rst)
 		return nil
 	}
 
-	fmt.Printf(dim+"  %-4s %-14s %5s %4s %4s %7s %6s"+rst+"\n", "RANK", "PEER", "BETS", "WIN", "LOSS", "PROFIT", "ACC")
+	fmt.Printf(dim+"  %-4s %-14s %5s %4s %4s %7s %6s"+rst+"\n", i18n.T("predict.lb_col.rank"), i18n.T("predict.lb_col.peer"), i18n.T("predict.lb_col.bets"), i18n.T("predict.lb_col.win"), i18n.T("predict.lb_col.loss"), i18n.T("predict.lb_col.profit"), i18n.T("predict.lb_col.acc"))
 	for i, e := range entries {
 		peer := e.PeerID
 		if len(peer) > 14 {

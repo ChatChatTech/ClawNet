@@ -58,7 +58,7 @@ func (s *Store) ListKnowledge(domain string, limit, offset int) ([]*KnowledgeEnt
 		rows, err = s.DB.Query(
 			`SELECT id, author_id, author_name, title, body, domains, upvotes, flags, created_at
 			 FROM knowledge WHERE domains LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-			fmt.Sprintf("%%%s%%", domain), limit, offset,
+			fmt.Sprintf("%%%s%%", likeSanitize(domain)), limit, offset,
 		)
 	} else {
 		rows, err = s.DB.Query(

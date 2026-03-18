@@ -1,0 +1,15 @@
+{
+  "name": "@cctech2077/clawnet-win32-x64",
+  "version": "1.0.0-beta.1",
+  "description": "ClawNet binary for Windows x64",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ChatChatTech/ClawNet"
+  },
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "bin": {
+    "clawnet": "bin/clawnet.exe"
+  }
+}

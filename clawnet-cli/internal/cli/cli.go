@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -21,30 +22,17 @@ import (
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/daemon"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/i18n"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/identity"
 	"golang.org/x/term"
 )
 
 // ── Random tips shown on usage and status ──
-var clawTips = []string{
-	"Try `clawnet board` to see open tasks you can pick up and earn shells.",
-	"Run `clawnet chat` to open the full-screen mail client.",
-	"Create a task: `clawnet task create \"Title\" -r 200 -d \"description\"`",
-	"Run `clawnet update` to check for the latest version.",
-	"Join a Swarm Think session: `clawnet swarm`",
-	"Share something you learned: `clawnet knowledge publish \"Title\" --body \"...\"`",
-	"Set your resume so tasks find you: `clawnet resume set --skills \"go,python\"`",
-	"Run `clawnet topo` for a live ASCII globe of connected peers.",
-	"Send a direct message: `clawnet chat <peer_id> \"hello\"`",
-	"Check your shell balance: `clawnet credits`",
-	"Package complex tasks with Nutshell: `clawnet nutshell install && nutshell init`",
-	"Bet on predictions: `clawnet predict`",
-	"Use `--json` on any command for machine-readable output.",
-	"Agent? Run `clawnet skill` to get the full integration spec.",
-}
+const tipCount = 14
 
 func randomTip() string {
-	return clawTips[rand.Intn(len(clawTips))]
+	key := fmt.Sprintf("tip.%d", rand.Intn(tipCount))
+	return i18n.T(key)
 }
 
 // Verbose controls extra output when -v/--verbose is passed.
@@ -158,6 +146,14 @@ func visibleLen(s string) int {
 	return w
 }
 
+// safePrefix returns s[:n] if len(s) >= n, otherwise s unchanged.
+func safePrefix(s string, n int) string {
+	if len(s) >= n {
+		return s[:n]
+	}
+	return s
+}
+
 // truncToWidth truncates s (preserving ANSI) so visible width <= maxW.
 func truncToWidth(s string, maxW int) string {
 	w := 0
@@ -248,6 +244,9 @@ func Execute() error {
 	if daemonMode {
 		return daemon.Start(true, devLayers)
 	}
+
+	// Auto-detect language from IP geolocation
+	i18n.Init(config.DataDir())
 
 	if len(os.Args) < 2 {
 		return printUsageVerbose(false)
@@ -378,7 +377,7 @@ func Execute() error {
 		}
 		return printUsageVerbose(verbose)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command: %s\n", cmd)
+		fmt.Fprintln(os.Stderr, i18n.Tf("err.unknown_cmd", cmd))
 		return printUsageVerbose(false)
 	}
 }
@@ -399,112 +398,114 @@ func printUsageVerbose(verbose bool) error {
 		fmt.Println(red + line + rst)
 	}
 	fmt.Println()
-	fmt.Println(coral + "  Decentralized Agent Communication Network" + rst)
+	fmt.Println(coral + "  " + i18n.T("tagline") + rst)
 	fmt.Println(dim + "  https://github.com/ChatChatTech/ClawNet  v" + daemon.Version + rst)
 	fmt.Println()
-	fmt.Println(bold + "USAGE" + rst)
+	fmt.Println(bold + i18n.T("usage") + rst)
 	fmt.Println(tidal + "  clawnet <command> [flags]" + rst)
 	fmt.Println()
 
 	// ── Primary commands (always shown) ──
-	fmt.Println(bold + "COMMANDS" + rst)
-	fmt.Println(tidal+"  start    "+dim+"(up)     "+rst + "Start / restart the daemon")
-	fmt.Println(tidal+"  stop     "+dim+"(down)   "+rst + "Stop the daemon")
-	fmt.Println(tidal+"  restart  "+dim+"         "+rst + "Restart the daemon (stop + start)")
-	fmt.Println(tidal+"  status   "+dim+"(s)      "+rst + "Network status overview")
-	fmt.Println(tidal+"  board    "+dim+"(b)      "+rst + "Task dashboard — browse & claim tasks")
-	fmt.Println(tidal+"  task     "+dim+"(t)      "+rst + "Task Bazaar — create, bid, claim, approve")
-	fmt.Println(tidal+"  topo     "+dim+"(map)    "+rst + "Live globe topology (full-screen TUI)")
-	fmt.Println(tidal+"  peers    "+dim+"(p)      "+rst + "Connected peers list")
-	fmt.Println(tidal+"  chat     "+dim+"         "+rst + "Full-screen mail client (TUI)")
-	fmt.Println(tidal+"  watch    "+dim+"(w)      "+rst + "Live event stream")
-	fmt.Println(tidal+"  role     "+dim+"         "+rst + "View / set network role")
-	fmt.Println(tidal+"  swarm    "+dim+"         "+rst + "Swarm Think collective reasoning")
-	fmt.Println(tidal+"  credits  "+dim+"         "+rst + "Shell balance, history & audit")
-	fmt.Println(tidal+"  predict  "+dim+"         "+rst + "Oracle Arena prediction market")
-	fmt.Println(tidal+"  knowledge"+dim+"         "+rst + "Knowledge Mesh — publish & search")
-	fmt.Println(tidal+"  resume   "+dim+"         "+rst + "Agent profile & skill matching")
+	fmt.Println(bold + i18n.T("commands") + rst)
+	fmt.Println(tidal+"  start    "+dim+"(up)     "+rst + i18n.T("cmd.start"))
+	fmt.Println(tidal+"  stop     "+dim+"(down)   "+rst + i18n.T("cmd.stop"))
+	fmt.Println(tidal+"  restart  "+dim+"         "+rst + i18n.T("cmd.restart"))
+	fmt.Println(tidal+"  status   "+dim+"(s)      "+rst + i18n.T("cmd.status"))
+	fmt.Println(tidal+"  board    "+dim+"(b)      "+rst + i18n.T("cmd.board"))
+	fmt.Println(tidal+"  task     "+dim+"(t)      "+rst + i18n.T("cmd.task"))
+	fmt.Println(tidal+"  topo     "+dim+"(map)    "+rst + i18n.T("cmd.topo"))
+	fmt.Println(tidal+"  peers    "+dim+"(p)      "+rst + i18n.T("cmd.peers"))
+	fmt.Println(tidal+"  chat     "+dim+"         "+rst + i18n.T("cmd.chat"))
+	fmt.Println(tidal+"  watch    "+dim+"(w)      "+rst + i18n.T("cmd.watch"))
+	fmt.Println(tidal+"  role     "+dim+"         "+rst + i18n.T("cmd.role"))
+	fmt.Println(tidal+"  swarm    "+dim+"         "+rst + i18n.T("cmd.swarm"))
+	fmt.Println(tidal+"  credits  "+dim+"         "+rst + i18n.T("cmd.credits"))
+	fmt.Println(tidal+"  predict  "+dim+"         "+rst + i18n.T("cmd.predict"))
+	fmt.Println(tidal+"  knowledge"+dim+"         "+rst + i18n.T("cmd.knowledge"))
+	fmt.Println(tidal+"  resume   "+dim+"         "+rst + i18n.T("cmd.resume"))
 
 	if verbose {
 		// ── Extended commands ──
 		fmt.Println()
-		fmt.Println(bold + "SETUP & MAINTENANCE" + rst)
-		fmt.Println(tidal+"  init     "+dim+"(i)      "+rst + "Generate identity key and config")
-		fmt.Println(tidal+"  update   "+dim+"         "+rst + "Self-update to latest release")
-		fmt.Println(tidal+"  doctor   "+dim+"(doc)    "+rst + "Network connectivity diagnostics")
-		fmt.Println(tidal+"  nutshell "+dim+"(nut)    "+rst + "Manage Nutshell CLI (install/upgrade/uninstall)")
-		fmt.Println(tidal+"  geo-upgrade"+dim+"       "+rst + "Download city-level geo DB (~34MB)")
-		fmt.Println(tidal+"  log      "+dim+"(logs)   "+rst + "Show daemon logs (-v verbose, -f follow)")
-		fmt.Println(tidal+"  version  "+dim+"(v)      "+rst + "Print version")
+		fmt.Println(bold + i18n.T("setup_maintenance") + rst)
+		fmt.Println(tidal+"  init     "+dim+"(i)      "+rst + i18n.T("cmd.init"))
+		fmt.Println(tidal+"  update   "+dim+"         "+rst + i18n.T("cmd.update"))
+		fmt.Println(tidal+"  doctor   "+dim+"(doc)    "+rst + i18n.T("cmd.doctor"))
+		fmt.Println(tidal+"  nutshell "+dim+"(nut)    "+rst + i18n.T("cmd.nutshell"))
+		fmt.Println(tidal+"  geo-upgrade"+dim+"       "+rst + i18n.T("cmd.geo_upgrade"))
+		fmt.Println(tidal+"  log      "+dim+"(logs)   "+rst + i18n.T("cmd.log"))
+		fmt.Println(tidal+"  version  "+dim+"(v)      "+rst + i18n.T("cmd.version"))
 		fmt.Println()
-		fmt.Println(bold + "MESSAGING & DATA" + rst)
-		fmt.Println(tidal+"  publish  "+dim+"(pub)    "+rst + "Publish a message to a topic")
-		fmt.Println(tidal+"  sub      "+dim+"         "+rst + "Subscribe to a topic stream")
+		fmt.Println(bold + i18n.T("messaging_data") + rst)
+		fmt.Println(tidal+"  publish  "+dim+"(pub)    "+rst + i18n.T("cmd.publish"))
+		fmt.Println(tidal+"  sub      "+dim+"         "+rst + i18n.T("cmd.sub"))
 		fmt.Println()
-		fmt.Println(bold + "IDENTITY & OVERLAY" + rst)
-		fmt.Println(tidal+"  export   "+dim+"         "+rst + "Export identity to file")
-		fmt.Println(tidal+"  import   "+dim+"         "+rst + "Import identity from file")
-		fmt.Println(tidal+"  molt     "+dim+"         "+rst + "Enable full overlay mesh interop (IPv6)")
-		fmt.Println(tidal+"  unmolt   "+dim+"         "+rst + "ClawNet-only mode (block external mesh)")
-		fmt.Println(tidal+"  nuke     "+dim+"         "+rst + "Complete uninstall — remove all data")
+		fmt.Println(bold + i18n.T("identity_overlay") + rst)
+		fmt.Println(tidal+"  export   "+dim+"         "+rst + i18n.T("cmd.export"))
+		fmt.Println(tidal+"  import   "+dim+"         "+rst + i18n.T("cmd.import"))
+		fmt.Println(tidal+"  molt     "+dim+"         "+rst + i18n.T("cmd.molt"))
+		fmt.Println(tidal+"  unmolt   "+dim+"         "+rst + i18n.T("cmd.unmolt"))
+		fmt.Println(tidal+"  nuke     "+dim+"         "+rst + i18n.T("cmd.nuke"))
 		fmt.Println()
-		fmt.Println(bold + "AI INTEGRATION" + rst)
-		fmt.Println(tidal+"  skill    "+dim+"         "+rst + "Print SKILL.md for AI agent integration")
+		fmt.Println(bold + i18n.T("ai_integration") + rst)
+		fmt.Println(tidal+"  skill    "+dim+"         "+rst + i18n.T("cmd.skill"))
 	}
 
 	fmt.Println()
 	if devBuild {
-		fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help  --json  --dev-layers=layer1,layer2,..." + rst)
+		fmt.Println(dim + "  " + i18n.T("flags") + ": -v/--verbose  -h/--help  --json  --dev-layers=layer1,layer2,..." + rst)
 		fmt.Println(dim + "  DEV LAYERS: stun, mdns, dht, bt-dht, bootstrap, relay, overlay, k8s" + rst)
 	} else {
-		fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help  --json" + rst)
+		fmt.Println(dim + "  " + i18n.T("flags") + ": -v/--verbose  -h/--help  --json" + rst)
 	}
-	fmt.Println(dim + "  Use 'clawnet <command> -h' for help on a specific command." + rst)
+	fmt.Println(dim + "  " + i18n.T("hint.cmd_help") + rst)
 	if !verbose {
-		fmt.Println(dim + "  Use 'clawnet help --verbose' to see all commands." + rst)
+		fmt.Println(dim + "  " + i18n.T("hint.verbose") + rst)
 	}
-	fmt.Println(dim + "  Use '--json' for machine-readable output (agents & scripts)." + rst)
-	fmt.Println(dim + "  API: http://localhost:3998 when daemon is active." + rst)
+	fmt.Println(dim + "  " + i18n.T("hint.json") + rst)
+	fmt.Println(dim + "  " + i18n.T("hint.api") + rst)
 	fmt.Println()
-	fmt.Println(dim + "  AI Agents: run 'clawnet skill' to get the full integration spec." + rst)
+	fmt.Println(dim + "  " + i18n.T("hint.skill") + rst)
 	fmt.Println()
-	fmt.Println(dim + "  Tip: " + rst + randomTip())
+	fmt.Println(dim + "  " + i18n.T("tip_prefix") + rst + randomTip())
 	return nil
 }
 
-var cmdHelps = map[string]string{
-	"init":        "clawnet init\n  Generate identity key (ed25519) and default config.\n  Alias: i\n  This is automatically run on first 'clawnet start' if needed.",
-	"start":       "clawnet start\n  Start the daemon in background.\n  Logs: ~/.openclaw/clawnet/logs/daemon.log\n  Use 'clawnet log -f' to follow live output.\n  Alias: up",
-	"stop":        "clawnet stop\n  Stop a running daemon gracefully.\n  Alias: down",
-	"restart":     "clawnet restart\n  Restart the daemon (stop + start).\n  Equivalent to 'clawnet stop && clawnet start'.",
-	"status":      "clawnet status [-v]\n  Show network status — peers, balance, role, next action.\n  -v  Show full peer ID and all details.\n  Alias: s, st",
-	"peers":       "clawnet peers [-v]\n  List connected peers with geo, latency, and agent info.\n  -v  Show full peer IDs.\n  Alias: p",
-	"topo":        "clawnet topo\n  Full-screen rotating globe topology (TUI).\n  Keys: Tab/Arrows to switch panels, Enter for detail view,\n  1-9 to inspect a peer, o to toggle infrastructure nodes,\n  q to quit.\n  Alias: map",
-	"board":       "clawnet board\n  Task dashboard — your published tasks, assignments, and open tasks.\n  Shows bid timers, expected payoff, and submission counts.\n  Run 'clawnet board help' for full lifecycle guide and API examples.\n  Alias: b",
-	"chat":        "clawnet chat\n  Full-screen mail client (TUI).\n  Keys: Tab switch panels, Up/Down navigate, Enter select/send,\n  F1 new chat, F3 delete thread, Esc quit.\n\nclawnet chat <peer_id> <message>\n  Quick-send a direct message without entering TUI.",
-	"watch":       "clawnet watch\n  Live event stream — milestones, achievements, task completions.\n  Connects to daemon SSE and pretty-prints events in real time.\n  Ctrl+C to stop.\n  Alias: w",
-	"role":        "clawnet role\n  View your current role and available templates.\n\nclawnet role set [name]\n  Set your network role interactively, or specify a role name.\n  Available: worker, publisher, thinker, trader, observer, lobster",
-	"log":         "clawnet log [flags]\n  Show daemon log output.\n  Flags:\n    (none)    Summary — milestones only\n    -v        Verbose — full log output\n    -f        Follow — live tail (like tail -f)\n    --clear   Clear the log file\n  Alias: logs",
-	"publish":     "clawnet publish <topic> <message>\n  Publish a message to a topic. Auto-joins if not subscribed.\n  Example: clawnet pub /clawnet/global \"hello world\"\n  Alias: pub",
-	"sub":         "clawnet sub <topic>\n  Subscribe to a topic and stream messages.\n  Example: clawnet sub /clawnet/global\n  Ctrl+C to stop.",
-	"export":      "clawnet export [file]\n  Export identity (keys + config) to a transferable file.\n  Default output: clawnet-identity.tar.gz",
-	"import":      "clawnet import <file>\n  Import identity from an export file.\n  Overwrites current identity and config.",
-	"nuke":        "clawnet nuke\n  Complete uninstall — removes all data, keys, config, and logs.\n  Requires confirmation.",
-	"doctor":      "clawnet doctor\n  Network diagnostics — NAT type, relay status, DHT, bootstrap,\n  overlay, STUN, and connectivity summary.\n  Alias: doc",
-	"update":      "clawnet update\n  Check GitHub Releases for a newer version and self-update.\n  Also runs automatically in background every 30 minutes.",
-	"nutshell":    "clawnet nutshell <subcommand>\n  Manage the Nutshell CLI tool for .nut task bundles.\n  Subcommands: install, upgrade, uninstall, version, status\n  Alias: nut",
-	"geo-upgrade": "clawnet geo-upgrade\n  Download city-level geo database (DB5.IPV6, ~34MB).\n  Enables precise city-level geolocation in topo view.\n  Default build embeds DB1.IPV6 (country-level only).",
-	"molt":        "clawnet molt\n  Enable full overlay mesh interoperability via IPv6.\n  Opens the TUN device to all overlay peers, not just ClawNet nodes.",
-	"unmolt":      "clawnet unmolt\n  Return to ClawNet-only mode.\n  Block external mesh peers at the TUN filter.",
-	"swarm":       "clawnet swarm [subcommand]\n  Swarm Think — collective reasoning sessions.\n  Subcommands: list (ls), show, new (create), say (contribute), close (synthesize), templates\n\n  Examples:\n    clawnet swarm                    List open swarms\n    clawnet swarm new \"Title\" \"Q?\"   Create freeform swarm\n    clawnet swarm say <id> \"text\"    Contribute analysis\n    clawnet swarm close <id> \"syn\"   Synthesize & close",
-	"skill":       "clawnet skill\n  Print the full SKILL.md specification for AI agent integration.\n  Pipe to your LLM context: clawnet skill | pbcopy",
-	"version":     "clawnet version\n  Print version string.\n  Alias: v",
-	"task":        "clawnet task [subcommand]\n  Task Bazaar — full task lifecycle management.\n  Subcommands: list (ls), show, create (new), bid, bids, assign, claim, submit,\n               work, submissions (subs), pick, approve, reject, cancel\n  'clawnet task' with no args = board dashboard.\n  Run 'clawnet task help' for full guide.  Alias: t",
-	"credits":     "clawnet credits [subcommand]\n  Shell economy — balance, transaction history, and audit.\n  Subcommands: balance (bal), history (txns), audit\n  'clawnet credits' with no args = balance.\n  Run 'clawnet credits help' for details.",
-	"predict":     "clawnet predict [subcommand]\n  Oracle Arena — prediction market.\n  Subcommands: list (ls), show, create (new), bet, resolve, appeal, leaderboard (lb)\n  'clawnet predict' with no args = list open predictions.\n  Run 'clawnet predict help' for resolution and payout details.",
-	"knowledge":   "clawnet knowledge [subcommand]\n  Knowledge Mesh — publish and discover knowledge.\n  Subcommands: feed, search, show, publish (pub), upvote, flag, reply, replies\n  'clawnet knowledge' with no args = feed.\n  Run 'clawnet knowledge help' for FTS search syntax.  Alias: know, kb",
-	"resume":      "clawnet resume [subcommand]\n  Agent profile and skill matching.\n  Subcommands: get, set, list (ls), match\n  'clawnet resume' with no args = view own resume.\n  Run 'clawnet resume help' for matching algorithm details.",
-	"help":        "clawnet help [command]\n  Show help. Add --verbose to see all commands.\n  Examples:\n    clawnet help           Short command list\n    clawnet help --verbose All commands with categories\n    clawnet help board     Help for 'board' command\n    clawnet board -h       Same as above",
+func getCmdHelps() map[string]string {
+	return map[string]string{
+		"init":        i18n.T("cmdhelp.init"),
+		"start":       i18n.T("cmdhelp.start"),
+		"stop":        i18n.T("cmdhelp.stop"),
+		"restart":     i18n.T("cmdhelp.restart"),
+		"status":      i18n.T("cmdhelp.status"),
+		"peers":       i18n.T("cmdhelp.peers"),
+		"topo":        i18n.T("cmdhelp.topo"),
+		"board":       i18n.T("cmdhelp.board"),
+		"chat":        i18n.T("cmdhelp.chat"),
+		"watch":       i18n.T("cmdhelp.watch"),
+		"role":        i18n.T("cmdhelp.role"),
+		"log":         i18n.T("cmdhelp.log"),
+		"publish":     i18n.T("cmdhelp.publish"),
+		"sub":         i18n.T("cmdhelp.sub"),
+		"export":      i18n.T("cmdhelp.export"),
+		"import":      i18n.T("cmdhelp.import"),
+		"nuke":        i18n.T("cmdhelp.nuke"),
+		"doctor":      i18n.T("cmdhelp.doctor"),
+		"update":      i18n.T("cmdhelp.update"),
+		"nutshell":    i18n.T("cmdhelp.nutshell"),
+		"geo-upgrade": i18n.T("cmdhelp.geo-upgrade"),
+		"molt":        i18n.T("cmdhelp.molt"),
+		"unmolt":      i18n.T("cmdhelp.unmolt"),
+		"swarm":       i18n.T("cmdhelp.swarm"),
+		"skill":       i18n.T("cmdhelp.skill"),
+		"version":     i18n.T("cmdhelp.version"),
+		"task":        i18n.T("cmdhelp.task"),
+		"credits":     i18n.T("cmdhelp.credits"),
+		"predict":     i18n.T("cmdhelp.predict"),
+		"knowledge":   i18n.T("cmdhelp.knowledge"),
+		"resume":      i18n.T("cmdhelp.resume"),
+		"help":        i18n.T("cmdhelp.help"),
+	}
 }
 
 func printCmdHelp(cmd string) error {
@@ -547,11 +548,11 @@ func printCmdHelp(cmd string) error {
 		swarmHelp(Verbose)
 		return nil
 	}
-	if help, ok := cmdHelps[cmd]; ok {
+	if help, ok := getCmdHelps()[cmd]; ok {
 		fmt.Println(help)
 		return nil
 	}
-	fmt.Fprintf(os.Stderr, "unknown command: %s\n", cmd)
+	fmt.Fprintln(os.Stderr, i18n.Tf("err.unknown_cmd", cmd))
 	return printUsage()
 }
 
@@ -593,20 +594,20 @@ func cmdInit() error {
 		if err := cfg.Save(); err != nil {
 			return fmt.Errorf("save config: %w", err)
 		}
-		fmt.Printf("Created config: %s\n", cfgPath)
+		fmt.Println(i18n.Tf("init.created_config", cfgPath))
 	} else {
-		fmt.Printf("Config exists: %s\n", cfgPath)
+		fmt.Println(i18n.Tf("init.config_exists", cfgPath))
 	}
 
-	fmt.Printf("Data directory: %s\n", dataDir)
-	fmt.Printf("Peer ID: %s\n", peerID.String())
-	fmt.Println("Initialization complete.")
+	fmt.Println(i18n.Tf("init.data_dir", dataDir))
+	fmt.Println(i18n.Tf("init.peer_id", peerID.String()))
+	fmt.Println(i18n.T("init.complete"))
 	return nil
 }
 
 func cmdStart() error {
 	if isDaemonRunning() {
-		fmt.Println("Daemon is already running.")
+		fmt.Println(i18n.T("start.already"))
 		return cmdStatus()
 	}
 	// Start daemon in background with log file
@@ -619,7 +620,7 @@ func cmdStop() error {
 	pidPath := filepath.Join(dataDir, "daemon.pid")
 	data, err := os.ReadFile(pidPath)
 	if err != nil {
-		return fmt.Errorf("no running daemon found (no PID file)")
+		return errors.New(i18n.T("stop.not_found"))
 	}
 	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
 	if err != nil {
@@ -632,7 +633,7 @@ func cmdStop() error {
 	if err := proc.Signal(os.Interrupt); err != nil {
 		return fmt.Errorf("failed to stop daemon (pid %d): %w", pid, err)
 	}
-	fmt.Printf("Sent stop signal to daemon (pid %d)\n", pid)
+	fmt.Println(i18n.Tf("stop.sent", pid))
 	return nil
 }
 
@@ -700,7 +701,7 @@ func cmdStatus() error {
 	// Fetch status
 	resp, err := http.Get(base + "/api/status")
 	if err != nil {
-		return fmt.Errorf("cannot connect to daemon (is it running?): %w", err)
+		return fmt.Errorf(i18n.T("err.daemon_connect")+": %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -723,21 +724,21 @@ func cmdStatus() error {
 	rst := "\033[0m"
 	bold := "\033[1m"
 
-	fmt.Println(red + "  🦞 ClawNet Status" + rst)
+	fmt.Println(red + "  " + i18n.T("status.title") + rst)
 	fmt.Println()
 
 	// Identity
 	if id, ok := status["peer_id"].(string); ok && len(id) >= 16 {
-		fmt.Printf(tidal+"  Peer ID       "+rst+"%s…\n", id[:16])
+		fmt.Printf(tidal+"  %-14s"+rst+"%s…\n", i18n.T("status.peer_id"), id[:16])
 	}
 	if v, ok := status["version"].(string); ok {
-		fmt.Printf(tidal+"  Version       "+rst+"%s\n", v)
+		fmt.Printf(tidal+"  %-14s"+rst+"%s\n", i18n.T("status.version"), v)
 	}
 	if peers, ok := status["peers"].(float64); ok {
-		fmt.Printf(tidal+"  Peers         "+rst+"%d connected\n", int(peers))
+		fmt.Printf(tidal+"  %-14s"+rst+i18n.Tf("status.peers_fmt", int(peers))+"\n", i18n.T("status.peers"))
 	}
 	if role, ok := status["role"].(string); ok && role != "" {
-		fmt.Printf(tidal+"  Role          "+rst+"%s\n", role)
+		fmt.Printf(tidal+"  %-14s"+rst+"%s\n", i18n.T("status.role"), role)
 	}
 	fmt.Println()
 
@@ -750,7 +751,7 @@ func cmdStatus() error {
 		json.NewDecoder(digestResp.Body).Decode(&digest)
 		digestResp.Body.Close()
 		if digest.Summary != "" {
-			fmt.Printf(bold+"  Today         "+rst+"%s\n", digest.Summary)
+			fmt.Printf(bold+"  %-14s"+rst+"%s\n", i18n.T("status.today"), digest.Summary)
 		}
 	}
 
@@ -759,52 +760,51 @@ func cmdStatus() error {
 		if hint, ok := na["hint"].(string); ok && hint != "" {
 			cmd, _ := na["command"].(string)
 			if cmd != "" {
-				fmt.Printf(green+"  Next          "+rst+"%s → %s%s%s\n", hint, dim, cmd, rst)
+				fmt.Printf(green+"  %-14s"+rst+"%s → %s%s%s\n", i18n.T("status.next"), hint, dim, cmd, rst)
 			} else {
-				fmt.Printf(green+"  Next          "+rst+"%s\n", hint)
+				fmt.Printf(green+"  %-14s"+rst+"%s\n", i18n.T("status.next"), hint)
 			}
 		}
 	}
 
 	// Pending offline ops
 	if pc, ok := status["pending_ops"].(float64); ok && pc > 0 {
-		fmt.Printf("\033[33m  Offline Queue "+rst+"%d pending operations\n", int(pc))
+		fmt.Printf("\033[33m  %-14s"+rst+"%s\n", i18n.T("status.offline_queue"), i18n.Tf("status.offline_fmt", int(pc)))
 	}
 
 	// Zero-balance hint
 	if bal, ok := status["balance"].(float64); ok && bal == 0 {
 		fmt.Println()
-		fmt.Println("\033[33m  ⚡ Zero balance" + rst + " — you can still:")
-		fmt.Println(dim + "     • Browse tasks and knowledge (read-only is free)")
-		fmt.Println("     • Publish 0-reward help-wanted tasks")
-		fmt.Println("     • Contribute to swarm discussions (earns reputation)")
-		fmt.Println("     • Complete milestones to earn Shell" + rst)
+		fmt.Println("\033[33m  " + i18n.T("status.zero_balance") + rst + " " + i18n.T("status.zero_hint"))
+		fmt.Println(dim + "     • " + i18n.T("status.zero_opt1"))
+		fmt.Println("     • " + i18n.T("status.zero_opt2"))
+		fmt.Println("     • " + i18n.T("status.zero_opt3"))
+		fmt.Println("     • " + i18n.T("status.zero_opt4") + rst)
 	}
 
 	fmt.Println()
-	fmt.Println(dim + "  Tip: " + rst + randomTip())
+	fmt.Println(dim + "  " + i18n.T("tip_prefix") + rst + randomTip())
 	return nil
 }
 
 // ── Onboarding role choices ──
 var onboardRoles = []struct {
-	id, icon, name, desc string
+	id, icon string
 }{
-	{"worker", "🔧", "Worker", "Claim tasks and earn Shell"},
-	{"publisher", "📢", "Publisher", "Publish tasks for the network"},
-	{"thinker", "🧠", "Thinker", "Share knowledge and join swarms"},
-	{"trader", "🏛️", "Trader", "Participate in predictions and auctions"},
-	{"observer", "👀", "Observer", "Monitor the network and learn"},
-	{"lobster", "🦞", "Lobster", "Just be a lobster"},
+	{"worker", "🔧"},
+	{"publisher", "📢"},
+	{"thinker", "🧠"},
+	{"trader", "🏛️"},
+	{"observer", "👀"},
+	{"lobster", "🦞"},
 }
 
+func roleName(id string) string  { return i18n.T("role." + id) }
+func roleDesc(id string) string  { return i18n.T("role." + id + "_desc") }
+
 // 5 futuristic welcome messages for cinematic finish
-var onboardingMessages = []string{
-	"Identity locked. You are now part of the mesh.",
-	"Neural handshake complete. The swarm recognizes you.",
-	"Peer registered. Your signal propagates across all nodes.",
-	"Protocol engaged. Welcome to the decentralized frontier.",
-	"Signature verified. The network awaits your first move.",
+func welcomeMsg(idx int) string {
+	return i18n.T(fmt.Sprintf("welcome.%d", idx))
 }
 
 func cmdRole() error {
@@ -817,11 +817,11 @@ func cmdRole() error {
 	// clawnet role set [name] — interactive onboarding or direct set
 	if len(os.Args) >= 3 && os.Args[2] == "set" {
 		if len(os.Args) >= 4 {
-			roleName := os.Args[3]
-			if err := callSetRole(base, roleName); err != nil {
+			roleArg := os.Args[3]
+			if err := callSetRole(base, roleArg); err != nil {
 				return err
 			}
-			fmt.Printf("\033[32m  Role set to: %s\n\033[0m", roleName)
+			fmt.Print("\033[32m  " + i18n.Tf("role.set_ok", roleArg) + "\n\033[0m")
 			return nil
 		}
 		return roleOnboarding(base)
@@ -836,7 +836,7 @@ func cmdRole() error {
 
 	resp, err := http.Get(base + "/api/role")
 	if err != nil {
-		return fmt.Errorf("cannot connect to daemon: %w", err)
+		return fmt.Errorf(i18n.T("err.daemon_connect")+": %w", err)
 	}
 	defer resp.Body.Close()
 	var data struct {
@@ -849,12 +849,12 @@ func cmdRole() error {
 	}
 	json.NewDecoder(resp.Body).Decode(&data)
 
-	fmt.Println(red + "  🦞 Role Templates" + rst)
+	fmt.Println(red + "  " + i18n.T("role.title") + rst)
 	fmt.Println()
 	if data.Role != nil {
-		fmt.Printf(tidal+"  Current Role  "+rst+"%s %s — %s\n", data.Role.Icon, data.Role.Name, data.Role.Desc)
+		fmt.Printf(tidal+"  %-14s"+rst+"%s %s — %s\n", i18n.T("role.current"), data.Role.Icon, data.Role.Name, data.Role.Desc)
 	} else {
-		fmt.Println(dim + "  No role selected yet." + rst)
+		fmt.Println(dim + "  " + i18n.T("role.none") + rst)
 	}
 	fmt.Println()
 
@@ -870,7 +870,7 @@ func cmdRole() error {
 		json.NewDecoder(rolesResp.Body).Decode(&roles)
 		rolesResp.Body.Close()
 
-		fmt.Println("  Available roles:")
+		fmt.Println("  " + i18n.T("role.available"))
 		for _, r := range roles {
 			marker := "  "
 			if data.Role != nil && data.Role.ID == r.ID {
@@ -879,19 +879,19 @@ func cmdRole() error {
 			fmt.Printf("  %s%s %-10s %s%s%s\n", marker, r.Icon, r.Name, dim, r.Description, rst)
 		}
 		fmt.Println()
-		fmt.Println(dim + "  Set a role: clawnet role set" + rst)
+		fmt.Println(dim + "  " + i18n.T("role.set_hint") + rst)
 	}
 	return nil
 }
 
 // callSetRole sends PUT /api/role to the daemon.
-func callSetRole(base, roleName string) error {
-	payload, _ := json.Marshal(map[string]string{"role": roleName})
+func callSetRole(base, roleID string) error {
+	payload, _ := json.Marshal(map[string]string{"role": roleID})
 	req, _ := http.NewRequest("PUT", base+"/api/role", strings.NewReader(string(payload)))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("cannot connect to daemon: %w", err)
+		return fmt.Errorf(i18n.T("err.daemon_connect")+": %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
@@ -973,16 +973,16 @@ func roleOnboarding(base string) error {
 	}
 
 	// ── Step 1: Welcome ──
-	drawFrame("ClawNet Identity Setup")
+	drawFrame(i18n.T("onboard.frame_title"))
 
 	cy := h / 2
-	center(cy-4, cBanner, "Welcome to ClawNet")
-	center(cy-2, "", "ClawNet is "+cTitle+"TCP/IP for Agents"+cReset+" —")
-	center(cy-1, "", "a peer-to-peer network where autonomous agents")
-	center(cy, "", "connect, collaborate, and trade.")
-	center(cy+3, cBanner, "You need an identity.")
+	center(cy-4, cBanner, i18n.T("onboard.welcome"))
+	center(cy-2, "", i18n.T("onboard.tagline_line"))
+	center(cy-1, "", i18n.T("onboard.desc1"))
+	center(cy, "", i18n.T("onboard.desc2"))
+	center(cy+3, cBanner, i18n.T("onboard.need_identity"))
 
-	put(h-2, 2, cDim, "Press Enter to continue...")
+	put(h-2, 2, cDim, i18n.T("onboard.press_enter"))
 
 	for {
 		key := readKey()
@@ -997,10 +997,10 @@ func roleOnboarding(base string) error {
 	// ── Step 2: Role Selection ──
 	chosen := len(onboardRoles) - 1 // default: lobster
 	for {
-		drawFrame("Choose Your Role")
+		drawFrame(i18n.T("onboard.choose_role"))
 
-		center(3, cTitle, "Select a role for your node:")
-		center(4, cDim, "Use ↑/↓ or j/k to move, Enter to confirm")
+		center(3, cTitle, i18n.T("onboard.select_role"))
+		center(4, cDim, i18n.T("onboard.nav_hint"))
 
 		for i, r := range onboardRoles {
 			row := 7 + i*2
@@ -1010,7 +1010,7 @@ func roleOnboarding(base string) error {
 				prefix = " ► "
 				color = cHighlight
 			}
-			line := fmt.Sprintf("%s%s  %-12s — %s", prefix, r.icon, r.name, r.desc)
+			line := fmt.Sprintf("%s%s  %-12s — %s", prefix, r.icon, roleName(r.id), roleDesc(r.id))
 			// Pad to fill highlight
 			for len([]rune(line)) < 50 {
 				line += " "
@@ -1026,8 +1026,8 @@ func roleOnboarding(base string) error {
 			}
 		}
 
-		put(h-2, 2, cDim, fmt.Sprintf("Current: %s %s", onboardRoles[chosen].icon, onboardRoles[chosen].name))
-		put(h-2, w-28, cDim, "Enter=select  q=quit")
+		put(h-2, 2, cDim, i18n.Tf("onboard.current", onboardRoles[chosen].icon, roleName(onboardRoles[chosen].id)))
+		put(h-2, w-28, cDim, i18n.T("onboard.nav_keys"))
 
 		key := readKey()
 		switch {
@@ -1056,10 +1056,10 @@ roleChosen:
 	}
 
 	// ── Step 3: Nickname ──
-	drawFrame("Set Your Nickname")
+	drawFrame(i18n.T("onboard.nickname_title"))
 
-	center(5, cTitle, "Choose a nickname visible to other peers")
-	center(6, cDim, "(optional — press Enter to skip)")
+	center(5, cTitle, i18n.T("onboard.nickname_prompt"))
+	center(6, cDim, i18n.T("onboard.nickname_opt"))
 
 	// Line editor with UTF-8 support (CJK, emoji, etc.)
 	nickname := ""
@@ -1166,7 +1166,7 @@ nickDone:
 	oldState, _ = term.MakeRaw(fd)
 
 	// ── Step 5: Cinematic Finish ──
-	cinematicFinish(w, h, role.icon, role.name, nickname)
+	cinematicFinish(w, h, role.icon, roleName(role.id), nickname)
 	return nil
 }
 
@@ -1781,7 +1781,7 @@ func cinematicFinish(w, h int, roleIcon, roleName, nickname string) {
 	}
 
 	// ── Typewriter welcome message ──
-	msg := onboardingMessages[rand.Intn(len(onboardingMessages))]
+	msg := welcomeMsg(rand.Intn(5))
 	msgRow := topPad + bH + 2
 	msgCol := (w - len(msg)) / 2
 	if msgCol < 2 {
@@ -1853,7 +1853,7 @@ func cmdDoctor() error {
 	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
 	resp, err := http.Get(base + "/api/diagnostics")
 	if err != nil {
-		return fmt.Errorf("cannot connect to daemon (is it running?): %w", err)
+		return fmt.Errorf(i18n.T("err.daemon_connect")+": %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
@@ -1872,88 +1872,88 @@ func cmdDoctor() error {
 	dim := "\033[2m"
 	rst := "\033[0m"
 
-	fmt.Println(red + "  🦞 ClawNet Doctor" + rst)
+	fmt.Println(red + "  " + i18n.T("doctor.title") + rst)
 	fmt.Println()
 
 	// Identity
 	if id, ok := diag["peer_id"].(string); ok {
-		fmt.Printf(tidal+"  Peer ID    "+rst+"%s\n", id[:16]+"…")
+		fmt.Printf(tidal+"  %-12s"+rst+"%s\n", i18n.T("doctor.peer_id"), safePrefix(id, 16)+"…")
 	}
 	if v, ok := diag["version"].(string); ok {
-		fmt.Printf(tidal+"  Version    "+rst+"%s\n", v)
+		fmt.Printf(tidal+"  %-12s"+rst+"%s\n", i18n.T("doctor.version"), v)
 	}
 	if up, ok := diag["uptime"].(string); ok {
-		fmt.Printf(tidal+"  Uptime     "+rst+"%s\n", up)
+		fmt.Printf(tidal+"  %-12s"+rst+"%s\n", i18n.T("doctor.uptime"), up)
 	}
 	fmt.Println()
 
 	// Addresses
-	fmt.Println(coral + "  Addresses" + rst)
+	fmt.Println(coral + "  " + i18n.T("doctor.addresses") + rst)
 	if addrs, ok := diag["listen_addrs"].([]any); ok {
 		for _, a := range addrs {
-			fmt.Printf("    listen   %s\n", a)
+			fmt.Printf("    %-9s%s\n", i18n.T("doctor.listen"), a)
 		}
 	}
 	if addrs, ok := diag["announce_addrs"].([]any); ok && len(addrs) > 0 {
 		for _, a := range addrs {
-			fmt.Printf("    announce %s\n", a)
+			fmt.Printf("    %-9s%s\n", i18n.T("doctor.announce"), a)
 		}
 	} else {
-		fmt.Printf("    announce %snone%s\n", dim, rst)
+		fmt.Printf("    %-9s%s%s%s\n", i18n.T("doctor.announce"), dim, i18n.T("doctor.announce_none"), rst)
 	}
 	fmt.Println()
 
 	// NAT & Relay
-	fmt.Println(coral + "  NAT & Relay" + rst)
+	fmt.Println(coral + "  " + i18n.T("doctor.nat_relay") + rst)
 	if mode, ok := diag["nat_mode"].(string); ok {
-		fmt.Printf("    NAT mode     %s\n", mode)
+		fmt.Printf("    %-13s%s\n", i18n.T("doctor.nat_mode"), mode)
 	}
 	if relay, ok := diag["relay_enabled"].(bool); ok {
 		if relay {
-			fmt.Printf("    Relay        %s✓ enabled%s\n", green, rst)
+			fmt.Printf("    %-13s%s%s%s\n", i18n.T("doctor.relay"), green, i18n.T("doctor.relay_enabled"), rst)
 		} else {
-			fmt.Printf("    Relay        %s✗ disabled%s\n", red, rst)
+			fmt.Printf("    %-13s%s%s%s\n", i18n.T("doctor.relay"), red, i18n.T("doctor.relay_disabled"), rst)
 		}
 	}
 	direct := int(getFloat(diag, "connections_direct"))
 	relayC := int(getFloat(diag, "connections_relay"))
-	fmt.Printf("    Direct conn  %d\n", direct)
-	fmt.Printf("    Relay conn   %d\n", relayC)
+	fmt.Printf("    %-13s%d\n", i18n.T("doctor.direct_conn"), direct)
+	fmt.Printf("    %-13s%d\n", i18n.T("doctor.relay_conn"), relayC)
 	fmt.Println()
 
 	// Discovery
-	fmt.Println(coral + "  Discovery" + rst)
+	fmt.Println(coral + "  " + i18n.T("doctor.discovery") + rst)
 	dhtSize := int(getFloat(diag, "dht_routing_table"))
-	fmt.Printf("    DHT table    %d peers\n", dhtSize)
+	fmt.Printf("    %-13s%s\n", i18n.T("doctor.dht_table"), i18n.Tf("doctor.dht_peers", dhtSize))
 	if bt, ok := diag["btdht_status"].(string); ok {
 		sym := green + "✓" + rst
 		if bt == "disabled" {
 			sym = red + "✗" + rst
 		}
-		fmt.Printf("    BT DHT       %s %s\n", sym, bt)
+		fmt.Printf("    %-13s%s %s\n", i18n.T("doctor.btdht"), sym, bt)
 	}
 	overlayPeers := int(getFloat(diag, "overlay_peers"))
 	if overlayPeers > 0 {
-		fmt.Printf("    Overlay      %s✓%s %d peer(s)\n", green, rst, overlayPeers)
+		fmt.Printf("    %-13s%s%s%s\n", i18n.T("doctor.overlay"), green, i18n.Tf("doctor.overlay_peers", overlayPeers), rst)
 	} else if _, ok := diag["overlay_peers"]; ok {
-		fmt.Printf("    Overlay      %s– no peers%s\n", dim, rst)
+		fmt.Printf("    %-13s%s%s%s\n", i18n.T("doctor.overlay"), dim, i18n.T("doctor.overlay_none"), rst)
 	}
 	cryptoSessions := int(getFloat(diag, "crypto_sessions"))
 	if cryptoSessions > 0 {
-		fmt.Printf("    E2E Crypto   %s✓%s %d session(s)\n", green, rst, cryptoSessions)
+		fmt.Printf("    %-13s%s%s%s\n", i18n.T("doctor.e2e_crypto"), green, i18n.Tf("doctor.crypto_sessions", cryptoSessions), rst)
 	} else {
-		fmt.Printf("    E2E Crypto   %s✓%s enabled (NaCl box)\n", green, rst)
+		fmt.Printf("    %-13s%s%s%s\n", i18n.T("doctor.e2e_crypto"), green, i18n.T("doctor.crypto_enabled"), rst)
 	}
 	fmt.Println()
 
 	// Bootstrap
-	fmt.Println(coral + "  Bootstrap Nodes" + rst)
+	fmt.Println(coral + "  " + i18n.T("doctor.bootstrap") + rst)
 	if bs, ok := diag["bootstrap_peers"].(map[string]any); ok {
 		for id, v := range bs {
 			reachable, _ := v.(bool)
-			sym := red + "✗ unreachable" + rst
+			sym := red + i18n.T("doctor.bs_unreachable") + rst
 			if reachable {
-				sym = green + "✓ connected" + rst
+				sym = green + i18n.T("doctor.bs_connected") + rst
 			}
 			fmt.Printf("    %s  %s\n", id, sym)
 		}
@@ -1963,9 +1963,9 @@ func cmdDoctor() error {
 	// Summary
 	total := int(getFloat(diag, "peers_total"))
 	if total == 0 {
-		fmt.Printf("%s  ⚠ No peers connected — check bootstrap and NAT config\n%s", red, rst)
+		fmt.Printf("%s  %s\n%s", red, i18n.T("doctor.no_peers"), rst)
 	} else {
-		fmt.Printf("%s  ✓ %d peers connected%s\n", green, total, rst)
+		fmt.Printf("%s  %s%s\n", green, i18n.Tf("doctor.peers_ok", total), rst)
 	}
 
 	return nil
@@ -1986,7 +1986,7 @@ func cmdPeers() error {
 	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
 	resp, err := http.Get(base + "/api/peers/geo")
 	if err != nil {
-		return fmt.Errorf("cannot connect to daemon (is it running?): %w", err)
+		return fmt.Errorf(i18n.T("err.daemon_connect")+": %w", err)
 	}
 	defer resp.Body.Close()
 	var peers []peerGeoData
@@ -2021,10 +2021,10 @@ func cmdPeers() error {
 		if self.Motto != "" {
 			parts = append(parts, "\""+self.Motto+"\"")
 		}
-		fmt.Printf("    %s  %s\n", tidal+"(self)"+rst, strings.Join(parts, "  "))
+		fmt.Printf("    %s  %s\n", tidal+i18n.T("peers.self")+rst, strings.Join(parts, "  "))
 	}
 
-	fmt.Printf("\n"+coral+"  %d peers connected"+rst+"\n\n", len(remote))
+	fmt.Print("\n" + coral + "  " + i18n.Tf("peers.connected_fmt", len(remote)) + rst + "\n\n")
 
 	for i, p := range remote {
 		name := p.AgentName
@@ -2068,7 +2068,7 @@ func cmdBoard() error {
 	// Fetch board data from API
 	resp, err := http.Get(base + "/api/tasks/board")
 	if err != nil {
-		return fmt.Errorf("cannot connect to daemon (is it running?): %w", err)
+		return fmt.Errorf(i18n.T("err.daemon_connect")+": %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -2096,13 +2096,13 @@ func cmdBoard() error {
 	dim := "\033[2m"
 	rst := "\033[0m"
 
-	fmt.Println(red + "  🦞 ClawNet Auction House" + rst)
+	fmt.Println(red + "  " + i18n.T("board.title") + rst)
 	fmt.Println()
 
 	// My Published Tasks
-	fmt.Println(coral + "  My Published Tasks" + rst)
+	fmt.Println(coral + "  " + i18n.T("board.my_published") + rst)
 	if len(board.MyPublished) == 0 {
-		fmt.Println(dim + "    (none)" + rst)
+		fmt.Println(dim + "    " + i18n.T("board.none") + rst)
 	}
 	for _, t := range board.MyPublished {
 		statusColor := dim
@@ -2118,11 +2118,11 @@ func cmdBoard() error {
 		}
 		bidInfo := ""
 		if t.BidCount > 0 {
-			bidInfo = fmt.Sprintf("  %d bid(s)", t.BidCount)
+			bidInfo = "  " + i18n.Tf("board.bid_count", t.BidCount)
 		}
 		subInfo := ""
 		if t.SubCount > 0 {
-			subInfo = fmt.Sprintf("  %d sub(s)", t.SubCount)
+			subInfo = "  " + i18n.Tf("board.sub_count", t.SubCount)
 		}
 		assignee := ""
 		if t.AssignedTo != "" {
@@ -2134,19 +2134,19 @@ func cmdBoard() error {
 		}
 		target := ""
 		if t.TargetPeer != "" {
-			target = dim + " [targeted]" + rst
+			target = dim + " " + i18n.T("board.targeted") + rst
 		}
 		countdown := formatCountdown(t.BidCloseAt, t.WorkDeadline, t.Status)
 		fmt.Printf("    %s[%s]%s %s%d%s %s%s%s%s%s%s\n",
 			statusColor, t.Status, rst, coral, t.Reward, rst, t.Title, target, bidInfo, subInfo, assignee, countdown)
-		fmt.Printf("    %s%s  %s%s\n", dim, t.ID[:8]+"...", t.CreatedAt[:10], rst)
+		fmt.Printf("    %s%s  %s%s\n", dim, safePrefix(t.ID, 8)+"...", safePrefix(t.CreatedAt, 10), rst)
 	}
 	fmt.Println()
 
 	// My Assignments / Active Work
-	fmt.Println(coral + "  My Active Work" + rst)
+	fmt.Println(coral + "  " + i18n.T("board.my_active") + rst)
 	if len(board.MyAssigned) == 0 {
-		fmt.Println(dim + "    (none — bid on open tasks to start working!)" + rst)
+		fmt.Println(dim + "    " + i18n.T("board.none_active") + rst)
 	}
 	for _, t := range board.MyAssigned {
 		countdown := formatCountdown(t.BidCloseAt, t.WorkDeadline, t.Status)
@@ -2157,19 +2157,19 @@ func cmdBoard() error {
 		fmt.Printf("    %s[%s]%s %s%d%s %s  by %s%s%s\n",
 			tidal, t.Status, rst, coral, t.Reward, rst, t.Title, truncName(t.AuthorName, 16), countdown, expectPay)
 		fmt.Printf("    %s%s  %s  %d bid(s) %d sub(s)%s\n",
-			dim, t.ID[:8]+"...", t.CreatedAt[:10], t.BidCount, t.SubCount, rst)
+			dim, safePrefix(t.ID, 8)+"...", safePrefix(t.CreatedAt, 10), t.BidCount, t.SubCount, rst)
 	}
 	fmt.Println()
 
 	// Open Tasks (available to claim)
-	fmt.Println(coral + "  Open Tasks" + rst)
+	fmt.Println(coral + "  " + i18n.T("board.open_tasks") + rst)
 	if len(board.OpenTasks) == 0 {
-		fmt.Println(dim + "    (none)" + rst)
+		fmt.Println(dim + "    " + i18n.T("board.none") + rst)
 	}
 	for _, t := range board.OpenTasks {
 		target := ""
 		if t.TargetPeer != "" {
-			target = dim + " [targeted]" + rst
+			target = dim + " " + i18n.T("board.targeted") + rst
 		}
 		countdown := formatCountdown(t.BidCloseAt, t.WorkDeadline, t.Status)
 		expectPay := ""
@@ -2178,12 +2178,12 @@ func cmdBoard() error {
 		}
 		fmt.Printf("    %s%d%s %s%s  %sby %s%s%s%s\n",
 			coral, t.Reward, rst, t.Title, target, dim, truncName(t.AuthorName, 16), rst, countdown, expectPay)
-		fmt.Printf("    %s%s  %s  %d bid(s)%s\n",
-			dim, t.ID[:8]+"...", t.CreatedAt[:10], t.BidCount, rst)
+		fmt.Printf("    %s%s  %s  %s%s\n",
+			dim, safePrefix(t.ID, 8)+"...", safePrefix(t.CreatedAt, 10), i18n.Tf("board.bid_count", t.BidCount), rst)
 	}
 
 	fmt.Println()
-	fmt.Println(dim + "  Tip: " + rst + randomTip())
+	fmt.Println(dim + "  " + i18n.T("tip_prefix") + rst + randomTip())
 	return nil
 }
 
@@ -2197,62 +2197,62 @@ func boardHelp() {
 	fmt.Println(bold + "clawnet board — Task Auction House Dashboard" + rst)
 	fmt.Println()
 	fmt.Println(bold + "USAGE" + rst)
-	fmt.Println(tidal + "  clawnet board" + rst + dim + "        Show your task dashboard (human TUI)" + rst)
-	fmt.Println(tidal + "  clawnet board --json" + rst + dim + " Machine-readable task data" + rst)
-	fmt.Println(tidal + "  clawnet board help" + rst + dim + "   Show this help" + rst)
+	fmt.Println(tidal + "  clawnet board" + rst + dim + "        " + i18n.T("board.help.board_desc") + rst)
+	fmt.Println(tidal + "  " + i18n.T("board.help.operations") + rst + dim + " " + i18n.T("board.help.operations_desc") + rst)
+	fmt.Println(tidal + "  " + i18n.T("board.help.help") + rst + dim + "   " + i18n.T("board.help.help_desc") + rst)
 	fmt.Println()
-	fmt.Println(bold + "DASHBOARD SECTIONS" + rst)
-	fmt.Println(coral + "  My Published Tasks" + rst + "   Tasks you created (as publisher)")
-	fmt.Println(coral + "  My Active Work" + rst + "       Tasks assigned to you (as worker)")
-	fmt.Println(coral + "  Open Tasks" + rst + "           Available tasks to bid on")
+	fmt.Println(bold + i18n.T("board.help.sections") + rst)
+	fmt.Println(coral + "  " + i18n.T("board.help.s_published") + rst + "   " + i18n.T("board.help.s_published_desc"))
+	fmt.Println(coral + "  " + i18n.T("board.help.s_active") + rst + "       " + i18n.T("board.help.s_active_desc"))
+	fmt.Println(coral + "  " + i18n.T("board.help.s_open") + rst + "           " + i18n.T("board.help.s_open_desc"))
 	fmt.Println()
-	fmt.Println(bold + "TASK LIFECYCLE" + rst)
-	fmt.Println(dim + "  1. Publisher creates a task with a reward (shells)" + rst)
-	fmt.Println(dim + "  2. Workers bid on the task during the bidding window" + rst)
-	fmt.Println(dim + "  3. Publisher assigns a winner (or auto-assign after bid close)" + rst)
-	fmt.Println(dim + "  4. Worker submits their work before the deadline" + rst)
-	fmt.Println(dim + "  5. Publisher approves → reward transferred; or rejects" + rst)
+	fmt.Println(bold + i18n.T("board.help.lifecycle") + rst)
+	fmt.Println(dim + "  " + i18n.T("board.help.lc1") + rst)
+	fmt.Println(dim + "  " + i18n.T("board.help.lc2") + rst)
+	fmt.Println(dim + "  " + i18n.T("board.help.lc3") + rst)
+	fmt.Println(dim + "  " + i18n.T("board.help.lc4") + rst)
+	fmt.Println(dim + "  " + i18n.T("board.help.lc5") + rst)
 	fmt.Println()
-	fmt.Println(bold + "TASK OPERATIONS" + rst)
+	fmt.Println(bold + i18n.T("board.help.operations_title") + rst)
 	fmt.Println()
-	fmt.Println(tidal + "  Create a task" + rst)
+	fmt.Println(tidal + "  " + i18n.T("board.help.op_create") + rst)
 	fmt.Println(dim + `    clawnet task create "Review PR" -r 200 -d "..."` + rst)
 	fmt.Println()
-	fmt.Println(tidal + "  Bid on a task" + rst)
+	fmt.Println(tidal + "  " + i18n.T("board.help.op_bid") + rst)
 	fmt.Println(dim + `    clawnet task bid <id> -a 150 -m "I can do this"` + rst)
 	fmt.Println()
-	fmt.Println(tidal + "  Claim a simple task" + rst)
+	fmt.Println(tidal + "  " + i18n.T("board.help.op_claim") + rst)
 	fmt.Println(dim + `    clawnet task claim <id> "result text" -s 0.85` + rst)
 	fmt.Println()
-	fmt.Println(tidal + "  Assign a bidder" + rst)
+	fmt.Println(tidal + "  " + i18n.T("board.help.op_assign") + rst)
 	fmt.Println(dim + `    clawnet task assign <id> --to <peer_id>` + rst)
 	fmt.Println()
-	fmt.Println(tidal + "  Submit / Approve / Reject" + rst)
+	fmt.Println(tidal + "  " + i18n.T("board.help.op_submit") + rst)
 	fmt.Println(dim + `    clawnet task submit <id>` + rst)
 	fmt.Println(dim + `    clawnet task approve <id>` + rst)
 	fmt.Println(dim + `    clawnet task reject <id>` + rst)
 	fmt.Println()
-	fmt.Println(tidal + "  Cancel a task" + rst)
+	fmt.Println(tidal + "  " + i18n.T("board.help.op_cancel") + rst)
 	fmt.Println(dim + `    clawnet task cancel <id>` + rst)
 	fmt.Println()
-	fmt.Println(bold + "READING THE DASHBOARD" + rst)
-	fmt.Println(dim + "  [open]       Accepting bids / claims    ⏱ bid closes 2.5h" + rst)
-	fmt.Println(dim + "  [assigned]   Worker selected             ⏱ submit by 5.0h" + rst)
-	fmt.Println(dim + "  [submitted]  Work delivered, pending review" + rst)
-	fmt.Println(dim + "  [settled]    Reward paid out (5% fee burned)" + rst)
-	fmt.Println(dim + "  50           Reward in shells (1 shell ≈ 1 RMB)" + rst)
-	fmt.Println(dim + "  E[pay]=40    Expected pay from your bid" + rst)
-	fmt.Println(dim + "  3 bid(s)     Number of bids received" + rst)
-	fmt.Println(dim + "  [targeted]   Task sent to a specific peer" + rst)
+	fmt.Println(bold + i18n.T("board.help.reading") + rst)
+	fmt.Println(dim + "  " + i18n.T("board.help.r_open") + rst)
+	fmt.Println(dim + "  " + i18n.T("board.help.r_assigned") + rst)
+	fmt.Println(dim + "  " + i18n.T("board.help.r_submitted") + rst)
+	fmt.Println(dim + "  " + i18n.T("board.help.r_settled") + rst)
+	fmt.Println(dim + "  " + i18n.T("board.help.r_reward") + rst)
+	fmt.Println(dim + "  " + i18n.T("board.help.r_expected") + rst)
+	fmt.Println(dim + "  " + i18n.T("board.help.r_bids") + rst)
+	fmt.Println(dim + "  " + i18n.T("board.help.r_targeted") + rst)
 	fmt.Println()
-	fmt.Println(bold + "FOR AI AGENTS" + rst)
-	fmt.Println(dim + "  Board is a human TUI. Agents should use these instead:" + rst)
+	fmt.Println(bold + i18n.T("board.help.ai_title") + rst)
+	fmt.Println(dim + "  " + i18n.T("board.help.ai_desc") + rst)
 	fmt.Println(dim + "    clawnet task list --json        # structured task list" + rst)
 	fmt.Println(dim + "    clawnet task show <id> --json   # task details" + rst)
 	fmt.Println(dim + "    clawnet credits --json          # balance check" + rst)
 	fmt.Println(dim + "    clawnet status --json            # node overview" + rst)
 	fmt.Println()
-	fmt.Println(bold + "EXAMPLES" + rst)
+	fmt.Println(bold + i18n.T("board.help.examples") + rst)
 	fmt.Println(dim + "  clawnet board                  # view dashboard" + rst)
 	fmt.Println(dim + "  clawnet task list               # non-interactive task list" + rst)
 	fmt.Println(dim + "  clawnet status                 # check your balance & port" + rst)
@@ -2406,7 +2406,7 @@ func cmdTopo() error {
 
 	resp, err := http.Get(base + "/api/peers/geo")
 	if err != nil {
-		return fmt.Errorf("cannot connect to daemon: %w", err)
+		return fmt.Errorf(i18n.T("err.daemon_connect")+": %w", err)
 	}
 	resp.Body.Close()
 
@@ -2756,14 +2756,14 @@ func fetchOverlayGeo(base string) []peerGeoData {
 		}
 		pg := peerGeoData{
 			PeerID:    p.KeyHex,
-			ShortID:   p.KeyHex[:8],
-			AgentName: "claw:" + p.KeyHex[:8],
+			ShortID:   safePrefix(p.KeyHex, 8),
+			AgentName: "claw:" + safePrefix(p.KeyHex, 8),
 			Location:  p.Location,
 			Geo:       p.Geo,
 			IsOverlay: true,
 			LatencyMs: p.LatencyMs,
 		}
-		if d, ok := rateMap[p.KeyHex[:8]]; ok {
+		if d, ok := rateMap[safePrefix(p.KeyHex, 8)]; ok {
 			pg.BwIn = int64(d.RXRate)
 			pg.BwOut = int64(d.TXRate)
 		}
@@ -5145,7 +5145,7 @@ func cmdSub() error {
 	// Print last 10 messages
 	resp, err := http.Get(base + "/api/topics/" + topic + "/messages?limit=10")
 	if err != nil {
-		return fmt.Errorf("cannot connect to daemon: %w", err)
+		return fmt.Errorf(i18n.T("err.daemon_connect")+": %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -5237,7 +5237,7 @@ func apiPost(path string, body any) error {
 	}
 	resp, err := http.Post(url, "application/json", strings.NewReader(string(data)))
 	if err != nil {
-		return fmt.Errorf("cannot connect to daemon (is it running?): %w", err)
+		return fmt.Errorf(i18n.T("err.daemon_connect")+": %w", err)
 	}
 	defer resp.Body.Close()
 	resBody, _ := io.ReadAll(resp.Body)
@@ -5276,7 +5276,7 @@ func cmdWatch() error {
 
 	resp, err := http.Get(base + "/api/watch")
 	if err != nil {
-		return fmt.Errorf("cannot connect to daemon: %w", err)
+		return fmt.Errorf(i18n.T("err.daemon_connect")+": %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -5372,7 +5372,7 @@ func apiGet(path string) error {
 	url := fmt.Sprintf("http://127.0.0.1:%d%s", cfg.WebUIPort, path)
 	resp, err := http.Get(url)
 	if err != nil {
-		return fmt.Errorf("cannot connect to daemon (is it running?): %w", err)
+		return fmt.Errorf(i18n.T("err.daemon_connect")+": %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)

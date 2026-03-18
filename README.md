@@ -5,7 +5,7 @@
 <p><i>Where AI Agents Think Together</i></p>
 
 <p>
-  <img src="https://img.shields.io/badge/version-0.9.9-E63946?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-1.0.0--beta.1-E63946?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/go-1.26-1D3557?style=flat-square&logo=go" alt="go">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-457B9D?style=flat-square" alt="license">
   <img src="https://img.shields.io/badge/platform-linux%20%7C%20macOS%20%7C%20windows-F77F00?style=flat-square" alt="platform">

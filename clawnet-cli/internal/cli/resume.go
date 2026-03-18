@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/config"
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/i18n"
 )
 
 // cmdResume routes `clawnet resume` subcommands (Agent Matching).
@@ -56,22 +57,22 @@ func resumeHelp(verbose bool) {
 	bold := "\033[1m"
 	rst := "\033[0m"
 
-	fmt.Println(bold + "clawnet resume — Agent Profile & Matching" + rst)
+	fmt.Println(bold + i18n.T("help.resume") + rst)
 	fmt.Println()
-	fmt.Println(bold + "USAGE" + rst)
-	fmt.Println(tidal + "  clawnet resume" + rst + dim + "                   View own resume (default)" + rst)
+	fmt.Println(bold + i18n.T("common.usage") + rst)
+	fmt.Println(tidal + "  clawnet resume" + rst + dim + "                   " + i18n.T("help.resume.default") + rst)
 	fmt.Println(tidal + "  clawnet resume <subcommand>" + rst)
-	fmt.Println(tidal + "  clawnet resume <subcommand> --json" + rst + dim + "  Machine-readable output" + rst)
+	fmt.Println(tidal + "  clawnet resume <subcommand> --json" + rst + dim + "  " + i18n.T("help.resume.json") + rst)
 	fmt.Println()
-	fmt.Println(bold + "SUBCOMMANDS" + rst)
-	fmt.Println(tidal+"  get      "+dim+"         "+rst + "View own or peer's resume")
-	fmt.Println(tidal+"  set      "+dim+"         "+rst + "Update your agent profile")
-	fmt.Println(tidal+"  list     "+dim+"(ls)     "+rst + "Browse all agent resumes")
-	fmt.Println(tidal+"  match    "+dim+"         "+rst + "Find best agents for a task")
+	fmt.Println(bold + i18n.T("help.resume.subcmds") + rst)
+	fmt.Println(tidal+"  get      "+dim+"         "+rst + i18n.T("help.resume.cmd_get"))
+	fmt.Println(tidal+"  set      "+dim+"         "+rst + i18n.T("help.resume.cmd_set"))
+	fmt.Println(tidal+"  list     "+dim+"(ls)     "+rst + i18n.T("help.resume.cmd_list"))
+	fmt.Println(tidal+"  match    "+dim+"         "+rst + i18n.T("help.resume.cmd_match"))
 
 	if verbose {
 		fmt.Println()
-		fmt.Println(bold + "MATCHING ALGORITHM" + rst)
+		fmt.Println(bold + i18n.T("help.resume.matching") + rst)
 		fmt.Println(dim + "  Match score = weighted combination of:" + rst)
 		fmt.Println(dim + "    skill_match:  overlap between task tags and agent skills" + rst)
 		fmt.Println(dim + "    reputation:   agent reputation score (0-100)" + rst)
@@ -79,14 +80,14 @@ func resumeHelp(verbose bool) {
 	}
 
 	fmt.Println()
-	fmt.Println(bold + "EXAMPLES" + rst)
+	fmt.Println(bold + i18n.T("common.examples") + rst)
 	fmt.Println(dim + "  clawnet resume                                            # own profile" + rst)
 	fmt.Println(dim + "  clawnet resume set --skills \"python,nlp\" --desc \"ML agent\" # update" + rst)
 	fmt.Println(dim + "  clawnet resume list                                       # browse agents" + rst)
 	fmt.Println(dim + "  clawnet resume match <task_id>                            # find matches" + rst)
 	if !verbose {
 		fmt.Println()
-		fmt.Println(dim + "  Run with -v for matching algorithm details" + rst)
+		fmt.Println(dim + "  " + i18n.T("help.resume.verbose_hint") + rst)
 	}
 }
 
@@ -107,7 +108,7 @@ func resumeGet(peerID string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == 404 {
-		return fmt.Errorf("resume not found")
+		return fmt.Errorf("%s", i18n.T("resume.not_found"))
 	}
 
 	if JSONOutput {
@@ -134,20 +135,20 @@ func resumeGet(peerID string) error {
 
 	name := r.AgentName
 	if name == "" {
-		name = "Anonymous"
+		name = i18n.T("resume.anonymous")
 	}
 	fmt.Printf("  %s🦞 %s%s\n\n", coral, name, rst)
-	fmt.Printf("  Peer ID       %s%s%s\n", dim, r.PeerID, rst)
+	fmt.Printf("  %-14s %s%s%s\n", i18n.T("resume.field.peer_id"), dim, r.PeerID, rst)
 	if r.Skills != "" && r.Skills != "[]" {
-		fmt.Printf("  Skills        %s\n", r.Skills)
+		fmt.Printf("  %-14s %s\n", i18n.T("resume.field.skills"), r.Skills)
 	}
 	if r.DataSources != "" && r.DataSources != "[]" {
-		fmt.Printf("  Data Sources  %s\n", r.DataSources)
+		fmt.Printf("  %-14s %s\n", i18n.T("resume.field.data_sources"), r.DataSources)
 	}
 	if r.Description != "" {
-		fmt.Printf("  Description   %s\n", r.Description)
+		fmt.Printf("  %-14s %s\n", i18n.T("resume.field.description"), r.Description)
 	}
-	fmt.Printf("  Updated       %s\n", r.UpdatedAt)
+	fmt.Printf("  %-14s %s\n", i18n.T("resume.field.updated"), r.UpdatedAt)
 	return nil
 }
 
@@ -223,7 +224,7 @@ func resumeSet(args []string) error {
 
 	green := "\033[32m"
 	rst := "\033[0m"
-	fmt.Printf("  %s✓ Resume updated%s\n", green, rst)
+	fmt.Printf("  %s✓ %s%s\n", green, i18n.T("resume.updated"), rst)
 	return nil
 }
 
@@ -261,10 +262,10 @@ func resumeList() error {
 	dim := "\033[2m"
 	rst := "\033[0m"
 
-	fmt.Printf("  %s🦞 Agent Directory%s  (%d)\n\n", coral, rst, len(resumes))
+	fmt.Printf("  %s%s%s  (%d)\n\n", coral, i18n.T("resume.directory_header"), rst, len(resumes))
 
 	if len(resumes) == 0 {
-		fmt.Println(dim + "  No resumes found." + rst)
+		fmt.Println(dim + "  " + i18n.T("resume.none") + rst)
 		return nil
 	}
 
@@ -275,7 +276,7 @@ func resumeList() error {
 		}
 		skills := r.Skills
 		if skills == "[]" || skills == "" {
-			skills = dim + "(no skills listed)" + rst
+			skills = dim + i18n.T("resume.no_skills") + rst
 		}
 		desc := ""
 		if r.Description != "" {
@@ -325,14 +326,14 @@ func resumeMatch(taskID string) error {
 	dim := "\033[2m"
 	rst := "\033[0m"
 
-	fmt.Printf("  %s🎯 Agent Matches for task %s%s  (%d)\n\n", coral, taskID[:8], rst, len(matches))
+	fmt.Printf("  %s%s%s  (%d)\n\n", coral, i18n.Tf("resume.match_header", safePrefix(taskID, 8)), rst, len(matches))
 
 	if len(matches) == 0 {
-		fmt.Println(dim + "  No matching agents found." + rst)
+		fmt.Println(dim + "  " + i18n.T("resume.no_matches") + rst)
 		return nil
 	}
 
-	fmt.Printf(dim+"  %-4s %-16s %6s %6s %6s"+rst+"\n", "RANK", "AGENT", "SKILL", "REP", "SCORE")
+	fmt.Printf(dim+"  %-4s %-16s %6s %6s %6s"+rst+"\n", i18n.T("resume.col.rank"), i18n.T("resume.col.agent"), i18n.T("resume.col.skill"), i18n.T("resume.col.rep"), i18n.T("resume.col.score"))
 	for i, m := range matches {
 		name := m.AgentName
 		if name == "" {

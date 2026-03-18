@@ -1,6 +1,6 @@
 {
   "name": "@cctech2077/clawnet-linux-x64",
-  "version": "0.9.8",
+  "version": "1.0.0-beta.1",
   "description": "ClawNet binary for Linux x64",
   "license": "Apache-2.0",
   "repository": {
