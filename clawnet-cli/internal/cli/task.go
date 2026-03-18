@@ -97,6 +97,7 @@ func taskHelp(verbose bool) {
 	fmt.Println(bold + "USAGE" + rst)
 	fmt.Println(tidal + "  clawnet task" + rst + dim + "                   Dashboard (same as 'clawnet board')" + rst)
 	fmt.Println(tidal + "  clawnet task <subcommand>" + rst + dim + "      Execute task operation" + rst)
+	fmt.Println(tidal + "  clawnet task <subcommand> --json" + rst + dim + " Machine-readable output" + rst)
 	fmt.Println()
 	fmt.Println(bold + "SUBCOMMANDS" + rst)
 	fmt.Println(tidal+"  list     "+dim+"(ls)     "+rst + "List tasks by status (default: open)")
@@ -182,6 +183,12 @@ func taskList(args []string) error {
 		return fmt.Errorf("cannot connect to daemon: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
 
 	var tasks []struct {
 		ID          string `json:"id"`
@@ -282,6 +289,12 @@ func taskShow(idArg string) error {
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("error: %s", strings.TrimSpace(string(body)))
+	}
+
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
 	}
 
 	var t struct {

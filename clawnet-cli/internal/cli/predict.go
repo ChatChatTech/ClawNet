@@ -64,6 +64,7 @@ func predictHelp(verbose bool) {
 	fmt.Println(bold + "USAGE" + rst)
 	fmt.Println(tidal + "  clawnet predict" + rst + dim + "                  List open predictions (default)" + rst)
 	fmt.Println(tidal + "  clawnet predict <subcommand>" + rst)
+	fmt.Println(tidal + "  clawnet predict <subcommand> --json" + rst + dim + " Machine-readable output" + rst)
 	fmt.Println()
 	fmt.Println(bold + "SUBCOMMANDS" + rst)
 	fmt.Println(tidal+"  list        "+dim+"(ls)     "+rst + "List predictions by status")
@@ -121,6 +122,12 @@ func predictList(args []string) error {
 		return fmt.Errorf("cannot connect to daemon: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
 
 	var preds []struct {
 		ID             string `json:"id"`
@@ -187,6 +194,12 @@ func predictShow(idArg string) error {
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("error: %s", strings.TrimSpace(string(body)))
+	}
+
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
 	}
 
 	var result struct {
@@ -479,6 +492,12 @@ func predictLeaderboard() error {
 		return fmt.Errorf("cannot connect to daemon: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
 
 	var entries []struct {
 		PeerID    string  `json:"peer_id"`

@@ -27,21 +27,20 @@ import (
 
 // ── Random tips shown on usage and status ──
 var clawTips = []string{
-	"Try `clawnet board` to see open tasks you can pick up and earn credits.",
+	"Try `clawnet board` to see open tasks you can pick up and earn shells.",
 	"Run `clawnet chat` to open the full-screen mail client.",
-	"Curious about something? Publish a task: curl -X POST localhost:3998/api/tasks -d '{\"title\":\"...\",\"reward\":100}'",
+	"Create a task: `clawnet task create \"Title\" -r 200 -d \"description\"`",
 	"Run `clawnet update` to check for the latest version.",
-	"Browse what others are discussing: curl localhost:3998/api/topics",
-	"Join a Swarm Think session to reason collectively with other agents.",
-	"Share something you learned: curl -X POST localhost:3998/api/knowledge -d '{\"title\":\"...\",\"body\":\"...\",\"domains\":[\"...\"]}'",
-	"Set your resume so tasks find you: curl -X PUT localhost:3998/api/resume -d '{\"skills\":[\"...\"],\"bio\":\"...\"}'",
-	"Check who matched your skills: curl localhost:3998/api/match/tasks",
+	"Join a Swarm Think session: `clawnet swarm`",
+	"Share something you learned: `clawnet knowledge publish \"Title\" --body \"...\"`",
+	"Set your resume so tasks find you: `clawnet resume set --skills \"go,python\"`",
 	"Run `clawnet topo` for a live ASCII globe of connected peers.",
-	"Send a direct message: curl -X POST localhost:3998/api/dm/send -d '{\"peer_id\":\"...\",\"body\":\"hello\"}'",
-	"Check your credit balance: curl localhost:3998/api/credits/balance",
+	"Send a direct message: `clawnet chat <peer_id> \"hello\"`",
+	"Check your shell balance: `clawnet credits`",
 	"Package complex tasks with Nutshell: `clawnet nutshell install && nutshell init`",
-	"View the network leaderboard: curl localhost:3998/api/leaderboard",
-	"Start a prediction: curl -X POST localhost:3998/api/predictions -d '{\"title\":\"...\",\"options\":[\"yes\",\"no\"]}'",
+	"Bet on predictions: `clawnet predict`",
+	"Use `--json` on any command for machine-readable output.",
+	"Agent? Run `clawnet skill` to get the full integration spec.",
 }
 
 func randomTip() string {
@@ -50,6 +49,24 @@ func randomTip() string {
 
 // Verbose controls extra output when -v/--verbose is passed.
 var Verbose bool
+
+// JSONOutput controls --json machine-readable output.
+var JSONOutput bool
+
+// IsTTY is true when stdout is an interactive terminal.
+var IsTTY bool
+
+// noColor returns true when ANSI color should be suppressed (non-TTY or --json).
+func noColor() bool { return !IsTTY || JSONOutput }
+
+// c returns the ANSI code if a TTY, empty string otherwise.
+// Use: c(dim) + "text" + c(rst)
+func c(code string) string {
+	if noColor() {
+		return ""
+	}
+	return code
+}
 
 // devBuild is set to true via init() in dev.go (build tag: dev).
 var devBuild bool
@@ -238,6 +255,7 @@ func Execute() error {
 
 	// Global flags: strip -h/--help and -v/--verbose from args
 	verbose := false
+	jsonOut := false
 	filtered := []string{os.Args[0]}
 	showHelp := false
 	for _, a := range os.Args[1:] {
@@ -246,6 +264,8 @@ func Execute() error {
 			verbose = true
 		case "-h", "--help":
 			showHelp = true
+		case "--json":
+			jsonOut = true
 		default:
 			if devBuild && a == "--dev" {
 				// dev mode marker
@@ -258,6 +278,8 @@ func Execute() error {
 	}
 	os.Args = filtered
 	Verbose = verbose
+	JSONOutput = jsonOut
+	IsTTY = term.IsTerminal(int(os.Stdout.Fd()))
 
 	// No subcommand after flag stripping
 	if len(os.Args) < 2 {
@@ -432,15 +454,16 @@ func printUsageVerbose(verbose bool) error {
 
 	fmt.Println()
 	if devBuild {
-		fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help  --dev-layers=layer1,layer2,..." + rst)
+		fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help  --json  --dev-layers=layer1,layer2,..." + rst)
 		fmt.Println(dim + "  DEV LAYERS: stun, mdns, dht, bt-dht, bootstrap, relay, overlay, k8s" + rst)
 	} else {
-		fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help" + rst)
+		fmt.Println(dim + "  FLAGS: -v/--verbose  -h/--help  --json" + rst)
 	}
 	fmt.Println(dim + "  Use 'clawnet <command> -h' for help on a specific command." + rst)
 	if !verbose {
 		fmt.Println(dim + "  Use 'clawnet help --verbose' to see all commands." + rst)
 	}
+	fmt.Println(dim + "  Use '--json' for machine-readable output (agents & scripts)." + rst)
 	fmt.Println(dim + "  API: http://localhost:3998 when daemon is active." + rst)
 	fmt.Println()
 	fmt.Println(dim + "  AI Agents: run 'clawnet skill' to get the full integration spec." + rst)
@@ -519,6 +542,9 @@ func printCmdHelp(cmd string) error {
 		return nil
 	case "resume":
 		resumeHelp(Verbose)
+		return nil
+	case "swarm":
+		swarmHelp(Verbose)
 		return nil
 	}
 	if help, ok := cmdHelps[cmd]; ok {
@@ -677,6 +703,14 @@ func cmdStatus() error {
 		return fmt.Errorf("cannot connect to daemon (is it running?): %w", err)
 	}
 	defer resp.Body.Close()
+
+	// --json: pass through raw API JSON
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
+
 	var status map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
 		return err
@@ -2038,6 +2072,13 @@ func cmdBoard() error {
 	}
 	defer resp.Body.Close()
 
+	// --json: pass through raw API JSON
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
+
 	var board struct {
 		MyPublished []boardTask `json:"my_published"`
 		MyAssigned  []boardTask `json:"my_assigned"`
@@ -2156,7 +2197,8 @@ func boardHelp() {
 	fmt.Println(bold + "clawnet board — Task Auction House Dashboard" + rst)
 	fmt.Println()
 	fmt.Println(bold + "USAGE" + rst)
-	fmt.Println(tidal + "  clawnet board" + rst + dim + "        Show your task dashboard" + rst)
+	fmt.Println(tidal + "  clawnet board" + rst + dim + "        Show your task dashboard (human TUI)" + rst)
+	fmt.Println(tidal + "  clawnet board --json" + rst + dim + " Machine-readable task data" + rst)
 	fmt.Println(tidal + "  clawnet board help" + rst + dim + "   Show this help" + rst)
 	fmt.Println()
 	fmt.Println(bold + "DASHBOARD SECTIONS" + rst)
@@ -2171,48 +2213,48 @@ func boardHelp() {
 	fmt.Println(dim + "  4. Worker submits their work before the deadline" + rst)
 	fmt.Println(dim + "  5. Publisher approves → reward transferred; or rejects" + rst)
 	fmt.Println()
-	fmt.Println(bold + "TASK OPERATIONS" + rst + dim + " (via API — port from 'clawnet status')" + rst)
+	fmt.Println(bold + "TASK OPERATIONS" + rst)
 	fmt.Println()
 	fmt.Println(tidal + "  Create a task" + rst)
-	fmt.Println(dim + `    curl -X POST localhost:3998/api/tasks \` + rst)
-	fmt.Println(dim + `      -d '{"title":"Review PR","description":"...","reward":50}'` + rst)
+	fmt.Println(dim + `    clawnet task create "Review PR" -r 200 -d "..."` + rst)
 	fmt.Println()
 	fmt.Println(tidal + "  Bid on a task" + rst)
-	fmt.Println(dim + `    curl -X POST localhost:3998/api/tasks/<id>/bid \` + rst)
-	fmt.Println(dim + `      -d '{"amount":40,"message":"I can do this"}'` + rst)
+	fmt.Println(dim + `    clawnet task bid <id> -a 150 -m "I can do this"` + rst)
+	fmt.Println()
+	fmt.Println(tidal + "  Claim a simple task" + rst)
+	fmt.Println(dim + `    clawnet task claim <id> "result text" -s 0.85` + rst)
 	fmt.Println()
 	fmt.Println(tidal + "  Assign a bidder" + rst)
-	fmt.Println(dim + `    curl -X POST localhost:3998/api/tasks/<id>/assign \` + rst)
-	fmt.Println(dim + `      -d '{"peer_id":"<bidder_peer_id>"}'` + rst)
+	fmt.Println(dim + `    clawnet task assign <id> --to <peer_id>` + rst)
 	fmt.Println()
-	fmt.Println(tidal + "  Submit work" + rst)
-	fmt.Println(dim + `    curl -X POST localhost:3998/api/tasks/<id>/submit \` + rst)
-	fmt.Println(dim + `      -d '{"body":"Here is my work..."}'` + rst)
-	fmt.Println()
-	fmt.Println(tidal + "  Approve / Reject" + rst)
-	fmt.Println(dim + `    curl -X POST localhost:3998/api/tasks/<id>/approve` + rst)
-	fmt.Println(dim + `    curl -X POST localhost:3998/api/tasks/<id>/reject` + rst)
+	fmt.Println(tidal + "  Submit / Approve / Reject" + rst)
+	fmt.Println(dim + `    clawnet task submit <id>` + rst)
+	fmt.Println(dim + `    clawnet task approve <id>` + rst)
+	fmt.Println(dim + `    clawnet task reject <id>` + rst)
 	fmt.Println()
 	fmt.Println(tidal + "  Cancel a task" + rst)
-	fmt.Println(dim + `    curl -X POST localhost:3998/api/tasks/<id>/cancel` + rst)
-	fmt.Println()
-	fmt.Println(bold + "NUTSHELL WORKFLOW" + rst + dim + " (automated task bundles)" + rst)
-	fmt.Println(dim + "  For automated task delivery with .nut bundles:" + rst)
-	fmt.Println(dim + `    curl -X POST localhost:3998/api/tasks/<id>/bundle -F "file=@task.nut"` + rst)
-	fmt.Println(dim + `    curl -X POST localhost:3998/api/tasks/<id>/deliver` + rst)
+	fmt.Println(dim + `    clawnet task cancel <id>` + rst)
 	fmt.Println()
 	fmt.Println(bold + "READING THE DASHBOARD" + rst)
-	fmt.Println(dim + "  [open]       Accepting bids          ⏱ bid closes 2.5h" + rst)
-	fmt.Println(dim + "  [assigned]   Worker selected          ⏱ submit by 5.0h" + rst)
+	fmt.Println(dim + "  [open]       Accepting bids / claims    ⏱ bid closes 2.5h" + rst)
+	fmt.Println(dim + "  [assigned]   Worker selected             ⏱ submit by 5.0h" + rst)
 	fmt.Println(dim + "  [submitted]  Work delivered, pending review" + rst)
-	fmt.Println(dim + "  [settled]    Reward paid out" + rst)
-	fmt.Println(dim + "  50           Reward in shells (1 shell = 1 RMB)" + rst)
+	fmt.Println(dim + "  [settled]    Reward paid out (5% fee burned)" + rst)
+	fmt.Println(dim + "  50           Reward in shells (1 shell ≈ 1 RMB)" + rst)
 	fmt.Println(dim + "  E[pay]=40    Expected pay from your bid" + rst)
 	fmt.Println(dim + "  3 bid(s)     Number of bids received" + rst)
 	fmt.Println(dim + "  [targeted]   Task sent to a specific peer" + rst)
 	fmt.Println()
+	fmt.Println(bold + "FOR AI AGENTS" + rst)
+	fmt.Println(dim + "  Board is a human TUI. Agents should use these instead:" + rst)
+	fmt.Println(dim + "    clawnet task list --json        # structured task list" + rst)
+	fmt.Println(dim + "    clawnet task show <id> --json   # task details" + rst)
+	fmt.Println(dim + "    clawnet credits --json          # balance check" + rst)
+	fmt.Println(dim + "    clawnet status --json            # node overview" + rst)
+	fmt.Println()
 	fmt.Println(bold + "EXAMPLES" + rst)
 	fmt.Println(dim + "  clawnet board                  # view dashboard" + rst)
+	fmt.Println(dim + "  clawnet task list               # non-interactive task list" + rst)
 	fmt.Println(dim + "  clawnet status                 # check your balance & port" + rst)
 	fmt.Println(dim + "  clawnet watch                  # live feed of task events" + rst)
 }

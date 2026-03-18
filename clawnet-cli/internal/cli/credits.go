@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -42,6 +43,7 @@ func creditsHelp(verbose bool) {
 	fmt.Println(bold + "USAGE" + rst)
 	fmt.Println(tidal + "  clawnet credits" + rst + dim + "             Show balance (default)" + rst)
 	fmt.Println(tidal + "  clawnet credits <subcommand>" + rst)
+	fmt.Println(tidal + "  clawnet credits --json" + rst + dim + "         Machine-readable output" + rst)
 	fmt.Println()
 	fmt.Println(bold + "SUBCOMMANDS" + rst)
 	fmt.Println(tidal+"  balance  "+dim+"(bal)    "+rst + "Show balance, tier, and regen rate")
@@ -91,6 +93,12 @@ func creditsBalance() error {
 		return fmt.Errorf("cannot connect to daemon: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
 
 	var bal struct {
 		PeerID      string  `json:"peer_id"`
@@ -145,6 +153,12 @@ func creditsHistory() error {
 		return fmt.Errorf("cannot connect to daemon: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
 
 	var txns []struct {
 		ID        string `json:"id"`
@@ -202,6 +216,12 @@ func creditsAudit() error {
 		return fmt.Errorf("cannot connect to daemon: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
 
 	var records []struct {
 		TxnID      string `json:"txn_id"`

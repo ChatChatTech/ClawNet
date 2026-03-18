@@ -78,6 +78,7 @@ func knowledgeHelp(verbose bool) {
 	fmt.Println(bold + "USAGE" + rst)
 	fmt.Println(tidal + "  clawnet knowledge" + rst + dim + "                Feed (default)" + rst)
 	fmt.Println(tidal + "  clawnet knowledge <subcommand>" + rst)
+	fmt.Println(tidal + "  clawnet knowledge <subcommand> --json" + rst + dim + " Machine-readable output" + rst)
 	fmt.Println()
 	fmt.Println(bold + "SUBCOMMANDS" + rst)
 	fmt.Println(tidal+"  feed      "+dim+"         "+rst + "Browse recent entries")
@@ -142,6 +143,12 @@ func knowledgeFeed(args []string) error {
 		return fmt.Errorf("cannot connect to daemon: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
 
 	var entries []knowledgeEntry
 	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
@@ -228,6 +235,12 @@ func knowledgeSearch(query string) error {
 	}
 	defer resp.Body.Close()
 
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
+
 	var entries []knowledgeEntry
 	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
 		return err
@@ -279,6 +292,13 @@ func knowledgeShow(id string) error {
 		return fmt.Errorf("cannot connect to daemon: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if JSONOutput {
+		// For --json with show, passthrough all then let caller filter
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
 
 	var entries []knowledgeEntry
 	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
