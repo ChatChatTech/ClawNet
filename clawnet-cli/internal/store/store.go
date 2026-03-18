@@ -11,7 +11,8 @@ import (
 
 // Store wraps an SQLite database for local persistence.
 type Store struct {
-	DB *sql.DB
+	DB      *sql.DB
+	HasFTS5 bool // true when SQLite was compiled with fts5 support
 }
 
 // Open opens (or creates) the SQLite database in the given data directory.
@@ -31,6 +32,7 @@ func Open(dataDir string) (*Store, error) {
 	db.SetMaxOpenConns(1)
 
 	s := &Store{DB: db}
+	s.HasFTS5 = detectFTS5(db)
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
@@ -41,6 +43,16 @@ func Open(dataDir string) (*Store, error) {
 // Close closes the database.
 func (s *Store) Close() error {
 	return s.DB.Close()
+}
+
+// detectFTS5 probes whether the SQLite build includes the fts5 module.
+func detectFTS5(db *sql.DB) bool {
+	_, err := db.Exec("CREATE VIRTUAL TABLE IF NOT EXISTS _fts5_probe USING fts5(x)")
+	if err != nil {
+		return false
+	}
+	db.Exec("DROP TABLE IF EXISTS _fts5_probe")
+	return true
 }
 
 func (s *Store) migrate() error {
@@ -58,27 +70,8 @@ func (s *Store) migrate() error {
 			created_at  TEXT NOT NULL DEFAULT (datetime('now')),
 			received_at TEXT NOT NULL DEFAULT (datetime('now'))
 		)`,
-		// FTS5 index for knowledge search
-		`CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
-			title, body, domains,
-			content='knowledge',
-			content_rowid='rowid'
-		)`,
-		// Triggers to keep FTS index in sync
-		`CREATE TRIGGER IF NOT EXISTS knowledge_ai AFTER INSERT ON knowledge BEGIN
-			INSERT INTO knowledge_fts(rowid, title, body, domains)
-			VALUES (new.rowid, new.title, new.body, new.domains);
-		END`,
-		`CREATE TRIGGER IF NOT EXISTS knowledge_ad AFTER DELETE ON knowledge BEGIN
-			INSERT INTO knowledge_fts(knowledge_fts, rowid, title, body, domains)
-			VALUES ('delete', old.rowid, old.title, old.body, old.domains);
-		END`,
-		`CREATE TRIGGER IF NOT EXISTS knowledge_au AFTER UPDATE ON knowledge BEGIN
-			INSERT INTO knowledge_fts(knowledge_fts, rowid, title, body, domains)
-			VALUES ('delete', old.rowid, old.title, old.body, old.domains);
-			INSERT INTO knowledge_fts(rowid, title, body, domains)
-			VALUES (new.rowid, new.title, new.body, new.domains);
-		END`,
+		// NOTE: FTS5 virtual table + triggers are created conditionally
+		// in the HasFTS5 block below (after the main migration loop).
 		// Knowledge reactions
 		`CREATE TABLE IF NOT EXISTS knowledge_reactions (
 			knowledge_id TEXT NOT NULL,
@@ -416,6 +409,37 @@ func (s *Store) migrate() error {
 				continue
 			}
 			return fmt.Errorf("exec %q: %w", m[:60], err)
+		}
+	}
+
+	// FTS5-dependent migrations: virtual table + sync triggers.
+	// Only applied when the SQLite build includes fts5.
+	if s.HasFTS5 {
+		ftsMigrations := []string{
+			`CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
+				title, body, domains,
+				content='knowledge',
+				content_rowid='rowid'
+			)`,
+			`CREATE TRIGGER IF NOT EXISTS knowledge_ai AFTER INSERT ON knowledge BEGIN
+				INSERT INTO knowledge_fts(rowid, title, body, domains)
+				VALUES (new.rowid, new.title, new.body, new.domains);
+			END`,
+			`CREATE TRIGGER IF NOT EXISTS knowledge_ad AFTER DELETE ON knowledge BEGIN
+				INSERT INTO knowledge_fts(knowledge_fts, rowid, title, body, domains)
+				VALUES ('delete', old.rowid, old.title, old.body, old.domains);
+			END`,
+			`CREATE TRIGGER IF NOT EXISTS knowledge_au AFTER UPDATE ON knowledge BEGIN
+				INSERT INTO knowledge_fts(knowledge_fts, rowid, title, body, domains)
+				VALUES ('delete', old.rowid, old.title, old.body, old.domains);
+				INSERT INTO knowledge_fts(rowid, title, body, domains)
+				VALUES (new.rowid, new.title, new.body, new.domains);
+			END`,
+		}
+		for _, m := range ftsMigrations {
+			if _, err := s.DB.Exec(m); err != nil {
+				return fmt.Errorf("exec %q: %w", m[:60], err)
+			}
 		}
 	}
 

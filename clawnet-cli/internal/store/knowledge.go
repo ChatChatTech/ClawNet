@@ -74,21 +74,45 @@ func (s *Store) ListKnowledge(domain string, limit, offset int) ([]*KnowledgeEnt
 	return scanKnowledgeRows(rows)
 }
 
-// SearchKnowledge performs FTS5 full-text search.
+// SearchKnowledge performs full-text search using FTS5 when available,
+// falling back to LIKE-based search on platforms without fts5 support.
 func (s *Store) SearchKnowledge(query string, limit int) ([]*KnowledgeEntry, error) {
+	if s.HasFTS5 {
+		rows, err := s.DB.Query(
+			`SELECT k.id, k.author_id, k.author_name, k.title, k.body, k.domains, k.upvotes, k.flags, k.created_at
+			 FROM knowledge k
+			 JOIN knowledge_fts f ON k.rowid = f.rowid
+			 WHERE knowledge_fts MATCH ?
+			 ORDER BY rank LIMIT ?`,
+			query, limit,
+		)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		return scanKnowledgeRows(rows)
+	}
+
+	// Fallback: LIKE-based search (no fts5 module)
+	pattern := "%" + likeSanitize(query) + "%"
 	rows, err := s.DB.Query(
-		`SELECT k.id, k.author_id, k.author_name, k.title, k.body, k.domains, k.upvotes, k.flags, k.created_at
-		 FROM knowledge k
-		 JOIN knowledge_fts f ON k.rowid = f.rowid
-		 WHERE knowledge_fts MATCH ?
-		 ORDER BY rank LIMIT ?`,
-		query, limit,
+		`SELECT id, author_id, author_name, title, body, domains, upvotes, flags, created_at
+		 FROM knowledge
+		 WHERE title LIKE ? OR body LIKE ? OR domains LIKE ?
+		 ORDER BY created_at DESC LIMIT ?`,
+		pattern, pattern, pattern, limit,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	return scanKnowledgeRows(rows)
+}
+
+// likeSanitize escapes LIKE wildcards in user input.
+func likeSanitize(s string) string {
+	r := strings.NewReplacer("%", "\\%", "_", "\\_")
+	return r.Replace(s)
 }
 
 // ReactKnowledge records a reaction (upvote/flag) and updates counters.
