@@ -53,6 +53,26 @@ docs/phase0-report.md
 docs/archive-v1/
 research/
 
+# npm platform binaries (built by CI, not for repo)
+npm/clawnet-*/bin/clawnet
+
+# Nutshell CLI binary
+clawnet-cli/nutshell
+
+# Test logs & generated reports
+test/*.log
+test/test-report.md
+test/task-test-report.md
+test/scale-task-report.md
+test/scale_task_test.sh
+
+# Local deploy scripts
+deploy-test.sh
+
+# Bug reports (use GitHub Issues instead)
+docs/09-nutshell-publish-bug.md
+docs/task-sync-bug-report.md
+
 # Secrets
 GITHUB_TOKEN
 CLOUDFLARE_TOKEN
