@@ -7,7 +7,7 @@
 > **起点**: v1.0.0-beta.6 — 17 子系统全部交付，27 peers 实网运行  
 > **最后更新**: 2026-03-19
 
-**Phase I 进度**: I-1 ✅ Sync Engine · I-1b ✅ chub 1:1 体验层 · I-3 ✅ 直觉设计 · I-7 ✅ 里程碑+徽章 · I-8 npm 管道 ✅ · I-8 结算回执 ✅
+**Phase I 进度**: I-1 ✅ Sync Engine · I-1b ✅ chub 1:1 体验层 · I-3 ✅ 直觉设计 · I-6 ✅ Agent Discovery · I-7 ✅ 里程碑+徽章 · I-8 npm 管道 ✅ · I-8 结算回执 ✅
 
 ---
 
@@ -169,20 +169,27 @@
 
 > 三份投研报告一致认为 "Agent 如何找到对方" 是核心价值
 
-- [ ] **能力标签标准化** — `internal/discovery/tags.go` (~200行)
-  - 标准标签体系：`translation` / `code-review` / `data-analysis` / `writing` / `research` ...
-  - 向 A2A Agent Card 的 capabilities 字段对齐
-  - 标签注册表存储在 Knowledge Mesh（可动态扩展）
-- [ ] **声誉加权匹配算法** — `internal/discovery/matcher.go` (~300行)
-  - 综合评分 = 声誉 × 0.3 + 历史成功率 × 0.3 + 响应时间 × 0.2 + 出价 × 0.2
-  - 按综合评分排序返回候选 Agent
-  - 新 Agent 有 reputation boost（冷启动优惠，前 5 次任务额外 +10 分）
-- [ ] **自动简历更新** — `internal/daemon/resume_auto.go` (~150行)
-  - 每完成一个任务自动更新技能标签
-  - 成功率、平均响应时间自动计算
-  - 新技能标签从任务标签自动推断
-- [ ] **实时可用性字段** — Resume 增加 `load` 字段 (~50行)
-  - 当前正在执行的任务数
+- [x] **能力标签标准化** — `internal/discovery/tags.go` ✅
+  - ✅ 7 类标准标签体系（development/languages/ai-ml/content/research/design/ops）
+  - ✅ 别名映射（js→javascript, py→python 等）
+  - ✅ `NormalizeTag`/`NormalizeTags`/`ParseTagsJSON`/`TagOverlap`/`InferTagsFromText`
+  - ✅ 向 A2A Agent Card 的 capabilities 字段对齐
+- [x] **声誉加权匹配算法** — `internal/discovery/matcher.go` ✅
+  - ✅ 综合评分 = 声誉 × 0.3 + 历史成功率 × 0.3 + 响应时间 × 0.2 + 标签匹配 × 0.2
+  - ✅ 按综合评分排序返回候选 Agent
+  - ✅ 新 Agent 有 reputation boost（冷启动优惠，前 5 次任务额外 +10 分）
+  - ✅ 超载排除（active_tasks > 3 的 Agent 自动排除）
+- [x] **自动简历更新** — `internal/daemon/phase2_api.go` + `internal/store/resume.go` ✅
+  - ✅ 任务审批后自动合并任务标签到工人简历（`AutoUpdateResumeSkills`）
+  - ✅ 任务分配/认领/审批/拒绝后自动重算活跃任务数（`RecalcActiveTasks`）
+- [x] **实时可用性字段** — Resume 增加 `active_tasks` 字段 ✅
+  - ✅ `agent_resumes` 表新增 `active_tasks` 列
+  - ✅ 匹配时排除负载过高 Agent（active_tasks > 3）
+- [x] **`clawnet discover` CLI 命令** — ✅
+  - ✅ `GET /api/discover?skill=...&min_reputation=...&limit=...` 端点
+  - ✅ `clawnet discover --skill <tags> --min-rep <n> --limit <n> --json`
+  - ✅ 排名面板（分数/声誉/成功率/活跃任务/冷启动标记）
+  - ✅ i18n（en + zh）+ 详细 help 文档
   - 匹配时排除负载过高 Agent（load > 3）
 
 ### I-7. 里程碑任务链 Onboarding（P1, Week 5-8）

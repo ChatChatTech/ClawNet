@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/discovery"
 	"github.com/ChatChatTech/ClawNet/clawnet-cli/internal/store"
 	"github.com/google/uuid"
 )
@@ -82,6 +83,7 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/resume/{peer_id}", d.handleGetPeerResume)
 	mux.HandleFunc("GET /api/tasks/{id}/match", d.handleMatchAgentsForTask)
 	mux.HandleFunc("GET /api/match/tasks", d.handleMatchTasksForAgent)
+	mux.HandleFunc("GET /api/discover", d.handleDiscover)
 
 	// Nutshell E2E integration
 	mux.HandleFunc("POST /api/nutshell/publish", d.handleNutshellPublish)
@@ -396,6 +398,8 @@ func (d *Daemon) handleTaskAssign(w http.ResponseWriter, r *http.Request) {
 	if t != nil {
 		d.publishTaskUpdate(d.ctx, t)
 	}
+	// I-6: Update active task count for newly assigned worker
+	d.Store.RecalcActiveTasks(body.AssignTo)
 	writeJSON(w, map[string]string{"status": "assigned"})
 }
 
@@ -512,6 +516,12 @@ func (d *Daemon) handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 		d.RecordEvent("task_approved", d.Node.PeerID().String(), taskID,
 			fmt.Sprintf("Task '%s' approved — %d Shell paid to worker", t.Title, t.Reward))
 		d.BroadcastEcho(r.Context(), "task_approved", t.Title, fmt.Sprintf("Task '%s' approved — %d Shell paid", t.Title, t.Reward))
+
+		// I-6: Auto-update worker resume — merge task tags + recalc active load
+		if t.AssignedTo != "" {
+			d.Store.AutoUpdateResumeSkills(t.AssignedTo, t.Tags)
+			d.Store.RecalcActiveTasks(t.AssignedTo)
+		}
 	}
 
 	writeJSON(w, receipt)
@@ -542,6 +552,7 @@ func (d *Daemon) handleTaskReject(w http.ResponseWriter, r *http.Request) {
 	// Recalc reputation for assignee
 	if t.AssignedTo != "" {
 		d.Store.RecalcReputation(t.AssignedTo)
+		d.Store.RecalcActiveTasks(t.AssignedTo)
 	}
 
 	t, _ = d.Store.GetTask(taskID)
@@ -649,6 +660,9 @@ func (d *Daemon) handleTaskClaim(w http.ResponseWriter, r *http.Request) {
 	milestoneReward := d.CheckAndCompleteMilestone("first_task_claim")
 	d.RecordEvent("task_claimed", peerID, taskID, fmt.Sprintf("%s claimed '%s'", d.Profile.AgentName, t.Title))
 	d.BroadcastEcho(r.Context(), "task_claimed", t.Title, fmt.Sprintf("%s claimed '%s'", d.Profile.AgentName, t.Title))
+
+	// I-6: Update active task count for claimer
+	d.Store.RecalcActiveTasks(peerID)
 
 	resp := map[string]any{"status": "submitted", "task_id": taskID}
 	if milestoneReward > 0 {
@@ -1419,6 +1433,63 @@ func (d *Daemon) handleMatchTasksForAgent(w http.ResponseWriter, r *http.Request
 		tasks = []*store.Task{}
 	}
 	writeJSON(w, tasks)
+}
+
+// handleDiscover searches for agents by skill tags with reputation-weighted ranking.
+// Query params: skill (comma-separated), min_reputation (int), limit (int)
+func (d *Daemon) handleDiscover(w http.ResponseWriter, r *http.Request) {
+	skillParam := r.URL.Query().Get("skill")
+	minRep := queryFloat(r, "min_reputation", 0)
+	limit := queryInt(r, "limit", 20)
+
+	var tags []string
+	if skillParam != "" {
+		for _, s := range strings.Split(skillParam, ",") {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				tags = append(tags, s)
+			}
+		}
+	}
+
+	// Get all resumes
+	resumes, err := d.Store.ListResumes(500)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Build candidate list
+	var candidates []discovery.AgentCandidate
+	for _, res := range resumes {
+		rep, _ := d.Store.GetReputation(res.PeerID)
+		repScore := 50.0
+		var completed, failed int
+		if rep != nil {
+			repScore = rep.Score
+			completed = rep.TasksCompleted
+			failed = rep.TasksFailed
+		}
+		if repScore < minRep {
+			continue
+		}
+		skills := discovery.ParseTagsJSON(res.Skills)
+		candidates = append(candidates, discovery.AgentCandidate{
+			PeerID:         res.PeerID,
+			AgentName:      res.AgentName,
+			Skills:         skills,
+			Reputation:     repScore,
+			TasksCompleted: completed,
+			TasksFailed:    failed,
+			ActiveTasks:    res.ActiveTasks,
+		})
+	}
+
+	ranked := discovery.RankCandidates(candidates, tags, discovery.DefaultWeights())
+	if len(ranked) > limit {
+		ranked = ranked[:limit]
+	}
+	writeJSON(w, ranked)
 }
 
 // ── Nutshell bundle handlers ──

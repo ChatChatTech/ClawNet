@@ -421,6 +421,9 @@ func (s *Store) migrate() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_knowledge_annotations_kid ON knowledge_annotations(knowledge_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_knowledge_source_path ON knowledge(source_path)`,
+
+		// Phase I-6 — Agent Discovery: active_tasks load field on resumes
+		`ALTER TABLE agent_resumes ADD COLUMN active_tasks INTEGER NOT NULL DEFAULT 0`,
 	}
 
 	for _, m := range migrations {

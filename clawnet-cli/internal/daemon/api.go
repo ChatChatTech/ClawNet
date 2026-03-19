@@ -1417,6 +1417,18 @@ func queryInt(r *http.Request, key string, defaultVal int) int {
 	return v
 }
 
+func queryFloat(r *http.Request, key string, defaultVal float64) float64 {
+	s := r.URL.Query().Get(key)
+	if s == "" {
+		return defaultVal
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return defaultVal
+	}
+	return v
+}
+
 // localhostGuard rejects requests that do not originate from localhost.
 // It inspects the connecting IP (RemoteAddr) rather than trusting headers.
 func localhostGuard(next http.Handler) http.Handler {

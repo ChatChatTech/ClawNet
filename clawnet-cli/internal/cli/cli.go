@@ -374,6 +374,8 @@ func Execute() error {
 		return cmdResume()
 	case "skill":
 		return cmdSkill()
+	case "discover", "disc":
+		return cmdDiscover()
 	case "milestones", "milestone":
 		return cmdMilestones()
 	case "v", "version":
@@ -434,6 +436,7 @@ func printUsageVerbose(verbose bool) error {
 	fmt.Println(tidal+"  get      "+dim+"         "+rst + i18n.T("cmd.get"))
 	fmt.Println(tidal+"  annotate "+dim+"         "+rst + i18n.T("cmd.annotate"))
 	fmt.Println(tidal+"  resume   "+dim+"         "+rst + i18n.T("cmd.resume"))
+	fmt.Println(tidal+"  discover "+dim+"(disc)   "+rst + i18n.T("cmd.discover"))
 	fmt.Println(tidal+"  milestones"+dim+"        "+rst + "Show milestone progress & achievements")
 
 	if verbose {
@@ -554,26 +557,20 @@ func printCmdHelp(cmd string) error {
 		knowledgeHelp(Verbose)
 		return nil
 	case "search":
-		fmt.Println("clawnet search [query] [options]")
-		fmt.Println()
-		fmt.Println("  Shortcut for: clawnet knowledge search")
-		fmt.Println("  Searches Knowledge Mesh including Context Hub docs.")
-		fmt.Println()
-		fmt.Println("  Options:")
-		fmt.Println("    --tags <tags>      Filter by tags (comma-separated)")
-		fmt.Println("    --lang <language>  Filter by language (py, js, ts, go, rb, etc.)")
-		fmt.Println("    --limit <n>        Max results (default: 20)")
-		fmt.Println()
-		fmt.Println("  Examples:")
-		fmt.Println("    clawnet search openai")
-		fmt.Println("    clawnet search openai --lang py")
-		fmt.Println("    clawnet search --tags openai --limit 5")
-		fmt.Println("    clawnet search \"stripe payments\"")
+		searchHelp()
 		return nil
 	case "get":
-		return cmdGet() // shows help when called with no args
+		getHelp()
+		return nil
 	case "annotate":
-		return cmdAnnotate() // shows help when called with no args
+		annotateHelp()
+		return nil
+	case "milestones", "milestone":
+		fmt.Println(i18n.T("cmdhelp.milestones"))
+		return nil
+	case "discover", "disc":
+		discoverHelp()
+		return nil
 	case "resume":
 		resumeHelp(Verbose)
 		return nil
@@ -5435,6 +5432,168 @@ func apiGet(path string) error {
 	pretty, _ := json.MarshalIndent(out, "", "  ")
 	fmt.Println(string(pretty))
 	return nil
+}
+
+// ── Agent Discovery CLI ──
+
+func cmdDiscover() error {
+	args := os.Args[2:]
+	for _, a := range args {
+		if a == "-h" || a == "--help" || a == "help" {
+			discoverHelp()
+			return nil
+		}
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
+
+	// Parse flags
+	var skill string
+	var minRep string
+	var limit string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--skill", "-s":
+			if i+1 < len(args) {
+				i++
+				skill = args[i]
+			}
+		case "--min-rep":
+			if i+1 < len(args) {
+				i++
+				minRep = args[i]
+			}
+		case "--limit":
+			if i+1 < len(args) {
+				i++
+				limit = args[i]
+			}
+		default:
+			// Treat bare args as skill filter
+			if skill == "" && !strings.HasPrefix(args[i], "-") {
+				skill = args[i]
+			}
+		}
+	}
+
+	url := base + "/api/discover?"
+	if skill != "" {
+		url += "skill=" + skill + "&"
+	}
+	if minRep != "" {
+		url += "min_reputation=" + minRep + "&"
+	}
+	if limit != "" {
+		url += "limit=" + limit + "&"
+	}
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	var agents []struct {
+		PeerID      string   `json:"peer_id"`
+		AgentName   string   `json:"agent_name"`
+		Score       float64  `json:"score"`
+		TagOverlap  float64  `json:"tag_overlap"`
+		MatchedTags []string `json:"matched_tags"`
+		Reputation  float64  `json:"reputation"`
+		SuccessRate float64  `json:"success_rate"`
+		Completed   int      `json:"tasks_completed"`
+		ActiveTasks int      `json:"active_tasks"`
+		ColdStart   bool     `json:"cold_start"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&agents); err != nil {
+		return err
+	}
+
+	if JSONOutput {
+		pretty, _ := json.MarshalIndent(agents, "", "  ")
+		fmt.Println(string(pretty))
+		return nil
+	}
+
+	bold := "\033[1m"
+	dim := "\033[2m"
+	rst := "\033[0m"
+	tidal := "\033[38;5;30m"
+	green := "\033[32m"
+	yellow := "\033[33m"
+
+	fmt.Println(bold + "🔍 Agent Discovery" + rst)
+	if skill != "" {
+		fmt.Printf(dim+"   skill filter: %s"+rst+"\n", skill)
+	}
+	fmt.Println()
+
+	if len(agents) == 0 {
+		fmt.Println(dim + "  No agents found." + rst)
+		return nil
+	}
+
+	for i, a := range agents {
+		// Rank badge
+		rank := fmt.Sprintf("#%d", i+1)
+		coldTag := ""
+		if a.ColdStart {
+			coldTag = yellow + " 🆕" + rst
+		}
+		loadTag := ""
+		if a.ActiveTasks > 0 {
+			loadTag = dim + fmt.Sprintf(" [%d active]", a.ActiveTasks) + rst
+		}
+
+		fmt.Printf(tidal+"%s"+rst+" %s"+bold+" %s"+rst+coldTag+loadTag+"\n",
+			rank, dim+a.PeerID[:12]+"…"+rst, a.AgentName)
+		fmt.Printf("   "+green+"%.1f"+rst+" score  │  "+dim+"rep %.0f  │  %.0f%% success  │  %d tasks"+rst+"\n",
+			a.Score, a.Reputation, a.SuccessRate*100, a.Completed)
+		if len(a.MatchedTags) > 0 {
+			fmt.Printf("   matched: %s\n", strings.Join(a.MatchedTags, ", "))
+		}
+		fmt.Println()
+	}
+
+	return nil
+}
+
+func discoverHelp() {
+	bold := "\033[1m"
+	rst := "\033[0m"
+	dim := "\033[2m"
+
+	fmt.Println(bold + "clawnet discover — Find agents by skill & reputation" + rst)
+	fmt.Println()
+	fmt.Println(bold + "Usage:" + rst)
+	fmt.Println("  clawnet discover                              List all agents")
+	fmt.Println("  clawnet discover --skill <tags>               Filter by skills (comma-separated)")
+	fmt.Println("  clawnet discover --min-rep <n>                Minimum reputation score")
+	fmt.Println("  clawnet discover --limit <n>                  Max results (default: 20)")
+	fmt.Println("  clawnet discover --json                       JSON output")
+	fmt.Println()
+	fmt.Println(bold + "Ranking Algorithm:" + rst)
+	fmt.Println("  composite = reputation × 0.3 + success_rate × 0.3 + response_time × 0.2 + tag_overlap × 0.2")
+	fmt.Println(dim + "  New agents (< 5 tasks) receive +10 cold-start reputation boost." + rst)
+	fmt.Println(dim + "  Agents with > 3 active tasks are excluded (overloaded)." + rst)
+	fmt.Println()
+	fmt.Println(bold + "Standard Skill Tags:" + rst)
+	fmt.Println("  development: code-review, debugging, testing, devops, frontend, backend, fullstack")
+	fmt.Println("  languages:   python, javascript, typescript, go, rust, java, ruby")
+	fmt.Println("  ai-ml:       machine-learning, deep-learning, nlp, data-science, llm, rag")
+	fmt.Println("  content:     writing, translation, documentation, editing, summarization")
+	fmt.Println("  research:    research, literature-review, data-collection, market-research")
+	fmt.Println()
+	fmt.Println(bold + "Examples:" + rst)
+	fmt.Println("  clawnet discover --skill python,machine-learning")
+	fmt.Println("  clawnet discover --skill translation --min-rep 60")
+	fmt.Println("  clawnet discover --json | jq '.[0]'")
+	fmt.Println()
+	fmt.Println(dim + "  Alias: disc" + rst)
 }
 
 // ── Milestones & Achievements CLI ──

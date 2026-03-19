@@ -91,7 +91,7 @@ func knowledgeHelp(verbose bool) {
 	fmt.Println(tidal+"  flag      "+dim+"         "+rst + i18n.T("help.knowledge.cmd_flag"))
 	fmt.Println(tidal+"  reply     "+dim+"         "+rst + i18n.T("help.knowledge.cmd_reply"))
 	fmt.Println(tidal+"  replies   "+dim+"         "+rst + i18n.T("help.knowledge.cmd_replies"))
-	fmt.Println(tidal+"  sync      "+dim+"         "+rst + "Sync from external source (e.g. Context Hub)")
+	fmt.Println(tidal+"  sync      "+dim+"         "+rst + i18n.T("help.knowledge.cmd_sync"))
 
 	if verbose {
 		fmt.Println()
@@ -800,9 +800,49 @@ func readSyncSSE(resp *http.Response) error {
 func cmdSearch() error {
 	args := os.Args[2:]
 	if len(args) == 0 {
-		return fmt.Errorf("usage: clawnet search <query> [--tags tag1,tag2] [--lang py|js|ts] [--limit N]")
+		searchHelp()
+		return nil
+	}
+	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
+		searchHelp()
+		return nil
 	}
 	return knowledgeSearchCmd(args)
+}
+
+func searchHelp() {
+	bold := "\033[1m"
+	dim := "\033[2m"
+	tidal := "\033[38;2;69;123;157m"
+	rst := "\033[0m"
+
+	fmt.Println(bold + "clawnet search" + rst + dim + " — Search the Knowledge Mesh" + rst)
+	fmt.Println()
+	fmt.Println(bold + "Usage:" + rst)
+	fmt.Println(tidal + "  clawnet search <query>" + rst + dim + "                    Full-text search" + rst)
+	fmt.Println(tidal + "  clawnet search <query> --tags <t>" + rst + dim + "         Filter by tags" + rst)
+	fmt.Println(tidal + "  clawnet search <query> --lang <lang>" + rst + dim + "       Filter by language" + rst)
+	fmt.Println(tidal + "  clawnet search <query> --limit <n>" + rst + dim + "        Max results (default: 20)" + rst)
+	fmt.Println()
+	fmt.Println(bold + "Options:" + rst)
+	fmt.Println(dim + "  --tags <tags>       Comma-separated tags (e.g. openai,python)" + rst)
+	fmt.Println(dim + "  --lang <language>   Language filter: py, js, ts, go, rb (or full names)" + rst)
+	fmt.Println(dim + "  --limit <n>         Maximum results (default: 20)" + rst)
+	fmt.Println(dim + "  --json              Output raw JSON" + rst)
+	fmt.Println()
+	fmt.Println(bold + "Search Syntax" + rst + dim + " (SQLite FTS5):" + rst)
+	fmt.Println(dim + "  clawnet search python pandas          # both words" + rst)
+	fmt.Println(dim + "  clawnet search \"python OR rust\"       # either word" + rst)
+	fmt.Println(dim + "  clawnet search \"data NOT csv\"         # exclusion" + rst)
+	fmt.Println(dim + "  clawnet search \"machine learn*\"       # prefix match" + rst)
+	fmt.Println()
+	fmt.Println(bold + "Examples:" + rst)
+	fmt.Println(dim + "  clawnet search openai" + rst)
+	fmt.Println(dim + "  clawnet search openai --lang py" + rst)
+	fmt.Println(dim + "  clawnet search --tags openai --limit 5" + rst)
+	fmt.Println(dim + "  clawnet search \"stripe payments\" --json" + rst)
+	fmt.Println()
+	fmt.Println(dim + "  Shortcut for: clawnet knowledge search" + rst)
 }
 
 // ── top-level get command ──
@@ -811,23 +851,11 @@ func cmdSearch() error {
 func cmdGet() error {
 	args := os.Args[2:]
 	if len(args) == 0 {
-		fmt.Println("usage: clawnet get <ids...> [--lang py|js|ts] [--full] [-o path] [--version ver] [--file paths]")
-		fmt.Println()
-		fmt.Println("  Fetch curated docs by ID (compatible with Context Hub IDs)")
-		fmt.Println()
-		fmt.Println("  Options:")
-		fmt.Println("    --lang <language>        Language variant: py, js, ts, go, rb (or full names)")
-		fmt.Println("    --version <version>      Specific version (for docs)")
-		fmt.Println("    -o, --output <path>      Write to file or directory")
-		fmt.Println("    --full                   Fetch all files (not just entry point)")
-		fmt.Println("    --file <paths>           Fetch specific file(s) by path (comma-separated)")
-		fmt.Println()
-		fmt.Println("  Examples:")
-		fmt.Println("    clawnet get openai/chat --lang py")
-		fmt.Println("    clawnet get stripe/api --lang js")
-		fmt.Println("    clawnet get fastapi --full")
-		fmt.Println("    clawnet get openai/chat stripe/api --lang py")
-		fmt.Println("    clawnet get openai/chat --lang py -o docs/openai.md")
+		getHelp()
+		return nil
+	}
+	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
+		getHelp()
 		return nil
 	}
 
@@ -1100,9 +1128,11 @@ func renderGetMultiple(matches []knowledgeEntry, query, lang string) error {
 func cmdAnnotate() error {
 	args := os.Args[2:]
 	if len(args) == 0 {
-		fmt.Println("usage: clawnet annotate <id> \"note text\"")
-		fmt.Println("       clawnet annotate <id> --clear")
-		fmt.Println("       clawnet annotate --list")
+		annotateHelp()
+		return nil
+	}
+	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
+		annotateHelp()
 		return nil
 	}
 
@@ -1131,6 +1161,58 @@ func cmdAnnotate() error {
 	}
 	note := strings.Join(args[1:], " ")
 	return annotateAdd(base, id, note)
+}
+
+func getHelp() {
+	bold := "\033[1m"
+	dim := "\033[2m"
+	tidal := "\033[38;2;69;123;157m"
+	rst := "\033[0m"
+
+	fmt.Println(bold + "clawnet get" + rst + dim + " — Fetch docs by ID" + rst)
+	fmt.Println()
+	fmt.Println(bold + "Usage:" + rst)
+	fmt.Println(tidal + "  clawnet get <ids...> [options]" + rst)
+	fmt.Println()
+	fmt.Println(bold + "Options:" + rst)
+	fmt.Println(dim + "  --lang <language>   Language variant: py, js, ts, go, rb (or full names)" + rst)
+	fmt.Println(dim + "  --version <ver>     Specific version" + rst)
+	fmt.Println(dim + "  -o, --output <path> Write to file or directory" + rst)
+	fmt.Println(dim + "  --full              Fetch all files (not just entry point)" + rst)
+	fmt.Println(dim + "  --file <paths>      Fetch specific file(s) by path (comma-separated)" + rst)
+	fmt.Println(dim + "  --json              Output raw JSON" + rst)
+	fmt.Println()
+	fmt.Println(bold + "Examples:" + rst)
+	fmt.Println(dim + "  clawnet get openai/chat --lang py" + rst)
+	fmt.Println(dim + "  clawnet get stripe/api --lang js" + rst)
+	fmt.Println(dim + "  clawnet get fastapi --full" + rst)
+	fmt.Println(dim + "  clawnet get openai/chat stripe/api --lang py" + rst)
+	fmt.Println(dim + "  clawnet get openai/chat --lang py -o docs/openai.md" + rst)
+	fmt.Println()
+	fmt.Println(dim + "  IDs are matched against source_path (Context Hub compatible)." + rst)
+	fmt.Println(dim + "  Auto-syncs from Context Hub on first use if no results found." + rst)
+}
+
+func annotateHelp() {
+	bold := "\033[1m"
+	dim := "\033[2m"
+	tidal := "\033[38;2;69;123;157m"
+	rst := "\033[0m"
+
+	fmt.Println(bold + "clawnet annotate" + rst + dim + " — Attach notes to knowledge entries" + rst)
+	fmt.Println()
+	fmt.Println(bold + "Usage:" + rst)
+	fmt.Println(tidal + "  clawnet annotate <id> \"note text\"" + rst + dim + "   Add annotation" + rst)
+	fmt.Println(tidal + "  clawnet annotate <id> --clear" + rst + dim + "          Clear annotations" + rst)
+	fmt.Println(tidal + "  clawnet annotate --list" + rst + dim + "                 List all annotations" + rst)
+	fmt.Println()
+	fmt.Println(bold + "Examples:" + rst)
+	fmt.Println(dim + "  clawnet annotate abc123 \"Great for RAG pipelines\"" + rst)
+	fmt.Println(dim + "  clawnet annotate abc123 --clear" + rst)
+	fmt.Println(dim + "  clawnet annotate --list" + rst)
+	fmt.Println()
+	fmt.Println(dim + "  Annotations are local-only (not P2P synced)." + rst)
+	fmt.Println(dim + "  Shown inline when using 'clawnet get'." + rst)
 }
 
 func annotateAdd(base, id, note string) error {
