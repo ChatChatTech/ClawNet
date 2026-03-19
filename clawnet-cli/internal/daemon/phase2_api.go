@@ -442,6 +442,10 @@ func (d *Daemon) handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Prevent self-approve: if somehow author == assignee, just unfreeze credits (no transfer/prestige)
+	var oldPct int
+	if t.AssignedTo != "" && t.AssignedTo != t.AuthorID {
+		oldPct, _ = d.Store.ReputationPercentile(t.AssignedTo)
+	}
 	if t.AssignedTo == t.AuthorID {
 		if t.Reward > 0 {
 			d.Store.UnfreezeCredits(t.AuthorID, t.Reward)
@@ -497,6 +501,7 @@ func (d *Daemon) handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 				receipt["worker_reputation"] = rep.Score
 				if pct, err := d.Store.ReputationPercentile(t.AssignedTo); err == nil {
 					receipt["percentile"] = pct
+					receipt["rank_change"] = pct - oldPct
 				}
 			}
 		}

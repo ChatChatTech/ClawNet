@@ -374,6 +374,8 @@ func Execute() error {
 		return cmdResume()
 	case "skill":
 		return cmdSkill()
+	case "milestones", "milestone":
+		return cmdMilestones()
 	case "v", "version":
 		fmt.Printf("clawnet v%s\n", daemon.Version)
 		return nil
@@ -432,6 +434,7 @@ func printUsageVerbose(verbose bool) error {
 	fmt.Println(tidal+"  get      "+dim+"         "+rst + i18n.T("cmd.get"))
 	fmt.Println(tidal+"  annotate "+dim+"         "+rst + i18n.T("cmd.annotate"))
 	fmt.Println(tidal+"  resume   "+dim+"         "+rst + i18n.T("cmd.resume"))
+	fmt.Println(tidal+"  milestones"+dim+"        "+rst + "Show milestone progress & achievements")
 
 	if verbose {
 		// ── Extended commands ──
@@ -5431,5 +5434,178 @@ func apiGet(path string) error {
 	}
 	pretty, _ := json.MarshalIndent(out, "", "  ")
 	fmt.Println(string(pretty))
+	return nil
+}
+
+// ── Milestones & Achievements CLI ──
+
+func cmdMilestones() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.WebUIPort)
+
+	// Check for subcommands
+	if len(os.Args) > 2 {
+		switch os.Args[2] {
+		case "achievements", "ach":
+			return cmdAchievements(base)
+		case "-h", "--help", "help":
+			fmt.Println("Usage: clawnet milestones              — show milestone progress")
+			fmt.Println("       clawnet milestones achievements  — show achievements")
+			return nil
+		}
+	}
+
+	resp, err := http.Get(base + "/api/milestones")
+	if err != nil {
+		return fmt.Errorf(i18n.T("err.daemon_connect")+": %w", err)
+	}
+	defer resp.Body.Close()
+
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
+
+	var data struct {
+		Completed []struct {
+			ID          string `json:"id"`
+			CompletedAt string `json:"completed_at"`
+		} `json:"completed"`
+		Definitions []struct {
+			ID       string `json:"id"`
+			Order    int    `json:"order"`
+			Title    string `json:"title"`
+			Hint     string `json:"hint"`
+			Endpoint string `json:"endpoint"`
+			Reward   int64  `json:"reward"`
+		} `json:"definitions"`
+		Progress struct {
+			Completed int `json:"completed"`
+			Total     int `json:"total"`
+		} `json:"progress"`
+		Next *struct {
+			ID       string `json:"id"`
+			Title    string `json:"title"`
+			Hint     string `json:"hint"`
+			Endpoint string `json:"endpoint"`
+			Reward   int64  `json:"reward"`
+		} `json:"next"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return err
+	}
+
+	red := "\033[38;2;230;57;70m"
+	green := "\033[32m"
+	dim := "\033[2m"
+	bold := "\033[1m"
+	rst := "\033[0m"
+	coral := "\033[38;2;247;127;0m"
+
+	fmt.Println(red + "  🦞 Milestones" + rst)
+	fmt.Printf("  %s%d/%d completed%s\n\n", dim, data.Progress.Completed, data.Progress.Total, rst)
+
+	doneSet := make(map[string]bool)
+	for _, c := range data.Completed {
+		doneSet[c.ID] = true
+	}
+
+	for _, def := range data.Definitions {
+		icon := "⬜"
+		color := dim
+		if doneSet[def.ID] {
+			icon = "✅"
+			color = green
+		} else if data.Next != nil && data.Next.ID == def.ID {
+			icon = "🔄"
+			color = coral
+		}
+		fmt.Printf("  %s %s%s%s", icon, color, def.Title, rst)
+		fmt.Printf("  %s+%d Shell%s\n", dim, def.Reward, rst)
+	}
+
+	if data.Next != nil {
+		fmt.Printf("\n  %s▸ Next: %s%s\n", bold, data.Next.Title, rst)
+		fmt.Printf("    %s%s%s\n", dim, data.Next.Hint, rst)
+	} else {
+		fmt.Printf("\n  %s🎉 All milestones completed!%s\n", green, rst)
+	}
+
+	// Also show achievement summary
+	achResp, err := http.Get(base + "/api/achievements")
+	if err == nil {
+		defer achResp.Body.Close()
+		var achData struct {
+			Count int `json:"count"`
+			Total int `json:"total"`
+		}
+		if json.NewDecoder(achResp.Body).Decode(&achData) == nil {
+			fmt.Printf("\n  🏅 Achievements: %d/%d unlocked", achData.Count, achData.Total)
+			if achData.Count < achData.Total {
+				fmt.Printf("  %s(run: clawnet milestones achievements)%s", dim, rst)
+			}
+			fmt.Println()
+		}
+	}
+
+	return nil
+}
+
+func cmdAchievements(base string) error {
+	resp, err := http.Get(base + "/api/achievements")
+	if err != nil {
+		return fmt.Errorf(i18n.T("err.daemon_connect")+": %w", err)
+	}
+	defer resp.Body.Close()
+
+	if JSONOutput {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+		return nil
+	}
+
+	var data struct {
+		Unlocked []struct {
+			ID         string `json:"id"`
+			UnlockedAt string `json:"unlocked_at"`
+		} `json:"unlocked"`
+		Definitions []struct {
+			ID          string `json:"id"`
+			Title       string `json:"title"`
+			Description string `json:"description"`
+			Icon        string `json:"icon"`
+		} `json:"definitions"`
+		Count int `json:"count"`
+		Total int `json:"total"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return err
+	}
+
+	red := "\033[38;2;230;57;70m"
+	green := "\033[32m"
+	dim := "\033[2m"
+	rst := "\033[0m"
+
+	fmt.Println(red + "  🏅 Achievements" + rst)
+	fmt.Printf("  %s%d/%d unlocked%s\n\n", dim, data.Count, data.Total, rst)
+
+	unlockedSet := make(map[string]bool)
+	for _, u := range data.Unlocked {
+		unlockedSet[u.ID] = true
+	}
+
+	for _, def := range data.Definitions {
+		if unlockedSet[def.ID] {
+			fmt.Printf("  %s %s%s%s — %s\n", def.Icon, green, def.Title, rst, def.Description)
+		} else {
+			fmt.Printf("  🔒 %s%s%s — %s%s%s\n", dim, def.Title, rst, dim, def.Description, rst)
+		}
+	}
+
 	return nil
 }

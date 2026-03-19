@@ -85,3 +85,4 @@ dist/
 clawnet-cli/clawnet-linux-amd64
 clawnet-cli/clawnet-linux-arm64
 **/.npmrc
+clawnet-cli/clawnet-darwin-*
