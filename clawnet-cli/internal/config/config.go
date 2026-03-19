@@ -28,6 +28,8 @@ type Config struct {
 	RelayEnabled   bool            `json:"relay_enabled"`
 	ForcePrivate   bool            `json:"force_private"`
 	WebUIPort      int             `json:"web_ui_port"`
+	WebUIEnabled   *bool           `json:"web_ui_enabled,omitempty"` // nil = true (default on)
+	WebUIDir       string          `json:"web_ui_dir,omitempty"`     // explicit override; auto-discovered if empty
 	TopicsAutoJoin []string        `json:"topics_auto_join"`
 	WireGuard      WireGuardConfig `json:"wireguard"`
 	BTDHT          BTDHTConfig     `json:"bt_dht"`
@@ -218,6 +220,56 @@ func (c *Config) applyEnvOverrides() {
 	if v := os.Getenv("CLAWNET_OVERLAY_BOOTSTRAP"); v != "" {
 		c.Overlay.BootstrapPeers = splitComma(v)
 	}
+	if v := os.Getenv("CLAWNET_WEBUI_DIR"); v != "" {
+		c.WebUIDir = v
+	}
+	if v := os.Getenv("CLAWNET_WEBUI_ENABLED"); v != "" {
+		b := v == "1" || strings.EqualFold(v, "true")
+		c.WebUIEnabled = &b
+	}
+}
+
+// IsWebUIEnabled returns true unless explicitly disabled.
+func (c *Config) IsWebUIEnabled() bool {
+	if c.WebUIEnabled == nil {
+		return true
+	}
+	return *c.WebUIEnabled
+}
+
+// ResolveWebUIDir returns the webui directory, auto-discovering if not set explicitly.
+// Searches: config WebUIDir → relative to executable → relative to cwd → data dir.
+func (c *Config) ResolveWebUIDir() string {
+	if c.WebUIDir != "" {
+		if abs, err := filepath.Abs(c.WebUIDir); err == nil {
+			if info, err := os.Stat(abs); err == nil && info.IsDir() {
+				return abs
+			}
+		}
+	}
+	candidates := []string{}
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		candidates = append(candidates,
+			filepath.Join(exeDir, "website", "pages"),
+			filepath.Join(exeDir, "..", "website", "pages"),
+		)
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, filepath.Join(cwd, "website", "pages"))
+	}
+	candidates = append(candidates, filepath.Join(DataDir(), "webui"))
+	for _, p := range candidates {
+		if abs, err := filepath.Abs(p); err == nil {
+			if info, err := os.Stat(abs); err == nil && info.IsDir() {
+				idx := filepath.Join(abs, "index.html")
+				if _, err := os.Stat(idx); err == nil {
+					return abs
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func splitComma(s string) []string {

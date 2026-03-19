@@ -1,0 +1,220 @@
+/* ── Theme Variables (RGB channels for Tailwind opacity support) ── */
+
+:root, :root[data-theme="teal"] {
+  --c-surface-0: 12 12 18;
+  --c-surface-1: 19 19 29;
+  --c-surface-2: 26 26 40;
+  --c-surface-3: 34 34 52;
+  --c-surface-4: 44 44 64;
+  --c-accent-50: 13 41 38;
+  --c-accent-100: 19 78 72;
+  --c-accent-200: 26 107 98;
+  --c-accent-300: 45 157 143;
+  --c-accent-400: 56 178 172;
+  --c-accent-500: 79 209 197;
+  --c-accent-600: 94 234 212;
+  --c-accent-700: 153 246 228;
+  --c-accent-800: 178 245 234;
+  --c-accent-900: 230 255 250;
+}
+
+:root[data-theme="lobster"] {
+  --c-surface-0: 16 10 11;
+  --c-surface-1: 28 18 20;
+  --c-surface-2: 40 28 30;
+  --c-surface-3: 53 36 38;
+  --c-surface-4: 66 46 48;
+  --c-accent-50: 43 13 16;
+  --c-accent-100: 78 19 24;
+  --c-accent-200: 122 31 40;
+  --c-accent-300: 176 48 60;
+  --c-accent-400: 214 53 69;
+  --c-accent-500: 230 57 70;
+  --c-accent-600: 234 94 106;
+  --c-accent-700: 240 157 164;
+  --c-accent-800: 245 191 195;
+  --c-accent-900: 255 240 241;
+}
+
+/* ── Base ── */
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+}
+
+/* ── Navigation ── */
+
+.nav-item.active {
+  background: rgb(var(--c-accent-500) / 0.08);
+  color: rgb(var(--c-accent-500));
+  border-left: 2px solid rgb(var(--c-accent-500));
+}
+.nav-item:not(.active) {
+  border-left: 2px solid transparent;
+}
+.nav-item:not(.active):hover {
+  background: rgba(255,255,255,0.03);
+  color: #94a3b8;
+}
+
+/* ── Card ── */
+
+.card {
+  background: rgb(var(--c-surface-2));
+  border: 1px solid rgb(var(--c-surface-3));
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+}
+.card:hover {
+  border-color: rgb(var(--c-surface-4));
+}
+
+/* ── Badge ── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* ── Buttons ── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  transition: all 150ms;
+  cursor: pointer;
+  border: none;
+}
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary { background: rgb(var(--c-accent-300)); color: rgb(var(--c-accent-900)); }
+.btn-primary:hover { background: rgb(var(--c-accent-400)); }
+.btn-secondary { background: rgb(var(--c-surface-3)); color: #94a3b8; border: 1px solid rgb(var(--c-surface-3)); }
+.btn-secondary:hover { background: rgb(var(--c-surface-4)); color: #cbd5e1; }
+.btn-danger { background: rgba(239,68,68,0.1); color: #f87171; }
+.btn-danger:hover { background: rgba(239,68,68,0.18); }
+.btn-success { background: rgba(52,211,153,0.1); color: #34d399; }
+.btn-success:hover { background: rgba(52,211,153,0.18); }
+
+/* ── Input ── */
+
+.input {
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  background: rgb(var(--c-surface-1));
+  border: 1px solid rgb(var(--c-surface-3));
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  color: #e2e8f0;
+  outline: none;
+  transition: all 150ms;
+}
+.input:focus {
+  border-color: rgb(var(--c-accent-500));
+  box-shadow: 0 0 0 2px rgb(var(--c-accent-500) / 0.15);
+}
+.input::placeholder { color: rgb(var(--c-surface-4)); }
+select.input { appearance: auto; }
+
+/* ── Tabs ── */
+
+.tab-btn {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border-radius: 0.5rem;
+  color: #64748b;
+  background: transparent;
+  cursor: pointer;
+  transition: all 150ms;
+  border: 1px solid transparent;
+}
+.tab-btn.active {
+  color: rgb(var(--c-accent-500));
+  background: rgb(var(--c-accent-500) / 0.08);
+  border-color: rgb(var(--c-accent-500) / 0.2);
+}
+.tab-btn:not(.active):hover {
+  color: #94a3b8;
+  background: rgba(255,255,255,0.03);
+}
+
+/* ── Status Badges ── */
+
+.status-open { background: rgba(52,211,153,0.12); color: #34d399; }
+.status-assigned { background: rgba(96,165,250,0.12); color: #60a5fa; }
+.status-submitted { background: rgba(251,191,36,0.12); color: #fbbf24; }
+.status-approved { background: rgba(74,222,128,0.12); color: #4ade80; }
+.status-rejected { background: rgba(248,113,113,0.12); color: #f87171; }
+.status-cancelled { background: rgba(148,163,184,0.1); color: #64748b; }
+.status-settled { background: rgba(167,139,250,0.12); color: #a78bfa; }
+.status-resolved { background: rgba(74,222,128,0.12); color: #4ade80; }
+
+/* ── Swarm Perspectives ── */
+
+.perspective-bull { background: rgba(52,211,153,0.06); border-color: rgba(52,211,153,0.2); }
+.perspective-bear { background: rgba(248,113,113,0.06); border-color: rgba(248,113,113,0.2); }
+.perspective-neutral { background: rgba(148,163,184,0.06); border-color: rgba(148,163,184,0.15); }
+
+/* ── Toast ── */
+
+.toast {
+  animation: slideIn .3s ease-out;
+  backdrop-filter: blur(8px);
+}
+@keyframes slideIn { from { transform: translateX(100%); opacity:0; } to { transform: translateX(0); opacity:1; } }
+
+/* ── Fade ── */
+
+.fade-in { animation: fadeIn .2s ease-out; }
+@keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+
+/* ── Scrollbar ── */
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(var(--c-surface-3)); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--c-surface-4)); }
+
+/* ── Spinner ── */
+
+.loading-spinner {
+  border: 2px solid rgb(var(--c-surface-3));
+  border-top-color: rgb(var(--c-accent-500));
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  animation: spin .6s linear infinite;
+  display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Leaflet Override ── */
+
+.leaflet-container { background: rgb(var(--c-surface-0)) !important; }
+
+/* ── Theme Toggle Button ── */
+
+.theme-toggle, .lang-toggle {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid rgb(var(--c-surface-3));
+  background: rgb(var(--c-surface-2));
+  color: #94a3b8;
+  transition: all 150ms;
+}
+.theme-toggle:hover, .lang-toggle:hover {
+  border-color: rgb(var(--c-accent-500) / 0.4);
+  color: rgb(var(--c-accent-500));
+}

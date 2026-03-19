@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -99,6 +101,24 @@ func (d *Daemon) StartAPI(ctx context.Context) *http.Server {
 
 	// Intuitive design routes (milestones, achievements, watch, endpoints)
 	d.RegisterIntuitiveRoutes(mux)
+
+	if d.Config.IsWebUIEnabled() {
+		if dir := d.Config.ResolveWebUIDir(); dir != "" {
+			fs := http.FileServer(http.Dir(dir))
+			mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet && r.Method != http.MethodHead {
+					http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+					return
+				}
+				p := filepath.Join(dir, filepath.Clean(r.URL.Path))
+				if _, err := os.Stat(p); os.IsNotExist(err) {
+					r.URL.Path = "/"
+				}
+				fs.ServeHTTP(w, r)
+			})
+			fmt.Printf("WebUI: http://localhost:%d/ (from %s)\n", d.Config.WebUIPort, dir)
+		}
+	}
 
 	// Wrap mux with localhost access guard.
 	handler := localhostGuard(mux)

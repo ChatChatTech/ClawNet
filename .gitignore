@@ -45,6 +45,8 @@ clawnet-topo*.gif
 # Design / asset files (not for repo)
 *.svg
 *.html
+!website/pages/**/*.html
+!website/pages/index.html
 *.webp
 
 # Development docs (not for public repo)
@@ -85,3 +87,7 @@ dist/
 clawnet-cli/clawnet-linux-amd64
 clawnet-cli/clawnet-linux-arm64
 **/.npmrc
+
+.cursor/
+.lh/
+webui/

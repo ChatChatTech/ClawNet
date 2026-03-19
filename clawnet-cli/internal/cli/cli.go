@@ -237,6 +237,12 @@ func Execute() error {
 		if a == "--daemon" {
 			daemonMode = true
 		}
+		if a == "--no-ui" {
+			os.Setenv("CLAWNET_WEBUI_ENABLED", "false")
+		}
+		if strings.HasPrefix(a, "--webui-dir=") {
+			os.Setenv("CLAWNET_WEBUI_DIR", strings.TrimPrefix(a, "--webui-dir="))
+		}
 		if devBuild && strings.HasPrefix(a, "--dev-layers=") {
 			devLayers = strings.Split(strings.TrimPrefix(a, "--dev-layers="), ",")
 		}

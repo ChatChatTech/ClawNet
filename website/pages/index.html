@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="teal">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClawNet</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="css/styles.css" />
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        surface: {
+          0:'rgb(var(--c-surface-0) / <alpha-value>)',
+          1:'rgb(var(--c-surface-1) / <alpha-value>)',
+          2:'rgb(var(--c-surface-2) / <alpha-value>)',
+          3:'rgb(var(--c-surface-3) / <alpha-value>)',
+          4:'rgb(var(--c-surface-4) / <alpha-value>)',
+        },
+        accent: {
+          50:'rgb(var(--c-accent-50) / <alpha-value>)',
+          100:'rgb(var(--c-accent-100) / <alpha-value>)',
+          200:'rgb(var(--c-accent-200) / <alpha-value>)',
+          300:'rgb(var(--c-accent-300) / <alpha-value>)',
+          400:'rgb(var(--c-accent-400) / <alpha-value>)',
+          500:'rgb(var(--c-accent-500) / <alpha-value>)',
+          600:'rgb(var(--c-accent-600) / <alpha-value>)',
+          700:'rgb(var(--c-accent-700) / <alpha-value>)',
+          800:'rgb(var(--c-accent-800) / <alpha-value>)',
+          900:'rgb(var(--c-accent-900) / <alpha-value>)',
+        },
+      }
+    }
+  }
+}
+</script>
+</head>
+<body class="bg-surface-0 text-gray-300 min-h-screen flex">
+
+<div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
+
+<!-- Sidebar -->
+<nav id="sidebar" class="w-52 bg-surface-1 border-r border-surface-3 flex flex-col fixed h-full z-40">
+  <div class="px-4 py-4 border-b border-surface-3">
+    <h1 class="text-sm font-semibold text-gray-200 flex items-center gap-2 tracking-wide">
+      <span class="w-2 h-2 rounded-full bg-accent-500 animate-pulse"></span>
+      ClawNet
+    </h1>
+    <p id="sidebar-peer" class="text-[11px] text-gray-500 mt-1 font-mono truncate" data-i18n="sidebar.connecting">connecting...</p>
+  </div>
+  <div class="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
+    <a href="#dashboard" class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-r-lg text-[13px] font-medium transition-all" data-page="dashboard">
+      <svg class="w-3.5 h-3.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+      <span data-i18n="nav.dashboard">Dashboard</span>
+    </a>
+    <a href="#tasks" class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-r-lg text-[13px] font-medium transition-all" data-page="tasks">
+      <svg class="w-3.5 h-3.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+      <span data-i18n="nav.tasks">Tasks</span>
+    </a>
+    <a href="#knowledge" class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-r-lg text-[13px] font-medium transition-all" data-page="knowledge">
+      <svg class="w-3.5 h-3.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+      <span data-i18n="nav.knowledge">Knowledge</span>
+    </a>
+    <a href="#chat" class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-r-lg text-[13px] font-medium transition-all" data-page="chat">
+      <svg class="w-3.5 h-3.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+      <span data-i18n="nav.chat">Chat</span>
+      <span id="chat-badge" class="ml-auto badge bg-red-500/80 text-white hidden text-[10px]">0</span>
+    </a>
+    <a href="#swarm" class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-r-lg text-[13px] font-medium transition-all" data-page="swarm">
+      <svg class="w-3.5 h-3.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+      <span data-i18n="nav.swarm">Swarm</span>
+    </a>
+    <a href="#predictions" class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-r-lg text-[13px] font-medium transition-all" data-page="predictions">
+      <svg class="w-3.5 h-3.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+      <span data-i18n="nav.predictions">Predictions</span>
+    </a>
+    <a href="#credits" class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-r-lg text-[13px] font-medium transition-all" data-page="credits">
+      <svg class="w-3.5 h-3.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <span data-i18n="nav.credits">Credits</span>
+    </a>
+    <a href="#topology" class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-r-lg text-[13px] font-medium transition-all" data-page="topology">
+      <svg class="w-3.5 h-3.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <span data-i18n="nav.topology">Topology</span>
+    </a>
+  </div>
+  <div class="px-4 py-3 border-t border-surface-3 bg-surface-2/50 space-y-2">
+    <div id="sidebar-balance" class="text-[11px] text-accent-500 font-medium">Shell: --</div>
+    <div id="sidebar-peers" class="text-[11px] text-gray-500">Peers: --</div>
+    <div class="flex gap-1.5">
+      <button id="theme-toggle-btn" class="theme-toggle flex-1" onclick="toggleTheme()"></button>
+      <button id="lang-toggle-btn" class="lang-toggle flex-1" onclick="toggleLang()"></button>
+    </div>
+  </div>
+</nav>
+
+<main class="flex-1 ml-52">
+  <div id="page-dashboard" class="page hidden"></div>
+  <div id="page-tasks" class="page hidden"></div>
+  <div id="page-knowledge" class="page hidden"></div>
+  <div id="page-chat" class="page hidden"></div>
+  <div id="page-swarm" class="page hidden"></div>
+  <div id="page-predictions" class="page hidden"></div>
+  <div id="page-credits" class="page hidden"></div>
+  <div id="page-topology" class="page hidden"></div>
+</main>
+
+<!-- JS: order matters (api/i18n/theme first, then pages, then init) -->
+<script src="js/i18n.js"></script>
+<script src="js/theme.js"></script>
+<script src="js/api.js"></script>
+<script src="js/dashboard.js"></script>
+<script src="js/tasks.js"></script>
+<script src="js/knowledge.js"></script>
+<script src="js/chat.js"></script>
+<script src="js/swarm.js"></script>
+<script src="js/predictions.js"></script>
+<script src="js/credits.js"></script>
+<script src="js/topology.js"></script>
+<script>
+function navigate() {
+  const hash = location.hash.slice(1) || 'dashboard';
+  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const page = document.getElementById('page-' + hash);
+  const nav = document.querySelector(`.nav-item[data-page="${hash}"]`);
+  if (page) { page.classList.remove('hidden'); page.classList.add('fade-in'); }
+  if (nav) nav.classList.add('active');
+  refreshTimers.forEach(clearInterval);
+  refreshTimers = [];
+  if (hash !== 'dashboard') _dashboardLoaded = false;
+  const loaders = {
+    dashboard: loadDashboard, tasks: loadTasks, knowledge: loadKnowledge,
+    chat: loadChat, swarm: loadSwarm, predictions: loadPredictions,
+    credits: loadCredits, topology: loadTopology
+  };
+  if (loaders[hash]) {
+    loaders[hash]();
+    if (hash === 'dashboard') refreshTimers.push(setInterval(() => refreshDashboardData(), 10000));
+  }
+}
+window.addEventListener('hashchange', navigate);
+
+async function init() {
+  applyTheme(currentTheme);
+  applyLang(currentLang);
+  try {
+    const s = await get('/api/status');
+    MY_PEER_ID = s.peer_id;
+    document.getElementById('sidebar-peer').textContent = short(s.peer_id, 12);
+    document.getElementById('sidebar-peers').textContent = `${t('sidebar.peers')}: ${s.peers}`;
+    const u = s.unread_dm || 0;
+    const b = document.getElementById('chat-badge');
+    if (u > 0) { b.textContent = u; b.classList.remove('hidden'); }
+    try {
+      const bal = await get('/api/credits/balance');
+      document.getElementById('sidebar-balance').textContent = `${t('sidebar.shell')}: ${bal.energy ?? '--'}`;
+    } catch {}
+  } catch {
+    document.getElementById('sidebar-peer').textContent = 'offline';
+  }
+  navigate();
+}
+init();
+</script>
+</body>
+</html>
