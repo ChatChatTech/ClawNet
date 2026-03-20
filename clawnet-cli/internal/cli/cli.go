@@ -376,6 +376,8 @@ func Execute() error {
 		return cmdSkill()
 	case "discover", "disc":
 		return cmdDiscover()
+	case "mcp":
+		return cmdMCP()
 	case "milestones", "milestone":
 		return cmdMilestones()
 	case "v", "version":
@@ -464,6 +466,7 @@ func printUsageVerbose(verbose bool) error {
 		fmt.Println()
 		fmt.Println(bold + i18n.T("ai_integration") + rst)
 		fmt.Println(tidal+"  skill    "+dim+"         "+rst + i18n.T("cmd.skill"))
+		fmt.Println(tidal+"  mcp      "+dim+"         "+rst + i18n.T("cmd.mcp"))
 	}
 
 	fmt.Println()
@@ -570,6 +573,9 @@ func printCmdHelp(cmd string) error {
 		return nil
 	case "discover", "disc":
 		discoverHelp()
+		return nil
+	case "mcp":
+		mcpHelp()
 		return nil
 	case "resume":
 		resumeHelp(Verbose)

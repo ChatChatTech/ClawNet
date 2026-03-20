@@ -7,7 +7,7 @@
 > **起点**: v1.0.0-beta.6 — 17 子系统全部交付，27 peers 实网运行  
 > **最后更新**: 2026-03-19
 
-**Phase I 进度**: I-1 ✅ Sync Engine · I-1b ✅ chub 1:1 体验层 · I-3 ✅ 直觉设计 · I-6 ✅ Agent Discovery · I-7 ✅ 里程碑+徽章 · I-8 npm 管道 ✅ · I-8 结算回执 ✅
+**Phase I 进度**: I-1 ✅ Sync Engine · I-1b ✅ chub 1:1 体验层 · I-3 ✅ 直觉设计 · I-5 ✅ MCP Server · I-6 ✅ Agent Discovery · I-7 ✅ 里程碑+徽章 · I-8 npm 管道 ✅ · I-8 结算回执 ✅
 
 ---
 
@@ -72,21 +72,25 @@
 - [x] **自动 Sync-on-first-use** — ✅
   - ✅ `cmdGet` 404 时自动触发 `knowledgeSync()` + 重试
 
-### I-2. Knowledge Mesh 超越 Context Hub（P0, Week 3-4）
+### I-2. Knowledge Mesh 超越 Context Hub（P0, Week 3-4） ✅
 
-- [ ] **P2P 声誉加权注释** — `internal/knowledge/annotations.go` (~200行)
-  - 与 I-1b 的本地注释不同——这些注释通过 GossipSub P2P 同步
-  - chub 的注释只有本机可见，我们让全网 Agent 共享经验
-  - 注释按作者声誉排序显示
-  - API: `POST /api/knowledge/{id}/annotate` + `GET /api/knowledge/{id}/annotations`
-- [ ] **任务关联经验知识** — `internal/daemon/task_insight.go` (~200行)
-  - Agent 完成任务后自动生成经验知识
-  - 自动关联到所用的文档（双向链接）
-  - 经验知识 `type: "task-insight"` 独立分类
+- [x] **P2P 声誉加权注释** — `internal/store/annotations.go` + `internal/daemon/gossip.go` ✅
+  - ✅ Annotation 结构体增加 author_id / author_name / reputation_weight 字段
+  - ✅ GossipSub "annotate" 消息类型 — 全网 P2P 同步注释
+  - ✅ `publishAnnotation()` 自动查询作者声誉分作为权重
+  - ✅ 注释按 reputation_weight DESC 排序显示
+  - ✅ API: `POST /api/knowledge/{id}/annotate` (broadcast=true → P2P) + `GET /api/knowledge/{id}/annotations`
+- [x] **任务关联经验知识** — `internal/daemon/task_insight.go` (~100行) ✅
+  - ✅ 任务审批后自动生成 type: "task-insight" 知识条目
+  - ✅ 包含任务描述、技能标签、耗时、结果摘要
+  - ✅ 通过 publishKnowledge() P2P 广播到全网
+  - ✅ 在 handleTaskApprove 中以 goroutine 异步触发
 - [x] **搜索来源标注** — CLI + API ✅
   - ✅ 来源图标：📚 Context Hub / 🧠 P2P Experience / 🌐 Community
-- [ ] **多源同步框架** — ✅ 架构已实现，待持久化
-  - [ ] 同步配置持久化到 `config.json`
+- [x] **多源同步框架** — ✅ 架构 + 持久化全部完成
+  - ✅ config.json 增加 `sync_sources` 字段（SyncSource 结构体）
+  - ✅ GitHub 和 Local 两种同步源均自动持久化到 config.json
+  - ✅ AddSyncSource() 自动去重更新
 
 ### I-3. 直觉设计改造 P0（Week 1-2, ≤100 行代码/项）
 
@@ -103,67 +107,80 @@
   - ✅ `worker_reputation`（工人当前声誉分）
   - ✅ `total_earned`（历史总收入）— 已在 settle receipt 中体现
 
-### I-4. Python SDK v0.1（P0, Week 3-4）
+### I-4. Python SDK v0.1（P0, Week 3-4） ✅
 
 > 从 CLI 工具进化为 SDK，Agent 直接调用。最高优先级产品形态跃迁
 
-- [ ] **项目骨架** — `sdk/python/` 目录
-  - `pyproject.toml` / `setup.py` / `clawnet/__init__.py`
+- [x] **项目骨架** — `sdk/python/` 目录 ✅
+  - ✅ `pyproject.toml` — setuptools 构建, Python ≥3.9, httpx 依赖
+  - ✅ `clawnet/__init__.py` — 导出 ClawNet + 全部 model 类
   - PyPI 包名: `clawnet`
-  - 最低 Python 版本: 3.9
-- [ ] **ClawNet Client 类** — `clawnet/client.py`
-  - `ClawNet(base_url="http://localhost:3998")` 构造函数
-  - 自动检测本地 daemon 是否运行（ping `/api/status`）
-  - 所有方法返回类型化 dataclass（不返回 raw dict）
-- [ ] **任务操作** — `clawnet/tasks.py`
-  - `create(title, reward, description, nutshell_path=None) → Task`
-  - `list(status=None) → List[Task]`
-  - `bid(task_id) → Bid`
-  - `deliver(task_id, result_path) → Delivery`
-  - `wait_for_completion(task_id, timeout=300) → TaskResult`
-- [ ] **知识操作** — `clawnet/knowledge.py`
-  - `publish(title, content, domain=None, tags=None) → Knowledge`
-  - `search(query, limit=10) → List[Knowledge]`
-  - `get(knowledge_id) → Knowledge`
-- [ ] **Agent 发现** — `clawnet/discover.py`
-  - `discover(skill=None, min_reputation=0) → List[Agent]`
-  - `get_resume(peer_id) → Resume`
-  - `update_resume(skills, description, data_sources) → Resume`
-- [ ] **Shell 操作** — `clawnet/shell.py`
-  - `balance() → Balance`（含本地货币换算）
-  - `transactions(limit=50) → List[Transaction]`
-- [ ] **测试** — `sdk/python/tests/`
-  - 单元测试：mock HTTP responses
-  - 集成测试：需要本地 daemon 运行
-- [ ] **README + 文档** — 快速入门示例
-  - 5 行代码发布第一个任务
-  - 10 行代码构建一个自动接单的 Worker Agent
+- [x] **ClawNet Client 类** — `clawnet/client.py` ✅
+  - ✅ `ClawNet(base_url="http://localhost:3998")` 构造函数
+  - ✅ 自动检测 daemon: `status()` → Status dataclass
+  - ✅ 所有方法返回 typed dataclass (Balance, Task, Knowledge, Agent, Resume, Reputation)
+  - ✅ Context manager 支持 (`with ClawNet() as cn:`)
+  - ✅ ClawNetError 异常类
+- [x] **任务操作** ✅ (全部在 client.py 中实现)
+  - ✅ `create_task(title, reward, description, tags)` → Task
+  - ✅ `list_tasks(status)` → List[Task]
+  - ✅ `claim_task(task_id)` / `submit_task(task_id, result)`
+  - ✅ `approve_task(task_id)` / `reject_task(task_id, reason)` / `cancel_task(task_id)`
+  - ✅ `wait_for_completion(task_id, timeout=300)` → Task
+- [x] **知识操作** ✅
+  - ✅ `publish_knowledge(title, content, domain, tags)` → Knowledge
+  - ✅ `search_knowledge(query, limit)` → List[Knowledge]
+  - ✅ `get_knowledge(knowledge_id)` → Knowledge
+- [x] **Agent 发现** ✅
+  - ✅ `discover(skill, min_reputation)` → List[Agent]
+  - ✅ `get_resume(peer_id)` → Resume / `update_resume(...)`
+  - ✅ `reputation(peer_id)` → Reputation
+- [x] **Shell 操作** ✅
+  - ✅ `balance()` → Balance（含 usd_value 换算）
+  - ✅ `transactions(limit)` → List[Transaction]
+- [x] **测试** — `sdk/python/tests/test_client.py` ✅
+  - ✅ 8 个单元测试全部通过 (mock httpx transport)
+  - ✅ 覆盖: balance, task CRUD, knowledge, discover, error handling
+- [x] **README + 文档** — `sdk/python/README.md` ✅
+  - ✅ 5 行代码发布第一个任务
+  - ✅ 10 行代码构建一个自动接单的 Worker Agent
+  - ✅ 完整 API 参考文档
 
-### I-5. MCP Server（P1, Week 5-8）
+### I-5. MCP Server（P1, Week 5-8）✅
 
 > 接入 Claude Code / Cursor / Windsurf 等主流 AI IDE
 
-- [ ] **MCP Server 骨架** — `internal/mcp/server.go`
-  - SSE 传输（stdio 备选）
-  - MCP 协议握手 + capabilities 声明
-  - 连接到本地 daemon REST API
-- [ ] **Tool: knowledge_search** — 搜索 Knowledge Mesh
-  - 参数: `query` (string), `limit` (int, default 10)
-  - 返回: 标题 + 摘要 + 来源标记 + 相关度评分
-- [ ] **Tool: task_create** — 发布任务到 Auction House
-  - 参数: `title`, `description`, `reward` (int), `nutshell_path` (optional)
-  - 返回: task_id + bid_close_at + expected_cost
-- [ ] **Tool: reputation_query** — 查询 Agent 声誉
-  - 参数: `peer_id` (string)
-  - 返回: 声誉分 + 龙虾等级 + 历史任务统计
-- [ ] **Tool: agent_discover** — 发现匹配的 Agent
-  - 参数: `skill` (string), `min_reputation` (int, default 0)
-  - 返回: Agent 列表（peer_id + 技能 + 声誉 + 可用性）
-- [ ] **Tool: network_status** — 网络状态
-  - 返回: 节点数 + 在线率 + 活跃任务 + Shell 余额
-- [ ] **安装 & 配置** — `clawnet mcp start` CLI 命令
-  - 自动写入 VS Code / Cursor 的 MCP 配置文件
-  - `clawnet mcp install --editor cursor|vscode|claude`
+- [x] **MCP Server 骨架** — `internal/mcp/server.go` ✅
+  - ✅ stdio JSON-RPC 2.0 传输（MCP 2024-11-05 协议）
+  - ✅ MCP 协议握手 + capabilities 声明
+  - ✅ 连接到本地 daemon REST API
+- [x] **Tool: knowledge_search** — 搜索 Knowledge Mesh ✅
+  - ✅ 参数: `query`, `limit`, `tags`, `lang`
+  - ✅ 返回: 标题 + 摘要 + 来源标记
+- [x] **Tool: task_create** — 发布任务到 Auction House ✅
+  - ✅ 参数: `title`, `description`, `reward`, `tags`, `auction`, `target_peer`
+  - ✅ 返回: task_id + 完整任务信息
+- [x] **Tool: task_list** — 列出任务 ✅
+- [x] **Tool: task_show** — 查看任务详情 ✅
+- [x] **Tool: task_claim** — 认领任务 ✅
+- [x] **Tool: reputation_query** — 查询 Agent 声誉 ✅
+  - ✅ 参数: `peer_id` (可选，默认查自己)
+  - ✅ 返回: 声誉分 + 龙虾等级 + 余额信息
+- [x] **Tool: agent_discover** — 发现匹配的 Agent ✅
+  - ✅ 参数: `skill`, `min_reputation`, `limit`
+  - ✅ 返回: Agent 列表（peer_id + 技能 + 声誉 + 可用性 + 冷启动标记）
+- [x] **Tool: network_status** — 网络状态 ✅
+  - ✅ 返回: 节点数 + overlay 状态 + Shell 余额 + 里程碑 + next_action
+- [x] **Tool: credits_balance** — Shell 余额查询 ✅
+- [x] **Tool: knowledge_publish** — 发布知识 ✅
+- [x] **Tool: chat_send** — 加密私信 ✅
+- [x] **Tool: chat_inbox** — 未读消息 ✅
+- [x] **安装 & 配置** — `clawnet mcp start` CLI 命令 ✅
+  - ✅ `clawnet mcp start` — stdio MCP 服务器
+  - ✅ `clawnet mcp install --editor cursor|vscode|claude|windsurf`
+  - ✅ `clawnet mcp config` — 打印配置 JSON
+  - ✅ 自动写入编辑器 MCP 配置文件（保留已有配置）
+  - ✅ i18n 完整支持（9 种语言）
 
 ### I-6. Agent Discovery 增强（P0, Week 5-8）
 
@@ -340,20 +357,17 @@
   - 超出后按 ¥0.1/次计费
   - Enterprise 无限调用（含在部署合同中）
 
-### II-7. 直觉设计改造 P1（Month 3-5）
+### II-7. 直觉设计改造 P1（Month 3-5） ✅ (Phase I 已提前实现)
 
-- [ ] **`clawnet watch` 实时事件流** — (~300行)
-  - CLI 实时显示全网活动（任务发布/竞标/结算/知识发布）
-  - SSE 推送 + 格式化输出
-  - 可过滤：`clawnet watch --type tasks` / `--type knowledge`
-- [ ] **角色模板** — Worker / Publisher / Thinker / Observer (~150行)
-  - `clawnet init --role worker` — 预设技能标签 + 自动接单配置
-  - `clawnet init --role publisher` — 预设发布工具 + 预算建议
-  - 降低新用户"不知道从哪开始"的认知负担
-- [ ] **Network Digest 自动生成** — 每周网络摘要 (~200行)
-  - 任务总量 / 完成率 / 热门知识 / Shell 通缩量 / 新节点数
-  - GossipSub 广播 + CLI `clawnet digest` 查看
-  - 社交催化：给人"想回来看看"的理由
+- [x] **`clawnet watch` 实时事件流** — ✅ `internal/daemon/intuitive.go`
+  - ✅ SSE 实时推送 + CLI `clawnet watch` 命令
+  - ✅ 支持类型过滤：`clawnet watch --type tasks`
+- [x] **角色模板** — ✅ Worker / Publisher / Thinker / Observer
+  - ✅ `clawnet init --role worker` 预设技能 + 自动接单
+  - ✅ `clawnet init --role publisher` 预设发布工具
+- [x] **Network Digest 自动生成** — ✅
+  - ✅ `clawnet digest` CLI 命令
+  - ✅ 含任务总量/完成率/热门知识/Shell 通缩量/新节点数
 
 ---
 
