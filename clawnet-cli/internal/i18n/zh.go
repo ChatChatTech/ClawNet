@@ -743,6 +743,11 @@ var zh = map[string]string{
 	"mcp.unknown_sub":             "未知 MCP 子命令：%s\n",
 	"mcp.unknown_editor":          "未知编辑器：%s。支持：cursor、vscode、claude、windsurf\n",
 
+	// ── A2A 协议 ──
+	"a2a.agent_card":       "A2A Agent 名片",
+	"a2a.task_received":    "已接收 A2A 任务并提交至拍卖行",
+	"a2a.invalid_request":  "无效的 A2A 请求格式",
+
 	// ── 通用/共享 ──
 	"common.usage":          "用法",
 	"common.examples":       "示例",

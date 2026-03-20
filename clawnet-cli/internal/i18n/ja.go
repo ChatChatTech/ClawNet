@@ -743,6 +743,11 @@ var ja = map[string]string{
 	"mcp.unknown_sub":             "不明なMCPサブコマンド: %s\n",
 	"mcp.unknown_editor":          "不明なエディタ: %s。対応: cursor, vscode, claude, windsurf\n",
 
+	// ── A2A プロトコル ──
+	"a2a.agent_card":       "A2A エージェントカード",
+	"a2a.task_received":    "A2Aタスクを受信しオークションハウスに送信しました",
+	"a2a.invalid_request":  "無効なA2Aリクエスト形式",
+
 	// ── 共通 ──
 	"common.usage":          "使い方",
 	"common.examples":       "例",

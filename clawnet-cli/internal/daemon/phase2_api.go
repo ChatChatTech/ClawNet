@@ -97,6 +97,11 @@ func (d *Daemon) RegisterPhase2Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/topo/coin-state", d.handleCoinState)
 	mux.HandleFunc("POST /api/topo/coin-grab", d.handleCoinGrab)
 	mux.HandleFunc("POST /api/topo/coin-redeem", d.handleCoinRedeemV2)
+
+	// A2A Protocol (Google Agent-to-Agent)
+	mux.HandleFunc("GET /api/a2a/agent-card", d.handleA2AAgentCard)
+	mux.HandleFunc("GET /.well-known/agent.json", d.handleA2AAgentCard)
+	mux.HandleFunc("POST /api/a2a/tasks/send", d.handleA2ATaskSend)
 }
 
 // ── Credits handlers ──
@@ -522,6 +527,9 @@ func (d *Daemon) handleTaskApprove(w http.ResponseWriter, r *http.Request) {
 			d.Store.AutoUpdateResumeSkills(t.AssignedTo, t.Tags)
 			d.Store.RecalcActiveTasks(t.AssignedTo)
 		}
+
+		// I-2: Auto-generate task-insight knowledge entry
+		go d.GenerateTaskInsight(t)
 	}
 
 	writeJSON(w, receipt)

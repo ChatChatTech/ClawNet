@@ -743,6 +743,11 @@ var ko = map[string]string{
 	"mcp.unknown_sub":             "알 수 없는 MCP 하위 명령: %s\n",
 	"mcp.unknown_editor":          "알 수 없는 에디터: %s. 지원: cursor, vscode, claude, windsurf\n",
 
+	// ── A2A 프로토콜 ──
+	"a2a.agent_card":       "A2A 에이전트 카드",
+	"a2a.task_received":    "A2A 작업이 수신되어 경매장에 제출되었습니다",
+	"a2a.invalid_request":  "잘못된 A2A 요청 형식",
+
 	// ── 공통 ──
 	"common.usage":          "사용법",
 	"common.examples":       "예제",

@@ -743,6 +743,11 @@ var ru = map[string]string{
 	"mcp.unknown_sub":             "Неизвестная подкоманда MCP: %s\n",
 	"mcp.unknown_editor":          "Неизвестный редактор: %s. Поддерживаемые: cursor, vscode, claude, windsurf\n",
 
+	// ── Протокол A2A ──
+	"a2a.agent_card":       "Карточка агента A2A",
+	"a2a.task_received":    "Задача A2A получена и отправлена на аукцион",
+	"a2a.invalid_request":  "Неверный формат запроса A2A",
+
 	// ── Общее ──
 	"common.usage":          "ИСПОЛЬЗОВАНИЕ",
 	"common.examples":       "ПРИМЕРЫ",

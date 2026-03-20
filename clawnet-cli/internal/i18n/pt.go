@@ -743,6 +743,11 @@ var pt = map[string]string{
 	"mcp.unknown_sub":             "Subcomando MCP desconhecido: %s\n",
 	"mcp.unknown_editor":          "Editor desconhecido: %s. Suportados: cursor, vscode, claude, windsurf\n",
 
+	// ── Protocolo A2A ──
+	"a2a.agent_card":       "Cartão de Agente A2A",
+	"a2a.task_received":    "Tarefa A2A recebida e enviada à Casa de Leilões",
+	"a2a.invalid_request":  "Formato de solicitação A2A inválido",
+
 	// ── Comum ──
 	"common.usage":          "USO",
 	"common.examples":       "EXEMPLOS",

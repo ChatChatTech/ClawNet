@@ -253,8 +253,8 @@
 
 ## Phase II — 生态扩张（Month 3-6）
 
-> Milestone: **"多框架接入 + 首笔 Enterprise 合同 + Reputation API 上线"**
-> 战略目标: 从单体工具到生态平台，同时获得第一笔收入
+> Milestone: **"OpenClaw 生态深度接入 + ClawHub 发布 + A2A 网关上线"**
+> 战略目标: 成为 OpenClaw 生态的 P2P 通信基础设施层
 
 ### II-1. JS/TS SDK v0.2（P0, Month 3）
 
@@ -270,50 +270,65 @@
   - 与本地 daemon 联调
   - CI 可复现的测试脚本
 
-### II-2. 框架集成（P0, Month 3-4）
+### II-2. OpenClaw 生态集成（P0, Month 3-4）
 
-> 每一个集成让存量 Agent 自动加入 ClawNet
+> ClawNet 是 OpenClaw 生态的 P2P 网络层，需无缝融入
 
+- [ ] **OpenClaw Skill 格式** — ClawNet 作为原生 .md skill
+  - 发布 `clawnet-skill.md` 到 ClawHub（兼容 obsidian-skills 15k★ / claude-skills 6k★ 格式）
+  - Skill 内容: 网络通信、任务委托、知识搜索、Agent 发现
+  - 参考 awesome-agent-skills (3.3k★) 规范
+- [ ] **ClawHub 注册** — 将 ClawNet 发布到 ClawHub skill registry
+  - 兼容 clawhub-publisher / clawpub 工具链
+  - 支持 `clawnet skill publish` CLI 命令
+  - 包含版本管理 + 自动更新推送
 - [ ] **LangChain Plugin** — 提交官方 PR
-  - `ClawNetToolkit` — 封装 5 个 Tool（搜知识/发任务/查声誉/发现Agent/查状态）
+  - `ClawNetToolkit` — 封装 Tool（搜知识/发任务/查声誉/发现Agent/查状态）
   - `ClawNetRetriever` — Knowledge Mesh 作为 RAG 数据源
   - 文档 + 示例 notebook
-- [ ] **CrewAI Tool** — 提交官方 PR
-  - `ClawNetTool` — CrewAI Tool 协议封装
-  - 支持任务委派（CrewAI Task → ClawNet Task 自动映射）
-- [ ] **AutoGen Extension** — 提交官方 PR
-  - `ClawNetAgent` — AutoGen AssistantAgent 子类
-  - 自动注册到 ClawNet 网络 + 声誉同步
+- [ ] **OpenViking 桥接** — 与 volcengine/OpenViking (16.5k★) 上下文数据库对接
+  - Knowledge Mesh ↔ OpenViking context 双向同步
+  - Agent skill memory 通过 OpenViking 持久化
+  - OpenViking 已在 topics 中标记 `openclaw`，优先对接
+- [ ] **MemOS 集成** — 与 MemTensor/MemOS (7.5k★) 记忆系统对接
+  - ClawNet 任务经验 → MemOS skill-memory 持久化
+  - 跨任务技能复用通过 MemOS 记忆检索
 
-### II-3. A2A 协议兼容层（P1, Month 3-5）
+### II-3. A2A 协议兼容层（P0, Month 3-5）
 
 > Agent Card 对齐 Google A2A，成为 A2A 生态的最佳 P2P 运行时
+> 参考: openclaw-a2a-gateway (289★), a2a-go (298★, Go SDK), python-a2a (984★)
 
 - [ ] **Agent Card 生成** — 从 ClawNet Resume 自动生成 A2A Agent Card
   - JSON-LD 格式，包含 capabilities / endpoint / auth
   - `GET /api/a2a/agent-card` 端点
 - [ ] **A2A 消息格式兼容** — 接收 A2A 格式任务请求
-  - A2A Task → ClawNet Task 映射层
+  - A2A Task → ClawNet Task 映射层（参考 openclaw-a2a-gateway 实现）
+  - 使用 a2a-go SDK 实现 Go 原生桥接
   - 状态回调（A2A 格式 webhook）
 - [ ] **A2A 发现桥接** — ClawNet Agent 可被 A2A 客户端发现
   - `/.well-known/agent.json` 端点
-  - DNS-SD 广播（可选）
+  - 兼容 registry-broker-skills (72K+ agents 跨 14 协议)
+- [ ] **A2A × Shell 支付** — 参考 a2a-x402 (475★) 的加密支付模式
+  - Shell 作为 ClawNet 内 A2A 任务的原生支付方式
 
-### II-4. Nutshell Registry v1（P1, Month 3-5）
+### II-4. Nutshell Registry v1 × ClawHub（P1, Month 3-5）
 
 > .nut 包市场——中期收入引擎 (5% 抽佣)
+> 与 ClawHub 生态融合，而非独立建设
 
 - [ ] **.nut 包注册表** — `internal/registry/registry.go`
   - 包发布: `clawnet nutshell publish --registry`
   - 包搜索: `clawnet nutshell search <query>`
   - 包排行: 按下载量 / 评分 / 声誉
+  - ClawHub 兼容: 发布到 ClawHub 的 .nut 包可通过 P2P 分发
 - [ ] **CLI 一键安装** — `clawnet nutshell install <package-name>`
   - P2P 分发（从最近节点拉取，SHA-256 校验）
   - 版本管理 + 依赖解析（.nut 可声明依赖其他 .nut）
-- [ ] **质量保证**
+- [ ] **安全集成** — 兼容 AI-Infra-Guard (Tencent 3.3k★) / clawsec (800★) 扫描
   - 发布者声誉门槛（至少 Tier 3 龙虾等级）
-  - 社区评分 + 举报机制
   - 自动格式校验 + 安全扫描（检测恶意脚本）
+  - 社区评分 + 举报机制
 - [ ] **抽佣机制** — 通过 Registry 完成的任务收取 5% 额外费用
   - 与 Auction House 的 5% system_burn 独立
   - Registry fee 归 ClawNet 运营方（非燃烧）
