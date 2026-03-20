@@ -360,6 +360,11 @@ func (d *Daemon) autoApproveSimpleTask(ctx context.Context, taskID string) {
 	}
 	fmt.Printf("[auto-approve] task %s → worker %s (%d Shell, score %.2f)\n",
 		short, workerShort, t.Reward, t.SelfEvalScore)
+
+	// Generate task-insight knowledge entry (re-fetch to get approved status)
+	if approved, _ := d.Store.GetTask(taskID); approved != nil {
+		go d.GenerateTaskInsight(approved)
+	}
 }
 
 func (d *Daemon) handleSwarmSub(ctx context.Context, sub *pubsub.Subscription) {
